@@ -102,9 +102,14 @@ extension _MatrixTimelineSupport on MatrixBackend {
       _mediaPlaybackReferences.remove(eventId);
       if (source != null) _mediaRangeProxy.unregister(source.uri);
     }
-    await _hydrateSenderAvatars(timeline);
-    await _hydrateReplies(timeline);
+    await Future.wait([
+      _hydrateSenderAvatars(timeline),
+      _hydrateReplies(timeline),
+    ]);
+    if (!identical(timeline, _timeline)) return;
+    _notifyBackendListeners();
     await _hydrateLinkPreviews(timeline);
+    if (!identical(timeline, _timeline)) return;
     _notifyBackendListeners();
   }
 
@@ -144,6 +149,8 @@ extension _MatrixTimelineSupport on MatrixBackend {
   ) async {
     if (!_isCurrentTimeline(timeline, generation)) return;
     await _hydrateTimelineMetadata(timeline);
+    if (!_isCurrentTimeline(timeline, generation)) return;
+    _roomMessageCache[timeline.room.id] = List.unmodifiable(_mappedMessages);
   }
 
   Future<void> _markSelectedRoomRead() async {

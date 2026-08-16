@@ -25,4 +25,29 @@ void main() {
     expect(decoded?.control, isTrue);
     expect(decoded?.alt, isTrue);
   });
+
+  test('recorded shortcut matching is independent of widget focus', () {
+    expect(
+      matchesRecordedShortcut(
+        'control+shift+id:${LogicalKeyboardKey.keyG.keyId}',
+        LogicalKeyboardKey.keyG,
+        control: true,
+        shift: true,
+        alt: false,
+        meta: false,
+      ),
+      isTrue,
+    );
+    expect(
+      matchesRecordedShortcut(
+        'control+shift+id:${LogicalKeyboardKey.keyG.keyId}',
+        LogicalKeyboardKey.keyG,
+        control: true,
+        shift: false,
+        alt: false,
+        meta: false,
+      ),
+      isFalse,
+    );
+  });
 }

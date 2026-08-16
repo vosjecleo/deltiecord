@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -37,6 +38,7 @@ final _webUrlPattern = RegExp(r'https?://[^\s<>]+');
 class MatrixBackend extends ChatBackend {
   static const _settingsAccountDataType = 'net.deltiecord.settings';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
+  static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
 
   MatrixBackend({ChatNotificationSink? notifications})
     : _notifications = notifications ?? const SilentChatNotificationSink();
@@ -81,6 +83,11 @@ class MatrixBackend extends ChatBackend {
   final Map<String, String?> _firstUnreadEventIds = {};
   final Map<String, String> _lastNotificationEventIds = {};
   final Map<String, RoomPresentation> _roomPresentationOverrides = {};
+  final Map<String, Map<String, dynamic>> _spaceChannelLayoutOverrides = {};
+  final Map<String, List<String>> _spaceRoomOrderOverrides = {};
+  final Map<String, Set<String>> _collapsedChannelCategories = {};
+  final LinkedHashMap<String, List<ChatMessage>> _roomMessageCache =
+      LinkedHashMap();
   final Map<String, String> _offlineSendRooms = {};
   bool _retryingOfflineSends = false;
   bool _notificationsPrimed = false;
@@ -151,6 +158,9 @@ class MatrixBackend extends ChatBackend {
         ),
       )
       .toList(growable: false);
+  @override
+  List<ChannelCategorySummary> get selectedSpaceCategories =>
+      _channelCategoriesFor(_selectedSpaceId);
   @override
   bool get timelineLoading => _timelineLoading;
   @override
@@ -356,7 +366,22 @@ class MatrixBackend extends ChatBackend {
   bool get selectedRoomMuted => _selectedRoomIsMuted;
 
   @override
-  List<ChatMessage> get messages => _mappedMessages;
+  List<ChatMessage> get messages {
+    if (_timeline != null) return _mappedMessages;
+    return _roomMessageCache[_selectedRoomId] ?? const [];
+  }
+
+  void _cacheCurrentRoomMessages() {
+    final roomId = _selectedRoomId;
+    if (roomId == null || _timeline == null) return;
+    final snapshot = _mappedMessages;
+    _roomMessageCache
+      ..remove(roomId)
+      ..[roomId] = List.unmodifiable(snapshot);
+    while (_roomMessageCache.length > 4) {
+      _roomMessageCache.remove(_roomMessageCache.keys.first);
+    }
+  }
 
   void _notifyBackendListeners() => notifyListeners();
 
@@ -495,6 +520,31 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> createSpace({required String name, String topic = ''}) =>
       _createSpace(name: name, topic: topic);
+  @override
+  Future<void> createChannelCategory(String name) =>
+      _createChannelCategory(name);
+  @override
+  Future<void> renameChannelCategory(String categoryId, String name) =>
+      _renameChannelCategory(categoryId, name);
+  @override
+  Future<void> deleteChannelCategory(String categoryId) =>
+      _deleteChannelCategory(categoryId);
+  @override
+  Future<void> reorderChannelCategory(String categoryId, int newIndex) =>
+      _reorderChannelCategory(categoryId, newIndex);
+  @override
+  Future<void> setChannelCategoryCollapsed(String categoryId, bool collapsed) =>
+      _setChannelCategoryCollapsed(categoryId, collapsed);
+  @override
+  Future<void> moveRoomInSpace(
+    String roomId, {
+    String? categoryId,
+    String? beforeRoomId,
+  }) => _moveRoomInSpace(
+    roomId,
+    categoryId: categoryId,
+    beforeRoomId: beforeRoomId,
+  );
 
   @override
   Future<void> renameRoom(String roomId, String name) =>

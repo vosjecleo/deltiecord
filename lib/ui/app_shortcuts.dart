@@ -29,6 +29,28 @@ String encodeShortcut(KeyDownEvent event) {
   return parts.join('+');
 }
 
+/// Matches a recorded shortcut independently of the focused widget.
+///
+/// Composer editors are allowed to consume ordinary text keys, so application
+/// commands are dispatched from the root hardware-key handler instead of
+/// relying exclusively on focus-local [Shortcuts] propagation.
+bool matchesRecordedShortcut(
+  String encoded,
+  LogicalKeyboardKey key, {
+  required bool control,
+  required bool shift,
+  required bool alt,
+  required bool meta,
+}) {
+  final binding = decodeShortcut(encoded);
+  return binding != null &&
+      binding.trigger == key &&
+      binding.control == control &&
+      binding.shift == shift &&
+      binding.alt == alt &&
+      binding.meta == meta;
+}
+
 String shortcutLabel(String encoded) {
   final binding = decodeShortcut(encoded);
   if (binding == null) return 'Not set';

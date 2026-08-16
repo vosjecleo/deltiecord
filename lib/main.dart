@@ -6,6 +6,7 @@ import 'package:timezone/data/latest_all.dart' as timezone_data;
 import 'app.dart';
 import 'matrix/matrix_backend.dart';
 import 'services/chat_notifications.dart';
+import 'services/app_sounds.dart';
 import 'services/temporary_attachment_store.dart';
 
 Future<void> main() async {
@@ -39,6 +40,7 @@ class _TemporaryAttachmentLifecycle with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
       store.cleanup();
+      AppSounds.dispose();
     }
   }
 }

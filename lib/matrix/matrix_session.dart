@@ -12,6 +12,10 @@ extension _MatrixSession on MatrixBackend {
       _profileFieldsCapability = null;
       _profileFieldsCapabilityLoaded = false;
       _syncSubscription = _matrix.onSync.stream.listen((_) {
+        // Successful local state writes are mirrored until this authoritative
+        // sync makes the SDK's room-state cache current.
+        _spaceChannelLayoutOverrides.clear();
+        _spaceRoomOrderOverrides.clear();
         _loadSettings();
         _notifyBackendListeners();
         unawaited(_refreshRoomMetadata());
@@ -121,6 +125,10 @@ extension _MatrixSession on MatrixBackend {
       _firstUnreadEventIds.clear();
       _lastNotificationEventIds.clear();
       _roomPresentationOverrides.clear();
+      _spaceChannelLayoutOverrides.clear();
+      _spaceRoomOrderOverrides.clear();
+      _collapsedChannelCategories.clear();
+      _roomMessageCache.clear();
       _notificationsPrimed = false;
       _maximumUploadBytes = null;
       _mediaPlaybackSources.clear();
@@ -471,6 +479,19 @@ extension _MatrixSession on MatrixBackend {
         _matrix.accountData[MatrixBackend._settingsAccountDataType]?.content;
     _notificationPreviewsEnabled =
         content?.tryGet<bool>('notification_previews') ?? true;
+    _collapsedChannelCategories
+      ..clear()
+      ..addEntries(
+        (content?.tryGetMap<String, Object?>('collapsed_channel_categories') ??
+                const {})
+            .entries
+            .map(
+              (entry) => MapEntry(
+                entry.key,
+                (entry.value as List? ?? const []).whereType<String>().toSet(),
+              ),
+            ),
+      );
     if (_pendingPreferences != null) return;
     _preferences = AppPreferences(
       density: content?.tryGet<String>('density') == 'cozy'

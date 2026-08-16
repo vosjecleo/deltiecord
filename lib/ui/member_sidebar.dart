@@ -124,10 +124,15 @@ class _SidePanelRegionState extends State<_SidePanelRegion> {
 }
 
 class _MemberSidebar extends StatelessWidget {
-  const _MemberSidebar({required this.backend, required this.members});
+  const _MemberSidebar({
+    required this.backend,
+    required this.members,
+    required this.onMemberSelected,
+  });
 
   final ChatBackend backend;
   final List<RoomMemberSummary> members;
+  final ValueChanged<RoomMemberSummary> onMemberSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -170,14 +175,22 @@ class _MemberSidebar extends StatelessWidget {
                     label: 'MODERATORS — ${administrators.length}',
                   ),
                   for (final member in administrators)
-                    _MemberSidebarTile(backend: backend, member: member),
+                    _MemberSidebarTile(
+                      backend: backend,
+                      member: member,
+                      onSelected: onMemberSelected,
+                    ),
                 ],
                 if (regularMembers.isNotEmpty) ...[
                   _MemberSectionLabel(
                     label: 'MEMBERS — ${regularMembers.length}',
                   ),
                   for (final member in regularMembers)
-                    _MemberSidebarTile(backend: backend, member: member),
+                    _MemberSidebarTile(
+                      backend: backend,
+                      member: member,
+                      onSelected: onMemberSelected,
+                    ),
                 ],
               ],
             ),
@@ -208,10 +221,15 @@ class _MemberSectionLabel extends StatelessWidget {
 }
 
 class _MemberSidebarTile extends StatelessWidget {
-  const _MemberSidebarTile({required this.backend, required this.member});
+  const _MemberSidebarTile({
+    required this.backend,
+    required this.member,
+    required this.onSelected,
+  });
 
   final ChatBackend backend;
   final RoomMemberSummary member;
+  final ValueChanged<RoomMemberSummary> onSelected;
 
   @override
   Widget build(BuildContext context) => Material(
@@ -271,7 +289,7 @@ class _MemberSidebarTile extends StatelessWidget {
               style: TextStyle(color: context.deltiecord.muted),
             )
           : null,
-      onTap: () => showMemberProfile(context, backend, member),
+      onTap: () => onSelected(member),
     ),
   );
 }

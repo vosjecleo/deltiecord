@@ -241,6 +241,21 @@ class SpaceSummary {
 
 enum RoomPresentation { text, voice }
 
+/// Deltiecord channel grouping stored on a Matrix Space.
+class ChannelCategorySummary {
+  const ChannelCategorySummary({
+    required this.id,
+    required this.name,
+    required this.roomIds,
+    this.collapsed = false,
+  });
+
+  final String id;
+  final String name;
+  final List<String> roomIds;
+  final bool collapsed;
+}
+
 enum VoiceConnectionStatus {
   disconnected,
   connecting,

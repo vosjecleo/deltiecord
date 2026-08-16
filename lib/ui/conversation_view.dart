@@ -23,6 +23,8 @@ class _Conversation extends StatefulWidget {
     required this.mentionSelectionIndex,
     required this.onMentionSelected,
     required this.onMentionSelectionChanged,
+    required this.onShowMembers,
+    required this.onShowProfile,
     required this.composerKey,
     super.key,
   });
@@ -48,6 +50,8 @@ class _Conversation extends StatefulWidget {
   final int mentionSelectionIndex;
   final ValueChanged<String> onMentionSelected;
   final ValueChanged<int> onMentionSelectionChanged;
+  final VoidCallback onShowMembers;
+  final ValueChanged<(RoomMemberSummary, Offset?)> onShowProfile;
   final GlobalKey<_RichComposerState> composerKey;
 
   @override
@@ -65,6 +69,9 @@ class _ConversationState extends State<_Conversation> {
   bool _draggingFiles = false;
   bool _scrolledAwayFromPresent = false;
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  int _navigationGeneration = 0;
+  String? _highlightedMessageId;
   VoidCallback? _dismissMessageActions;
 
   @override
@@ -92,11 +99,16 @@ class _ConversationState extends State<_Conversation> {
     // metrics. Only paginate automatically while the user is actively moving
     // toward that edge; otherwise one page can recursively trigger another.
     final isUserDriven = DateTime.now().isBefore(_timelineUserInputUntil);
-    if (isUserDriven &&
+    final paginationSuppressed = DateTime.now().isBefore(
+      _suppressPaginationUntil,
+    );
+    if (!paginationSuppressed &&
+        isUserDriven &&
         position.userScrollDirection == ScrollDirection.reverse &&
         position.pixels >= position.maxScrollExtent - 240) {
       _loadOlderAnchored();
-    } else if (isUserDriven &&
+    } else if (!paginationSuppressed &&
+        isUserDriven &&
         position.userScrollDirection == ScrollDirection.forward &&
         position.pixels <= 240 &&
         widget.backend.canLoadMoreFuture) {
@@ -150,19 +162,23 @@ class _ConversationState extends State<_Conversation> {
   Future<void> _loadPageAnchored(Future<void> Function() load) async {
     if (_loadingAnchoredHistory || !_scrollController.hasClients) return;
     _loadingAnchoredHistory = true;
+    _suppressPaginationUntil = DateTime.now().add(
+      const Duration(milliseconds: 700),
+    );
     final anchor = _captureVisibleAnchor();
     try {
       await load();
       if (!mounted) return;
-      // The backend can notify once for decrypted events and again for media,
-      // replies, and previews. Restore after both layout passes so the same
-      // event remains under the reader's eyes throughout the page swap.
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      _restoreVisibleAnchor(anchor);
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      _restoreVisibleAnchor(anchor);
+      // Decryption and metadata can update row heights on adjacent frames.
+      // Correct against the same event until its global position settles,
+      // without letting those programmatic jumps recursively paginate.
+      for (var pass = 0; pass < 4; pass++) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted) return;
+        final before = _scrollController.position.pixels;
+        _restoreVisibleAnchor(anchor);
+        if ((_scrollController.position.pixels - before).abs() < 0.5) break;
+      }
     } catch (_) {
       // The backend reports its user-facing pagination error separately.
     } finally {
@@ -207,13 +223,25 @@ class _ConversationState extends State<_Conversation> {
   void didUpdateWidget(covariant _Conversation oldWidget) {
     super.didUpdateWidget(oldWidget);
     final roomId = widget.backend.selectedRoom?.id;
+    final passiveAnchor = !_loadingAnchoredHistory && _roomId == roomId
+        ? _captureVisibleAnchor()
+        : null;
     if (_roomId != roomId) {
       _roomId = roomId;
       _scrolledAwayFromPresent = false;
+      _messageKeys.clear();
+      _navigationGeneration++;
+      _highlightedMessageId = null;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _focusComposerAfterBuild();
     } else if (oldWidget.sending && !widget.sending) {
       _focusComposerAfterBuild();
+    }
+    if (passiveAnchor != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _loadingAnchoredHistory || _roomId != roomId) return;
+        _restoreVisibleAnchor(passiveAnchor);
+      });
     }
   }
 
@@ -298,71 +326,56 @@ class _ConversationState extends State<_Conversation> {
   }
 
   Future<void> _jumpToEvent(String eventId) async {
-    final existing = _messageKeys[eventId]?.currentContext;
-    if (existing != null) {
-      await Scrollable.ensureVisible(existing, alignment: 0.5);
-      return;
+    final generation = ++_navigationGeneration;
+    _suppressPaginationUntil = DateTime.now().add(const Duration(seconds: 1));
+    if (!await _scrollToMessage(eventId, generation)) {
+      await widget.backend.jumpToEvent(eventId);
+      if (!mounted || generation != _navigationGeneration) return;
+      await _scrollToMessage(eventId, generation, waitForBuild: true);
     }
-    await widget.backend.jumpToEvent(eventId);
-    if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final target = _messageKeys[eventId]?.currentContext;
-      if (target != null) {
-        Scrollable.ensureVisible(target, alignment: 0.5);
-      }
-    });
+    if (!mounted || generation != _navigationGeneration) return;
+    await _blinkMessage(eventId, generation);
   }
 
-  Future<void> showMembers() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('${widget.backend.selectedRoomMembers.length} members'),
-        content: SizedBox(
-          width: 360,
-          height: 480,
-          child: ListView(
-            children: [
-              for (final member in widget.backend.selectedRoomMembers)
-                ListTile(
-                  dense: true,
-                  leading: Stack(
-                    children: [
-                      CircleAvatar(
-                        radius: 15,
-                        backgroundImage: member.avatarBytes == null
-                            ? null
-                            : MemoryImage(member.avatarBytes!),
-                        child: member.avatarBytes == null
-                            ? Text(member.displayName.characters.first)
-                            : null,
-                      ),
-                      Positioned(
-                        right: 0,
-                        bottom: 0,
-                        child: CircleAvatar(
-                          radius: 4,
-                          backgroundColor: switch (member.presence) {
-                            UserPresence.online => const Color(0xff76d49b),
-                            UserPresence.away => const Color(0xffffc857),
-                            UserPresence.offline => const Color(0xff686a73),
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  title: Text(member.displayName),
-                  subtitle: Text(member.userId),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    showMemberProfile(this.context, widget.backend, member);
-                  },
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
+  Future<bool> _scrollToMessage(
+    String eventId,
+    int generation, {
+    bool waitForBuild = false,
+  }) async {
+    final attempts = waitForBuild ? 8 : 1;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      if (!mounted || generation != _navigationGeneration) return false;
+      final targetContext = _messageKeys[eventId]?.currentContext;
+      if (targetContext != null && targetContext.mounted) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.5,
+          duration: widget.backend.preferences.reducedMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+        );
+        return true;
+      }
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    return false;
+  }
+
+  Future<void> _blinkMessage(String eventId, int generation) async {
+    for (var pulse = 0; pulse < 2; pulse++) {
+      if (!mounted || generation != _navigationGeneration) return;
+      setState(() => _highlightedMessageId = eventId);
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (!mounted || generation != _navigationGeneration) return;
+      setState(() => _highlightedMessageId = null);
+      if (pulse == 0) {
+        await Future<void>.delayed(const Duration(milliseconds: 110));
+      }
+    }
+  }
+
+  void showMembers() {
+    widget.onShowMembers();
     _focusComposerAfterBuild();
   }
 
@@ -431,6 +444,8 @@ class _ConversationState extends State<_Conversation> {
     final backend = widget.backend;
     final room = backend.selectedRoom!;
     final messages = backend.messages;
+    final retainedIds = messages.map((message) => message.id).toSet();
+    _messageKeys.removeWhere((eventId, _) => !retainedIds.contains(eventId));
     final mediaMessages = messages
         .where(
           (message) =>
@@ -517,7 +532,7 @@ class _ConversationState extends State<_Conversation> {
                       ),
                       IconButton(
                         tooltip: 'Members',
-                        onPressed: showMembers,
+                        onPressed: widget.onShowMembers,
                         icon: const Icon(Icons.people_outline, size: 20),
                       ),
                       IconButton(
@@ -592,7 +607,7 @@ class _ConversationState extends State<_Conversation> {
                             onPointerDown: _noteTimelineUserInput,
                             onPointerMove: _noteTimelineUserInput,
                             onPointerSignal: _noteTimelineUserInput,
-                            child: backend.timelineLoading
+                            child: backend.timelineLoading && messages.isEmpty
                                 ? const Center(
                                     child: CircularProgressIndicator(),
                                   )
@@ -602,10 +617,7 @@ class _ConversationState extends State<_Conversation> {
                                     key: const Key('message-timeline'),
                                     controller: _scrollController,
                                     reverse: true,
-                                    physics:
-                                        const RangeMaintainingScrollPhysics(
-                                          parent: ClampingScrollPhysics(),
-                                        ),
+                                    physics: const ClampingScrollPhysics(),
                                     padding: const EdgeInsets.fromLTRB(
                                       0,
                                       10,
@@ -685,6 +697,9 @@ class _ConversationState extends State<_Conversation> {
                                             const _UnreadDivider(),
                                           _MessageRow(
                                             message: message,
+                                            highlighted:
+                                                _highlightedMessageId ==
+                                                message.id,
                                             startsGroup: startsGroup,
                                             onReply: () =>
                                                 widget.onReply(message),
@@ -721,6 +736,7 @@ class _ConversationState extends State<_Conversation> {
                                             onJumpToReply: _jumpToEvent,
                                             mediaMessages: mediaMessages,
                                             backend: backend,
+                                            onShowProfile: widget.onShowProfile,
                                             onActionsShown:
                                                 _registerMessageActions,
                                           ),
@@ -731,6 +747,13 @@ class _ConversationState extends State<_Conversation> {
                           ),
                         ),
                       ),
+                      if (backend.timelineLoading && messages.isNotEmpty)
+                        const Positioned(
+                          left: 0,
+                          right: 0,
+                          top: 0,
+                          child: LinearProgressIndicator(minHeight: 2),
+                        ),
                       if (backend.canLoadMoreFuture)
                         Positioned(
                           right: 16,

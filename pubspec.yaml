@@ -47,6 +47,7 @@ flutter:
   assets:
     - assets/emoji/emojis.json
     - assets/emoji/aliases.json
+    - assets/audio/
     - assets/fonts/licenses/
   fonts:
     - family: Liberation Sans

@@ -12,6 +12,7 @@ String _formatMessageClock(DateTime value, {required bool use24HourTime}) {
 class _MessageRow extends StatefulWidget {
   const _MessageRow({
     required this.message,
+    required this.highlighted,
     required this.startsGroup,
     required this.onReply,
     required this.onEdit,
@@ -23,10 +24,12 @@ class _MessageRow extends StatefulWidget {
     required this.onJumpToReply,
     required this.mediaMessages,
     required this.backend,
+    required this.onShowProfile,
     required this.onActionsShown,
   });
 
   final ChatMessage message;
+  final bool highlighted;
   final bool startsGroup;
   final VoidCallback onReply;
   final VoidCallback? onEdit;
@@ -38,6 +41,7 @@ class _MessageRow extends StatefulWidget {
   final ValueChanged<String> onJumpToReply;
   final List<ChatMessage> mediaMessages;
   final ChatBackend backend;
+  final ValueChanged<(RoomMemberSummary, Offset?)> onShowProfile;
   final ValueChanged<VoidCallback> onActionsShown;
 
   @override
@@ -61,9 +65,7 @@ class _MessageRowState extends State<_MessageRow> {
     final member = members
         .where((candidate) => candidate.userId == userId)
         .firstOrNull;
-    showMemberProfile(
-      context,
-      widget.backend,
+    widget.onShowProfile((
       member ??
           RoomMemberSummary(
             userId: userId,
@@ -71,8 +73,8 @@ class _MessageRowState extends State<_MessageRow> {
             avatarBytes: message.avatarBytes,
             presence: UserPresence.offline,
           ),
-      anchor: _profileAnchorPosition,
-    );
+      _profileAnchorPosition,
+    ));
   }
 
   void _enter(PointerEnterEvent _) {
@@ -217,7 +219,9 @@ class _MessageRowState extends State<_MessageRow> {
             duration: widget.backend.preferences.reducedMotion
                 ? Duration.zero
                 : const Duration(milliseconds: 110),
-            color: _hovered ? context.deltiecord.hover : Colors.transparent,
+            color: _hovered || widget.highlighted
+                ? context.deltiecord.hover
+                : Colors.transparent,
             child: Opacity(
               opacity: message.pending ? 0.55 : 1,
               child: Stack(
@@ -244,10 +248,10 @@ class _MessageRowState extends State<_MessageRow> {
                                   children: [
                                     Flexible(
                                       child: InkWell(
+                                        onTap: _showSenderProfile,
                                         onTapDown: (details) =>
                                             _profileAnchorPosition =
                                                 details.globalPosition,
-                                        onTap: _showSenderProfile,
                                         child: Text(
                                           message.sender,
                                           overflow: TextOverflow.ellipsis,
@@ -466,9 +470,9 @@ class _MessageRowState extends State<_MessageRow> {
                       top: groupTop,
                       child: GestureDetector(
                         key: ValueKey('message-avatar-${message.id}'),
+                        onTap: _showSenderProfile,
                         onTapDown: (details) =>
                             _profileAnchorPosition = details.globalPosition,
-                        onTap: _showSenderProfile,
                         child: CircleAvatar(
                           radius: 20,
                           backgroundColor: context.deltiecord.elevated,

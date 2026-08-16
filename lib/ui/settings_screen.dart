@@ -5,6 +5,7 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../version.dart';
 import '../services/app_sounds.dart';
+import '../services/microphone_test.dart';
 import '../services/secret_redaction.dart';
 import 'accent_color_picker.dart';
 import 'security_center.dart';
@@ -50,6 +51,8 @@ class _SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<_SettingsScreen> {
   _SettingsPage _page = _SettingsPage.account;
   Future<UserProfileSummary>? _ownProfile;
+  late final MicrophoneTestController _microphoneTest =
+      MicrophoneTestController();
 
   ChatBackend get backend => widget.backend;
 
@@ -69,66 +72,81 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: backend,
-    builder: (context, _) => Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
-        leading: IconButton(
-          tooltip: 'Close settings',
-          onPressed: Navigator.of(context).pop,
-          icon: const Icon(Icons.close),
-        ),
-      ),
-      body: Row(
-        children: [
-          SizedBox(
-            width: 220,
-            child: Material(
-              color: context.deltiecord.panel,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(10),
-                      children: [
-                        for (final page in _SettingsPage.values)
-                          ListTile(
-                            dense: true,
-                            selected: _page == page,
-                            leading: Icon(_iconFor(page), size: 19),
-                            title: Text(_labelFor(page)),
-                            onTap: () => setState(() => _page = page),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    dense: true,
-                    leading: const Icon(Icons.logout, size: 19),
-                    title: const Text('Log out'),
-                    onTap: backend.logout,
-                  ),
-                  const SizedBox(height: 6),
-                ],
-              ),
+  void dispose() {
+    _microphoneTest.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => CallbackShortcuts(
+    bindings: {
+      const SingleActivator(LogicalKeyboardKey.escape): () =>
+          Navigator.of(context).maybePop(),
+    },
+    child: Focus(
+      autofocus: true,
+      child: ListenableBuilder(
+        listenable: backend,
+        builder: (context, _) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Settings'),
+            leading: IconButton(
+              tooltip: 'Close settings',
+              onPressed: Navigator.of(context).pop,
+              icon: const Icon(Icons.close),
             ),
           ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(28, 22, 32, 40),
-              child: Align(
-                alignment: Alignment.topLeft,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 760),
-                  child: _pageBody(),
+          body: Row(
+            children: [
+              SizedBox(
+                width: 220,
+                child: Material(
+                  color: context.deltiecord.panel,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: ListView(
+                          padding: const EdgeInsets.all(10),
+                          children: [
+                            for (final page in _SettingsPage.values)
+                              ListTile(
+                                dense: true,
+                                selected: _page == page,
+                                leading: Icon(_iconFor(page), size: 19),
+                                title: Text(_labelFor(page)),
+                                onTap: () => setState(() => _page = page),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.logout, size: 19),
+                        title: const Text('Log out'),
+                        onTap: backend.logout,
+                      ),
+                      const SizedBox(height: 6),
+                    ],
+                  ),
                 ),
               ),
-            ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(28, 22, 32, 40),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: _pageBody(),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     ),
   );
@@ -224,6 +242,90 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         value: backend.preferences.microphoneVolume,
         onChanged: (value) => backend.updatePreferences(
           backend.preferences.copyWith(microphoneVolume: value),
+        ),
+      ),
+      const SizedBox(height: 14),
+      AnimatedBuilder(
+        animation: _microphoneTest,
+        builder: (context, _) => Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Microphone test',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                LinearProgressIndicator(
+                  key: const Key('microphone-test-level'),
+                  value: _microphoneTest.level,
+                ),
+                if (_microphoneTest.error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _microphoneTest.error!,
+                    style: const TextStyle(color: Colors.redAccent),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _microphoneTest.starting
+                          ? null
+                          : _microphoneTest.running
+                          ? _microphoneTest.stop
+                          : () => _microphoneTest.start(
+                              MicrophoneTestConfiguration(
+                                deviceId: backend.selectedAudioInputId,
+                                echoCancellation:
+                                    backend.preferences.echoCancellation,
+                                noiseSuppression:
+                                    backend.preferences.noiseSuppression,
+                                autoGainControl:
+                                    backend.preferences.autoGainControl,
+                              ),
+                            ),
+                      icon: Icon(
+                        _microphoneTest.running ? Icons.stop : Icons.mic,
+                      ),
+                      label: Text(
+                        _microphoneTest.starting
+                            ? 'Starting…'
+                            : _microphoneTest.running
+                            ? 'Stop test'
+                            : 'Start test',
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _microphoneTest.running
+                          ? () => _microphoneTest.setListening(
+                              !_microphoneTest.listening,
+                            )
+                          : null,
+                      icon: Icon(
+                        _microphoneTest.listening
+                            ? Icons.hearing_disabled
+                            : Icons.hearing,
+                      ),
+                      label: Text(
+                        _microphoneTest.listening
+                            ? 'Stop listening'
+                            : 'Listen locally',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Use headphones before listening locally to avoid feedback.',
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       Text(

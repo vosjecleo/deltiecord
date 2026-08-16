@@ -65,4 +65,28 @@ void main() {
       0,
     );
   });
+
+  test('repeated older and newer churn never duplicates event identities', () {
+    var window = List.generate(90, (index) => 'event-$index');
+    for (var cycle = 0; cycle < 8; cycle++) {
+      window.addAll(
+        List.generate(30, (index) => 'event-${90 + cycle * 30 + index}'),
+      );
+      TimelineWindowPolicy.trimNewestFirst(
+        window,
+        hardCap: 90,
+        loaded: TimelinePageDirection.older,
+      );
+      final olderWindow = List.of(window);
+      expect(olderWindow.toSet().length, olderWindow.length);
+
+      window.insertAll(0, List.generate(30, (index) => 'newer-$cycle-$index'));
+      TimelineWindowPolicy.trimNewestFirst(
+        window,
+        hardCap: 90,
+        loaded: TimelinePageDirection.newer,
+      );
+      expect(window.toSet().length, window.length);
+    }
+  });
 }

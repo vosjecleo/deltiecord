@@ -228,9 +228,7 @@ class MatrixVoiceController extends ChangeNotifier {
   Future<void> selectAudioOutput(String? deviceId) async {
     if (_disposed || _selectedAudioOutputId == deviceId) return;
     try {
-      if (deviceId != null) {
-        await flutter_webrtc.Helper.selectAudioOutput(deviceId);
-      }
+      await flutter_webrtc.Helper.selectAudioOutput(deviceId ?? 'default');
       _selectedAudioOutputId = deviceId;
       _error = null;
     } catch (exception) {

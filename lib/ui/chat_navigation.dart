@@ -666,6 +666,37 @@ class _RoomPanelState extends State<_RoomPanel> {
     }
   }
 
+  Future<void> _createCategory(BuildContext context) async {
+    final controller = TextEditingController();
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create category'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Category name'),
+          onSubmitted: (_) => Navigator.of(context).pop(true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: Navigator.of(context).pop,
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    final name = controller.text.trim();
+    controller.dispose();
+    if (create == true && name.isNotEmpty) {
+      await backend.createChannelCategory(name);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final query = _roomQuery.trim().toLowerCase();
@@ -749,6 +780,7 @@ class _RoomPanelState extends State<_RoomPanel> {
                           onSelected: (value) {
                             if (value == 'direct') _startDirectMessage(context);
                             if (value == 'room') _createRoom(context);
+                            if (value == 'category') _createCategory(context);
                           },
                           itemBuilder: (context) => [
                             if (backend.selectedSpaceId == null)
@@ -774,6 +806,17 @@ class _RoomPanelState extends State<_RoomPanel> {
                                 ),
                               ),
                             ),
+                            if (backend.selectedSpaceId != null)
+                              const PopupMenuItem(
+                                value: 'category',
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.create_new_folder_outlined,
+                                  ),
+                                  title: Text('Create category'),
+                                ),
+                              ),
                           ],
                         ),
                       ],
@@ -787,6 +830,13 @@ class _RoomPanelState extends State<_RoomPanel> {
                                   ? 'No joined rooms'
                                   : 'No matching rooms',
                             ),
+                          )
+                        : backend.selectedSpaceId != null &&
+                              backend.selectedSpaceCategories.isNotEmpty &&
+                              query.isEmpty
+                        ? _CategorizedRoomList(
+                            backend: backend,
+                            rooms: visibleRooms,
                           )
                         : ListView(
                             padding: EdgeInsets.symmetric(
@@ -1107,6 +1157,222 @@ class _RoomSectionLabel extends StatelessWidget {
   );
 }
 
+class _CategorizedRoomList extends StatelessWidget {
+  const _CategorizedRoomList({required this.backend, required this.rooms});
+
+  final ChatBackend backend;
+  final List<RoomSummary> rooms;
+
+  @override
+  Widget build(BuildContext context) {
+    final categories = backend.selectedSpaceCategories;
+    final categorizedIds = categories
+        .expand((category) => category.roomIds)
+        .toSet();
+    final ungrouped = rooms
+        .where((room) => !categorizedIds.contains(room.id))
+        .toList(growable: false);
+    final sections = <Widget>[
+      if (ungrouped.isNotEmpty)
+        _ChannelCategorySection(
+          key: const ValueKey('uncategorized-rooms'),
+          backend: backend,
+          name: 'CHANNELS',
+          rooms: ungrouped,
+        ),
+      for (var index = 0; index < categories.length; index++)
+        _ChannelCategorySection(
+          key: ValueKey(categories[index].id),
+          backend: backend,
+          category: categories[index],
+          name: categories[index].name,
+          rooms: categories[index].roomIds
+              .map((id) => rooms.where((room) => room.id == id).firstOrNull)
+              .whereType<RoomSummary>()
+              .toList(growable: false),
+          categoryIndex: index,
+          dragIndex: index + (ungrouped.isEmpty ? 0 : 1),
+        ),
+    ];
+    return ReorderableListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      buildDefaultDragHandles: false,
+      onReorderItem: (oldIndex, newIndex) {
+        if (ungrouped.isNotEmpty) {
+          if (oldIndex == 0 || newIndex == 0) return;
+          oldIndex--;
+          newIndex--;
+        }
+        if (oldIndex < 0 || oldIndex >= categories.length) return;
+        backend.reorderChannelCategory(categories[oldIndex].id, newIndex);
+      },
+      children: sections,
+    );
+  }
+}
+
+class _ChannelCategorySection extends StatelessWidget {
+  const _ChannelCategorySection({
+    required super.key,
+    required this.backend,
+    required this.name,
+    required this.rooms,
+    this.category,
+    this.categoryIndex,
+    this.dragIndex,
+  });
+
+  final ChatBackend backend;
+  final String name;
+  final List<RoomSummary> rooms;
+  final ChannelCategorySummary? category;
+  final int? categoryIndex;
+  final int? dragIndex;
+
+  Future<void> _rename(BuildContext context) async {
+    final current = category;
+    if (current == null) return;
+    final controller = TextEditingController(text: current.name);
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename category'),
+        content: TextField(controller: controller, autofocus: true),
+        actions: [
+          TextButton(
+            onPressed: Navigator.of(context).pop,
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    final value = controller.text.trim();
+    controller.dispose();
+    if (save == true && value.isNotEmpty) {
+      await backend.renameChannelCategory(current.id, value);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = category;
+    final collapsed = current?.collapsed ?? false;
+    return DragTarget<RoomSummary>(
+      onAcceptWithDetails: (details) =>
+          backend.moveRoomInSpace(details.data.id, categoryId: current?.id),
+      builder: (context, candidates, _) => DecoratedBox(
+        decoration: BoxDecoration(
+          color: candidates.isEmpty
+              ? Colors.transparent
+              : Theme.of(context).colorScheme.primary.withValues(alpha: 0.12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                if (current != null)
+                  ReorderableDragStartListener(
+                    index: dragIndex!,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 7),
+                      child: Icon(Icons.drag_indicator, size: 15),
+                    ),
+                  ),
+                Expanded(
+                  child: InkWell(
+                    onTap: current == null
+                        ? null
+                        : () => backend.setChannelCategoryCollapsed(
+                            current.id,
+                            !collapsed,
+                          ),
+                    child: _RoomSectionLabel('${collapsed ? '▸' : '▾'} $name'),
+                  ),
+                ),
+                if (current != null)
+                  PopupMenuButton<String>(
+                    tooltip: 'Category actions',
+                    iconSize: 16,
+                    onSelected: (action) {
+                      switch (action) {
+                        case 'rename':
+                          _rename(context);
+                        case 'up':
+                          backend.reorderChannelCategory(
+                            current.id,
+                            max(0, categoryIndex! - 1),
+                          );
+                        case 'down':
+                          backend.reorderChannelCategory(
+                            current.id,
+                            categoryIndex! + 1,
+                          );
+                        case 'delete':
+                          backend.deleteChannelCategory(current.id);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'rename', child: Text('Rename')),
+                      PopupMenuItem(value: 'up', child: Text('Move up')),
+                      PopupMenuItem(value: 'down', child: Text('Move down')),
+                      PopupMenuDivider(),
+                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
+              ],
+            ),
+            if (!collapsed)
+              for (final room in rooms)
+                DragTarget<RoomSummary>(
+                  onAcceptWithDetails: (details) => backend.moveRoomInSpace(
+                    details.data.id,
+                    categoryId: current?.id,
+                    beforeRoomId: room.id,
+                  ),
+                  builder: (context, candidates, _) => LongPressDraggable(
+                    data: room,
+                    feedback: Material(
+                      color: context.deltiecord.elevated,
+                      child: SizedBox(
+                        width: 240,
+                        child: ListTile(
+                          dense: true,
+                          leading: _RoomIcon(room: room, size: 24),
+                          title: Text(room.name),
+                        ),
+                      ),
+                    ),
+                    childWhenDragging: Opacity(
+                      opacity: 0.35,
+                      child: _RoomListTile(backend: backend, room: room),
+                    ),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        border: candidates.isEmpty
+                            ? null
+                            : Border(
+                                top: BorderSide(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  width: 2,
+                                ),
+                              ),
+                      ),
+                      child: _RoomListTile(backend: backend, room: room),
+                    ),
+                  ),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _RoomListTile extends StatelessWidget {
   const _RoomListTile({required this.backend, required this.room});
 
@@ -1249,6 +1515,16 @@ class _RoomListTile extends StatelessWidget {
 
   Future<void> _showContextMenu(BuildContext context, Offset position) async {
     final screen = MediaQuery.sizeOf(context);
+    final spaceRooms = backend.selectedSpaceId == null
+        ? const <RoomSummary>[]
+        : backend.rooms;
+    final roomIndex = spaceRooms.indexWhere(
+      (candidate) => candidate.id == room.id,
+    );
+    final currentCategoryId = backend.selectedSpaceCategories
+        .where((category) => category.roomIds.contains(room.id))
+        .map((category) => category.id)
+        .firstOrNull;
     final action = await showMenu<String>(
       context: context,
       position: RelativeRect.fromRect(
@@ -1280,6 +1556,40 @@ class _RoomListTile extends StatelessWidget {
             label: 'Copy room link',
           ),
         ),
+        if (backend.selectedSpaceId != null) ...[
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            value: 'move-up',
+            enabled: roomIndex > 0,
+            child: const _RoomContextMenuEntry(
+              icon: Icons.arrow_upward,
+              label: 'Move up',
+            ),
+          ),
+          PopupMenuItem(
+            value: 'move-down',
+            enabled: roomIndex >= 0 && roomIndex < spaceRooms.length - 1,
+            child: const _RoomContextMenuEntry(
+              icon: Icons.arrow_downward,
+              label: 'Move down',
+            ),
+          ),
+          const PopupMenuItem(
+            value: 'uncategorized',
+            child: _RoomContextMenuEntry(
+              icon: Icons.folder_off_outlined,
+              label: 'Move out of category',
+            ),
+          ),
+          for (final category in backend.selectedSpaceCategories)
+            PopupMenuItem(
+              value: 'category:${category.id}',
+              child: _RoomContextMenuEntry(
+                icon: Icons.folder_outlined,
+                label: 'Move to ${category.name}',
+              ),
+            ),
+        ],
         const PopupMenuDivider(),
         PopupMenuItem(
           value: 'leave',
@@ -1303,6 +1613,33 @@ class _RoomListTile extends StatelessWidget {
         );
       case 'leave':
         await _confirmLeave(context);
+      case 'move-up':
+        if (roomIndex > 0) {
+          await backend.moveRoomInSpace(
+            room.id,
+            categoryId: currentCategoryId,
+            beforeRoomId: spaceRooms[roomIndex - 1].id,
+          );
+        }
+      case 'move-down':
+        if (roomIndex >= 0 && roomIndex < spaceRooms.length - 1) {
+          await backend.moveRoomInSpace(
+            room.id,
+            categoryId: currentCategoryId,
+            beforeRoomId: roomIndex + 2 < spaceRooms.length
+                ? spaceRooms[roomIndex + 2].id
+                : null,
+          );
+        }
+      case 'uncategorized':
+        await backend.moveRoomInSpace(room.id);
+      default:
+        if (action.startsWith('category:')) {
+          await backend.moveRoomInSpace(
+            room.id,
+            categoryId: action.substring('category:'.length),
+          );
+        }
     }
   }
 

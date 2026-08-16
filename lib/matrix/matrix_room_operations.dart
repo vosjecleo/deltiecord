@@ -1,6 +1,186 @@
 part of 'matrix_backend.dart';
 
 extension _MatrixRoomOperations on MatrixBackend {
+  Map<String, dynamic> _spaceChannelLayout(String spaceId) {
+    final override = _spaceChannelLayoutOverrides[spaceId];
+    if (override != null) return Map.of(override);
+    final content = _matrix
+        .getRoomById(spaceId)
+        ?.getState(MatrixBackend._spaceChannelsEventType)
+        ?.content;
+    return content == null ? <String, dynamic>{} : Map.of(content);
+  }
+
+  List<ChannelCategorySummary> _channelCategoriesFor(String? spaceId) {
+    if (spaceId == null) return const [];
+    final layout = _spaceChannelLayout(spaceId);
+    final roomCategories = layout.tryGetMap<String, dynamic>('rooms') ?? {};
+    final collapsed = _collapsedChannelCategories[spaceId] ?? const <String>{};
+    return (layout.tryGetList('categories') ?? const [])
+        .whereType<Map>()
+        .map((raw) {
+          final category = Map<String, dynamic>.from(raw);
+          final id = category.tryGet<String>('id') ?? '';
+          return ChannelCategorySummary(
+            id: id,
+            name: category.tryGet<String>('name') ?? 'Category',
+            collapsed: collapsed.contains(id),
+            roomIds: roomCategories.entries
+                .where((entry) => entry.value == id)
+                .map((entry) => entry.key)
+                .toList(growable: false),
+          );
+        })
+        .where((category) => category.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> _writeSpaceChannelLayout(
+    String spaceId,
+    Map<String, dynamic> content,
+  ) async {
+    await _matrix.setRoomStateWithKey(
+      spaceId,
+      MatrixBackend._spaceChannelsEventType,
+      '',
+      {'version': 1, ...content},
+    );
+    // The SDK exposes newly-written state only after the next sync. Keep the
+    // successful write visible immediately, then drop the override on sync.
+    _spaceChannelLayoutOverrides[spaceId] = {'version': 1, ...content};
+    _notifyBackendListeners();
+  }
+
+  Future<void> _createChannelCategory(String name) async {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null || name.trim().isEmpty) return;
+    final layout = _spaceChannelLayout(spaceId);
+    final categories = List<Map<String, dynamic>>.from(
+      (layout.tryGetList('categories') ?? const []).map(
+        (value) => Map<String, dynamic>.from(value as Map),
+      ),
+    );
+    categories.add({
+      'id': 'category-${DateTime.now().microsecondsSinceEpoch}',
+      'name': name.trim(),
+    });
+    await _writeSpaceChannelLayout(spaceId, {
+      ...layout,
+      'categories': categories,
+    });
+  }
+
+  Future<void> _renameChannelCategory(String categoryId, String name) async {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null || name.trim().isEmpty) return;
+    final layout = _spaceChannelLayout(spaceId);
+    final categories = (layout.tryGetList('categories') ?? const [])
+        .map((raw) {
+          final category = Map<String, dynamic>.from(raw as Map);
+          if (category['id'] == categoryId) category['name'] = name.trim();
+          return category;
+        })
+        .toList(growable: false);
+    await _writeSpaceChannelLayout(spaceId, {
+      ...layout,
+      'categories': categories,
+    });
+  }
+
+  Future<void> _deleteChannelCategory(String categoryId) async {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null) return;
+    final layout = _spaceChannelLayout(spaceId);
+    final categories = (layout.tryGetList('categories') ?? const [])
+        .where((raw) => (raw as Map)['id'] != categoryId)
+        .toList(growable: false);
+    final rooms = Map<String, dynamic>.from(
+      layout.tryGetMap<String, dynamic>('rooms') ?? const {},
+    )..removeWhere((_, value) => value == categoryId);
+    await _writeSpaceChannelLayout(spaceId, {
+      ...layout,
+      'categories': categories,
+      'rooms': rooms,
+    });
+  }
+
+  Future<void> _reorderChannelCategory(String categoryId, int newIndex) async {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null) return;
+    final layout = _spaceChannelLayout(spaceId);
+    final categories = List<dynamic>.from(
+      layout.tryGetList('categories') ?? const [],
+    );
+    final oldIndex = categories.indexWhere(
+      (raw) => (raw as Map)['id'] == categoryId,
+    );
+    if (oldIndex < 0) return;
+    final category = categories.removeAt(oldIndex);
+    categories.insert(newIndex.clamp(0, categories.length), category);
+    await _writeSpaceChannelLayout(spaceId, {
+      ...layout,
+      'categories': categories,
+    });
+  }
+
+  Future<void> _setChannelCategoryCollapsed(
+    String categoryId,
+    bool collapsed,
+  ) async {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null) return;
+    final values = _collapsedChannelCategories.putIfAbsent(spaceId, () => {});
+    collapsed ? values.add(categoryId) : values.remove(categoryId);
+    final existing =
+        _matrix.accountData[MatrixBackend._settingsAccountDataType]?.content;
+    await _matrix.setAccountData(
+      _matrix.userID!,
+      MatrixBackend._settingsAccountDataType,
+      {
+        ...?existing,
+        'collapsed_channel_categories': {
+          for (final entry in _collapsedChannelCategories.entries)
+            entry.key: entry.value.toList(growable: false),
+        },
+      },
+    );
+    _notifyBackendListeners();
+  }
+
+  Future<void> _moveRoomInSpace(
+    String roomId, {
+    String? categoryId,
+    String? beforeRoomId,
+  }) async {
+    final spaceId = _selectedSpaceId;
+    final space = spaceId == null ? null : _matrix.getRoomById(spaceId);
+    if (spaceId == null || space == null) return;
+    final ids = space.spaceChildren
+        .map((child) => child.roomId)
+        .whereType<String>()
+        .where((id) => id != roomId)
+        .toList();
+    final insertion = beforeRoomId == null ? -1 : ids.indexOf(beforeRoomId);
+    ids.insert(insertion < 0 ? ids.length : insertion, roomId);
+    for (var index = 0; index < ids.length; index++) {
+      await space.setSpaceChild(
+        ids[index],
+        order: index.toString().padLeft(6, '0'),
+      );
+    }
+    _spaceRoomOrderOverrides[spaceId] = List.unmodifiable(ids);
+    final layout = _spaceChannelLayout(spaceId);
+    final rooms = Map<String, dynamic>.from(
+      layout.tryGetMap<String, dynamic>('rooms') ?? const {},
+    );
+    if (categoryId == null) {
+      rooms.remove(roomId);
+    } else {
+      rooms[roomId] = categoryId;
+    }
+    await _writeSpaceChannelLayout(spaceId, {...layout, 'rooms': rooms});
+  }
+
   Future<List<SpaceDirectoryEntry>> _searchPublicSpaces(String query) async {
     final normalized = query.trim();
     if (normalized.isEmpty || !_matrix.isLogged()) return const [];
@@ -135,6 +315,7 @@ extension _MatrixRoomOperations on MatrixBackend {
 
   Future<void> _selectRoom(String roomId) async {
     if (_selectedRoomId == roomId && _timeline != null) return;
+    _cacheCurrentRoomMessages();
     await _closeTimeline();
     final generation = _timelineGeneration;
     _selectedRoomId = roomId;
@@ -165,10 +346,12 @@ extension _MatrixRoomOperations on MatrixBackend {
       _captureFirstUnread(room, timeline);
       await _decryptTimelineEvents(timeline);
       if (!_isCurrentTimeline(timeline, generation)) return;
-      await _hydrateTimelineMetadata(timeline);
-      if (!_isCurrentTimeline(timeline, generation)) return;
+      _roomMessageCache[roomId] = List.unmodifiable(_mappedMessages);
+      _timelineLoading = false;
+      _notifyBackendListeners();
+      unawaited(_hydrateCurrentTimeline(timeline, generation));
       timeline.requestKeys(tryOnlineBackup: true, onlineKeyBackupOnly: false);
-      await _markSelectedRoomRead();
+      unawaited(_markSelectedRoomRead());
     } catch (exception) {
       if (_isCurrentSelection(roomId, generation)) {
         _error = _friendlyError(exception);

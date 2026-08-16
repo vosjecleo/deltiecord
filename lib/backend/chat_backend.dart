@@ -22,6 +22,7 @@ abstract class ChatBackend extends ChangeNotifier {
   AppPreferences get preferences;
   EncryptionSetupState get encryptionSetup;
   List<SpaceSummary> get spaces;
+  List<ChannelCategorySummary> get selectedSpaceCategories;
   String? get selectedSpaceId;
   List<RoomSummary> get rooms;
   RoomSummary? get selectedRoom;
@@ -83,6 +84,16 @@ abstract class ChatBackend extends ChangeNotifier {
     bool encrypted,
   });
   Future<void> createSpace({required String name, String topic});
+  Future<void> createChannelCategory(String name);
+  Future<void> renameChannelCategory(String categoryId, String name);
+  Future<void> deleteChannelCategory(String categoryId);
+  Future<void> reorderChannelCategory(String categoryId, int newIndex);
+  Future<void> setChannelCategoryCollapsed(String categoryId, bool collapsed);
+  Future<void> moveRoomInSpace(
+    String roomId, {
+    String? categoryId,
+    String? beforeRoomId,
+  });
   Future<void> renameRoom(String roomId, String name);
   Future<void> setRoomTopic(String roomId, String topic);
   Future<void> setRoomAvatar(String roomId, Uint8List? bytes);

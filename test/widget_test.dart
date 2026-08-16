@@ -122,8 +122,21 @@ void main() {
   });
 
   testWidgets('opens settings with the control-comma shortcut', (tester) async {
-    final backend = FakeBackend()..currentStatus = SessionStatus.signedIn;
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!shortcut:example.org',
+          name: 'shortcut-room',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+      ];
     await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('shortcut-room'));
+    await tester.pump();
+    await tester.tap(find.byType(QuillEditor));
 
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
     await tester.sendKeyEvent(LogicalKeyboardKey.comma);
@@ -132,6 +145,9 @@ void main() {
 
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Homeserver'), findsOneWidget);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(find.text('Settings'), findsNothing);
   });
 
   testWidgets('shows SDK-independent Matrix device sessions', (tester) async {
@@ -220,6 +236,51 @@ void main() {
     await tester.tap(find.text('Mute Space'));
     await tester.pumpAndSettle();
     expect(backend.mutedRooms, [('!space:example.org', true)]);
+  });
+
+  testWidgets('Space categories collapse and expose accessible ordering', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Workspace'),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!one:example.org',
+          name: 'one',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+        RoomSummary(
+          id: '!two:example.org',
+          name: 'two',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(
+          id: 'work',
+          name: 'WORK',
+          roomIds: ['!one:example.org', '!two:example.org'],
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    expect(find.text('▾ WORK'), findsOneWidget);
+    await tester.tap(find.text('▾ WORK'));
+    await tester.pump();
+    expect(backend.categoryCollapseChanges, [('work', true)]);
+
+    await tester.tap(find.byTooltip('Category actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Move up'), findsOneWidget);
+    expect(find.text('Move down'), findsOneWidget);
   });
 
   testWidgets('opens voice rooms without exposing a message composer', (
@@ -1359,6 +1420,51 @@ void main() {
     expect(find.byKey(const Key('profile-side-panel')), findsNothing);
   });
 
+  testWidgets('profile waits for extension data without generic-state flash', (
+    tester,
+  ) async {
+    final profile = Completer<UserProfileSummary>();
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..profileCompleter = profile
+      ..roomList = const [
+        RoomSummary(
+          id: '!profile:example.org',
+          name: 'profiles',
+          lastMessage: 'hello',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$profile-loading',
+          sender: 'Alice',
+          senderId: '@alice:example.org',
+          body: 'hello',
+          timestamp: DateTime(2026, 8, 16),
+          pending: false,
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('profiles'));
+    await tester.pump();
+    await tester.tap(find.text('Alice'));
+    await tester.pump();
+
+    expect(find.byKey(const Key('profile-loading-state')), findsOneWidget);
+    expect(find.text('@alice:example.org'), findsNothing);
+    profile.complete(
+      const UserProfileSummary(
+        userId: '@alice:example.org',
+        displayName: 'Alice',
+        bio: 'Loaded profile',
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Loaded profile'), findsOneWidget);
+  });
+
   testWidgets('own profile card opens above the lower user panel', (
     tester,
   ) async {
@@ -1469,6 +1575,12 @@ void main() {
     expect(find.byKey(const Key('member-side-panel')), findsOneWidget);
     expect(find.text('Members — 2'), findsOneWidget);
     expect(find.text('Administrator'), findsOneWidget);
+    await tester.tap(find.text('Alice'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('recipient-profile-panel')), findsOneWidget);
+    await tester.tap(find.byTooltip('Members'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('member-side-panel')), findsOneWidget);
     final resizeHandle = find.byKey(const Key('side-panel-resize-handle'));
     final resizeTopLeft = tester.getTopLeft(resizeHandle);
     await tester.dragFrom(
@@ -1608,11 +1720,40 @@ Future<void> _revealMessageActions(WidgetTester tester, Finder message) async {
 }
 
 class FakeBackend extends ChatBackend {
+  @override
+  List<ChannelCategorySummary> get selectedSpaceCategories => categoryList;
+
+  @override
+  Future<void> createChannelCategory(String name) async {}
+
+  @override
+  Future<void> renameChannelCategory(String categoryId, String name) async {}
+
+  @override
+  Future<void> deleteChannelCategory(String categoryId) async {}
+
+  @override
+  Future<void> reorderChannelCategory(String categoryId, int newIndex) async {}
+
+  @override
+  Future<void> setChannelCategoryCollapsed(
+    String categoryId,
+    bool collapsed,
+  ) async => categoryCollapseChanges.add((categoryId, collapsed));
+
+  @override
+  Future<void> moveRoomInSpace(
+    String roomId, {
+    String? categoryId,
+    String? beforeRoomId,
+  }) async {}
+
   SessionStatus currentStatus = SessionStatus.starting;
   ConnectionStatus currentConnectionStatus = ConnectionStatus.online;
   List<RoomSummary> roomList = const [];
   RoomSummary? currentRoom;
   List<SpaceSummary> spaceList = const [];
+  List<ChannelCategorySummary> categoryList = const [];
   String? currentSpaceId;
   List<ChatMessage> messageList = const [];
   List<DeviceSessionSummary> deviceList = const [];
@@ -1637,6 +1778,7 @@ class FakeBackend extends ChatBackend {
   final List<String> redactedMessageIds = [];
   final List<(String, String)> toggledReactions = [];
   final List<(String, bool)> mutedRooms = [];
+  final List<(String, bool)> categoryCollapseChanges = [];
   String? lastReplyToMessageId;
   String? lastEditMessageId;
   String? removedDeviceId;
@@ -1644,6 +1786,7 @@ class FakeBackend extends ChatBackend {
   String? startedDirectMessageWith;
   String? leftRoomId;
   UserProfileSummary? testProfile;
+  Completer<UserProfileSummary>? profileCompleter;
   EncryptionSetupState security = const EncryptionSetupState(
     status: EncryptionSetupStatus.ready,
     keyBackupEnabled: true,
@@ -1830,7 +1973,9 @@ class FakeBackend extends ChatBackend {
   Future<void> setMemberPowerLevel(String userId, int powerLevel) async {}
   @override
   Future<UserProfileSummary> getUserProfile(String userId) async =>
-      testProfile ?? UserProfileSummary(userId: userId, displayName: userId);
+      profileCompleter?.future ??
+      testProfile ??
+      UserProfileSummary(userId: userId, displayName: userId);
   @override
   Future<void> updateOwnProfileFields({
     String? bio,

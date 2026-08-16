@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
+import '../services/timezone_catalog.dart';
 import 'deltiecord_theme.dart';
 import 'profile_card.dart';
 import 'profile_editor_dialog.dart';
@@ -251,14 +252,10 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
   Widget build(BuildContext context) => FutureBuilder<UserProfileSummary>(
     future: _profile,
     builder: (context, snapshot) {
-      final profile =
-          snapshot.data ??
-          UserProfileSummary(
-            userId: widget.member.userId,
-            displayName: widget.member.displayName,
-            avatarBytes: widget.member.avatarBytes,
-            presence: widget.member.presence,
-          );
+      final profile = snapshot.data;
+      if (profile == null) {
+        return const _ProfileLoadingCard(compact: true);
+      }
       final accent = Color(
         profile.profileColor ??
             Theme.of(context).colorScheme.primary.toARGB32(),
@@ -400,6 +397,14 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
                           expanded: true,
                         ),
                       ],
+                      if (profile.timezone?.trim().isNotEmpty == true) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          '${TimezoneCatalog.offsetLabel(profile.timezone)}'
+                          '  •  ${TimezoneCatalog.localTimeLabel(profile.timezone)} local time',
+                          style: TextStyle(color: context.deltiecord.muted),
+                        ),
+                      ],
                       if (profile.bio?.trim().isNotEmpty == true) ...[
                         const SizedBox(height: 12),
                         Text(
@@ -509,14 +514,10 @@ class _ProfileDialogState extends State<_ProfileDialog> {
       child: FutureBuilder<UserProfileSummary>(
         future: _profile,
         builder: (context, snapshot) {
-          final profile =
-              snapshot.data ??
-              UserProfileSummary(
-                userId: widget.member.userId,
-                displayName: widget.member.displayName,
-                avatarBytes: widget.member.avatarBytes,
-                presence: widget.member.presence,
-              );
+          final profile = snapshot.data;
+          if (profile == null) {
+            return const _ProfileLoadingCard(compact: false);
+          }
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -560,15 +561,41 @@ class _ProfileDialogState extends State<_ProfileDialog> {
                         : null,
                   ),
                 ],
-                if (snapshot.connectionState == ConnectionState.waiting)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: LinearProgressIndicator(),
-                  ),
               ],
             ),
           );
         },
+      ),
+    ),
+  );
+}
+
+class _ProfileLoadingCard extends StatelessWidget {
+  const _ProfileLoadingCard({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    key: const Key('profile-loading-state'),
+    color: context.deltiecord.surface,
+    shape: RoundedRectangleBorder(
+      side: BorderSide(color: context.deltiecord.divider),
+      borderRadius: DeltiecordCorners.borderRadius,
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: SizedBox(
+      width: compact ? 340 : 620,
+      height: compact ? 240 : 420,
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 14),
+            Text('Loading profile…'),
+          ],
+        ),
       ),
     ),
   );

@@ -35,19 +35,24 @@ class _RecipientProfilePanelState extends State<_RecipientProfilePanel> {
     child: FutureBuilder<UserProfileSummary>(
       future: _profile,
       builder: (context, snapshot) {
-        final profile =
-            snapshot.data ??
-            UserProfileSummary(
-              userId: widget.member.userId,
-              displayName: widget.member.displayName,
-              avatarBytes: widget.member.avatarBytes,
-              presence: widget.member.presence,
-            );
+        final profile = snapshot.data;
+        if (profile == null) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 12),
+                Text('Loading profile…'),
+              ],
+            ),
+          );
+        }
         return _RecipientProfileContents(
           backend: widget.backend,
           member: widget.member,
           profile: profile,
-          loading: snapshot.connectionState == ConnectionState.waiting,
+          loading: false,
         );
       },
     ),

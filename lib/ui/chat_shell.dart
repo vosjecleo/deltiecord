@@ -50,6 +50,8 @@ const double _composerEditorHeight = 36;
 const double _bottomPanelVerticalInset = 8;
 const double _composerIslandVerticalInset = 7;
 
+enum _SidePanelView { profile, members }
+
 double _composerEditorHeightFor(BuildContext context) => max(
   _composerEditorHeight,
   MediaQuery.textScalerOf(context).scale(15) * 1.2 + 14,
@@ -103,6 +105,9 @@ class _ChatShellState extends State<ChatShell> {
   String? _draftRoomId;
   bool _restoringDraft = false;
   bool _sidePanelVisible = true;
+  bool _sidePanelAvailable = false;
+  _SidePanelView _sidePanelView = _SidePanelView.profile;
+  RoomMemberSummary? _sidePanelMember;
 
   @override
   void initState() {
@@ -134,7 +139,54 @@ class _ChatShellState extends State<ChatShell> {
     _message.addListener(_saveActiveDraft);
     _draftRoomId = widget.backend.selectedRoom?.id;
     widget.backend.addListener(_handleBackendRoomChange);
+    HardwareKeyboard.instance.addHandler(_handleGlobalShortcut);
     unawaited(_initializeDrafts());
+  }
+
+  bool _handleGlobalShortcut(KeyEvent event) {
+    if (event is! KeyDownEvent || !mounted) return false;
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+    final keyboard = HardwareKeyboard.instance;
+    for (final entry in widget.backend.preferences.shortcutBindings.entries) {
+      if (!matchesRecordedShortcut(
+        entry.value,
+        event.logicalKey,
+        control: keyboard.isControlPressed,
+        shift: keyboard.isShiftPressed,
+        alt: keyboard.isAltPressed,
+        meta: keyboard.isMetaPressed,
+      )) {
+        continue;
+      }
+      _invokeShortcut(entry.key);
+      return true;
+    }
+    return false;
+  }
+
+  void _invokeShortcut(AppShortcutAction action) {
+    switch (action) {
+      case AppShortcutAction.openSettings:
+        showDeltiecordSettings(context, widget.backend);
+      case AppShortcutAction.toggleMicrophone:
+        widget.backend.setVoiceMuted(!widget.backend.voiceMuted);
+      case AppShortcutAction.toggleDeafen:
+        widget.backend.setVoiceDeafened(!widget.backend.voiceDeafened);
+      case AppShortcutAction.disconnectVoice:
+        widget.backend.leaveVoiceRoom();
+      case AppShortcutAction.openGifPicker:
+        _showGifPicker();
+      case AppShortcutAction.openEmojiPicker:
+        _composerKey.currentState?.showEmojiPicker();
+      case AppShortcutAction.openFilePicker:
+        _attachFile();
+      case AppShortcutAction.focusComposer:
+        _composerFocus.requestFocus();
+      case AppShortcutAction.searchRoom:
+        _conversationKey.currentState?.showSearch();
+      case AppShortcutAction.toggleMembers:
+        _showMembersPanel();
+    }
   }
 
   Future<void> _initializeDrafts() async {
@@ -147,7 +199,32 @@ class _ChatShellState extends State<ChatShell> {
     final roomId = widget.backend.selectedRoom?.id;
     if (roomId == _draftRoomId) return;
     _storeCurrentDraft();
+    HardwareKeyboard.instance.removeHandler(_handleGlobalShortcut);
     _restoreDraft(roomId);
+    _sidePanelMember = null;
+    _sidePanelView = widget.backend.selectedRoom?.isDirect == true
+        ? _SidePanelView.profile
+        : _SidePanelView.members;
+  }
+
+  void _showMembersPanel() {
+    setState(() {
+      _sidePanelMember = null;
+      _sidePanelView = _SidePanelView.members;
+      _sidePanelVisible = true;
+    });
+  }
+
+  void _showProfilePanel(RoomMemberSummary member, [Offset? anchor]) {
+    if (!_sidePanelAvailable) {
+      showMemberProfile(context, widget.backend, member, anchor: anchor);
+      return;
+    }
+    setState(() {
+      _sidePanelMember = member;
+      _sidePanelView = _SidePanelView.profile;
+      _sidePanelVisible = true;
+    });
   }
 
   void _saveActiveDraft() {
@@ -513,22 +590,8 @@ class _ChatShellState extends State<ChatShell> {
   @override
   Widget build(BuildContext context) {
     final callbacks = <AppShortcutAction, VoidCallback>{
-      AppShortcutAction.openSettings: () =>
-          showDeltiecordSettings(context, widget.backend),
-      AppShortcutAction.toggleMicrophone: () =>
-          widget.backend.setVoiceMuted(!widget.backend.voiceMuted),
-      AppShortcutAction.toggleDeafen: () =>
-          widget.backend.setVoiceDeafened(!widget.backend.voiceDeafened),
-      AppShortcutAction.disconnectVoice: widget.backend.leaveVoiceRoom,
-      AppShortcutAction.openGifPicker: _showGifPicker,
-      AppShortcutAction.openEmojiPicker: () =>
-          _composerKey.currentState?.showEmojiPicker(),
-      AppShortcutAction.openFilePicker: _attachFile,
-      AppShortcutAction.focusComposer: _composerFocus.requestFocus,
-      AppShortcutAction.searchRoom: () =>
-          _conversationKey.currentState?.showSearch(),
-      AppShortcutAction.toggleMembers: () =>
-          _conversationKey.currentState?.showMembers(),
+      for (final action in AppShortcutAction.values)
+        action: () => _invokeShortcut(action),
     };
     final bindings = <ShortcutActivator, VoidCallback>{};
     for (final entry in widget.backend.preferences.shortcutBindings.entries) {
@@ -577,6 +640,7 @@ class _ChatShellState extends State<ChatShell> {
                     final hasSidePanel =
                         constraints.maxWidth >= 1100 &&
                         (directRecipient != null || showMemberSidebar);
+                    _sidePanelAvailable = hasSidePanel;
                     final preferredPanel =
                         widget.backend.preferences.roomPanelWidth;
                     final panelWidth = preferredPanel.clamp(
@@ -678,6 +742,12 @@ class _ChatShellState extends State<ChatShell> {
                                               () => _mentionSelectionIndex =
                                                   index,
                                             ),
+                                        onShowMembers: _showMembersPanel,
+                                        onShowProfile: (request) =>
+                                            _showProfilePanel(
+                                              request.$1,
+                                              request.$2,
+                                            ),
                                       ),
                               ),
                               if (hasSidePanel)
@@ -709,14 +779,23 @@ class _ChatShellState extends State<ChatShell> {
                                       ),
                                     );
                                   },
-                                  child: directRecipient != null
+                                  child:
+                                      _sidePanelView ==
+                                              _SidePanelView.profile &&
+                                          (_sidePanelMember ??
+                                                  directRecipient) !=
+                                              null
                                       ? _RecipientProfilePanel(
                                           backend: widget.backend,
-                                          member: directRecipient,
+                                          member:
+                                              _sidePanelMember ??
+                                              directRecipient!,
                                         )
                                       : _MemberSidebar(
                                           backend: widget.backend,
                                           members: roomMembers,
+                                          onMemberSelected: (member) =>
+                                              _showProfilePanel(member),
                                         ),
                                 ),
                             ],

@@ -7,6 +7,7 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 const deltiecordRoomPresentationEventType = 'net.deltiecord.room.presentation';
+const deltiecordSpaceChannelsEventType = 'net.deltiecord.space.channels';
 
 /// Creates the Matrix SDK client and its platform-appropriate persistent store.
 ///
@@ -43,7 +44,10 @@ Future<Client> createMatrixClient() async {
     // MatrixRTC controls. Load it with the initial room state so a fresh device
     // cannot briefly (or permanently, without another rebuild) treat a voice
     // room as a text room while the SDK lazily hydrates custom state.
-    importantStateEvents: {deltiecordRoomPresentationEventType},
+    importantStateEvents: {
+      deltiecordRoomPresentationEventType,
+      deltiecordSpaceChannelsEventType,
+    },
     // Deltiecord warns about verification separately. Excluding an unverified
     // device here would create ciphertext its owner cannot decrypt.
     shareKeysWith: ShareKeysWith.all,

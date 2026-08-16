@@ -7,8 +7,21 @@ extension _MatrixEventMapping on MatrixBackend {
     final children = space.spaceChildren
         .map((child) => _client?.getRoomById(child.roomId ?? ''))
         .whereType<Room>()
-        .where((room) => room.membership == Membership.join && !room.isSpace);
-    return children.toList(growable: false);
+        .where((room) => room.membership == Membership.join && !room.isSpace)
+        .toList();
+    final override = _spaceRoomOrderOverrides[spaceId];
+    if (override != null) {
+      final positions = {
+        for (var index = 0; index < override.length; index++)
+          override[index]: index,
+      };
+      children.sort(
+        (a, b) => (positions[a.id] ?? override.length).compareTo(
+          positions[b.id] ?? override.length,
+        ),
+      );
+    }
+    return children;
   }
 
   RoomSummary? get _selectedRoomSummary {

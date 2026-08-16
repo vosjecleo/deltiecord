@@ -15,7 +15,7 @@
     </p>
   </description>
   <launchable type="desktop-id">net.deltie.deltiecord.desktop</launchable>
-  <url type="homepage">https://deltie.net/cord</url>
+  <url type="homepage">https://deltie.net</url>
   <provides>
     <binary>deltiecord</binary>
   </provides>

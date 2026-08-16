@@ -18,8 +18,7 @@ an external dependency under its own license.
   [Element X](https://github.com/element-hq/element-x-android) were consulted
   as behavioral/interoperability references for Matrix rooms, recovery,
   replies, media, and calls. No Element code or assets are included.
-- The compact three-column layout was requested as an old Discord-inspired
-  interaction model. Deltiecord does not use Discord branding, artwork, source,
+- The compact three-column layout was inspired by Discord UX. Deltiecord does not use Discord branding, artwork, source,
   or proprietary assets.
 
 ## Feature libraries and services
@@ -65,4 +64,7 @@ their upstream copyright notices and licenses.
   runtime and final packaging tooling. Licensed under MIT.
 
 Thanks to the Matrix specification authors, SDK maintainers, client developers,
-package maintainers, and Deltiecord's hands-on testers.
+package maintainers, and Deltiecord's hands-on testers:
+Yeen, Tecilis and Gabe.
+
+And lastly, thanks to the AI developers at Alibaba cloud for building an LLM capable of doing the work of building the base of this app.

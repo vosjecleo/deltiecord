@@ -1,0 +1,107 @@
+name: Publish release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Validate release tag and locate package runs
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          build_number="$(sed -n 's/^version: [^+]*+\(.*\)/\1/p' pubspec.yaml)"
+          expected_tag="v${package_version}-b${build_number}"
+          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+            echo "Expected tag $expected_tag for pubspec version, got $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          windows_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow 'Windows release' --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          linux_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow 'Linux packages' --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          test -n "$windows_run" || { echo 'No successful Windows package run found.' >&2; exit 1; }
+          test -n "$linux_run" || { echo 'No successful Linux package run found.' >&2; exit 1; }
+
+          echo "version=$package_version" >>"$GITHUB_OUTPUT"
+          echo "build=$build_number" >>"$GITHUB_OUTPUT"
+          echo "windows_run=$windows_run" >>"$GITHUB_OUTPUT"
+          echo "linux_run=$linux_run" >>"$GITHUB_OUTPUT"
+
+      - name: Download successful Linux and Windows packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-staging/windows release-staging/linux
+          gh run download "${{ steps.release.outputs.windows_run }}" --repo "$GITHUB_REPOSITORY" --dir release-staging/windows
+          gh run download "${{ steps.release.outputs.linux_run }}" --repo "$GITHUB_REPOSITORY" --dir release-staging/linux
+
+      - name: Assemble and verify release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          mkdir -p release-assets
+
+          copy_unique() {
+            local filename="$1"
+            mapfile -t matches < <(find release-staging -type f -name "$filename" -print)
+            if [[ "${#matches[@]}" -ne 1 ]]; then
+              printf 'Expected exactly one %s, found %s\n' "$filename" "${#matches[@]}" >&2
+              printf '%s\n' "${matches[@]}" >&2
+              exit 1
+            fi
+            cp -- "${matches[0]}" "release-assets/$filename"
+          }
+
+          copy_unique "Deltiecord-${version}-windows-x64-portable.zip"
+          copy_unique "Deltiecord-${version}-windows-x64-setup.exe"
+          copy_unique "Deltiecord-${version}-x86_64.AppImage"
+          copy_unique "deltiecord-${version}-1-x86_64.pkg.tar.zst"
+          copy_unique "deltiecord_${version}_amd64.deb"
+
+          (cd release-assets && sha256sum -- * >SHA256SUMS)
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 6
+
+      - name: Publish GitHub prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.release.outputs.version }}"
+          build="${{ steps.release.outputs.build }}"
+          cat >release-notes.md <<EOF
+          Deltiecord ${version} build ${build} is a feature-complete desktop beta for Matrix.
+
+          Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
+
+          Packages are provided for Windows x86-64, Debian/Ubuntu/Mint amd64, Arch Linux x86-64, and other current x86-64 Linux distributions through AppImage. Verify downloads with the attached SHA256SUMS file.
+
+          This is beta software. Windows in particular still benefits from testing across more hardware and Windows 10/11 installations.
+
+          The project is licensed under AGPL-3.0-or-later. Bundled third-party notices are included in the binary packages and source tree.
+          EOF
+
+          gh release create "$GITHUB_REF_NAME" release-assets/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Deltiecord ${version} build ${build} (Beta)" \
+            --notes-file release-notes.md \
+            --prerelease \
+            --latest=false \
+            --verify-tag

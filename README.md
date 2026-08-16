@@ -1,10 +1,11 @@
 # Deltiecord
 
-> **Current release: v0.9.17 b60 prerelease**
+> **Current release: version 0.9.17 build 60 beta release**
 >
 > Deltiecord is currently a feature-complete desktop beta. It is usable for everyday testing, but bugs and rough edges should still be expected while the project approaches v1.0.
 
-Official builds and release notes are available on the
+Start with the [installation and source-build guide](INSTALL.md). Official
+builds and release notes are available on the
 [Deltiecord releases page](https://deltie.net/cord).
 
 ## Preface
@@ -27,11 +28,9 @@ Please forgive my sins of vibecoding.
 
 ## What is Deltiecord?
 
-Deltiecord is an open-source, Flutter-based desktop client for the **Matrix** communication network.
+Deltiecord is an open-source, Flutter-based desktop client for Matrix.
 
-Its goal is fairly simple:
-
-**Take the privacy, federation, interoperability and self-hosting capabilities of Matrix, and give them the familiar community-oriented desktop UX of Discord.**
+The goal of the project is to bring the familiar UX of discord to the secure and open source side, to hopefully get more discord users on a secure platform.
 
 Deltiecord is not its own chat network, and it does not require a special Deltiecord server. It connects to ordinary Matrix homeservers such as Synapse and communicates using the Matrix protocol.
 
@@ -39,107 +38,78 @@ This means a Deltiecord user can still talk to people using Element, FluffyChat,
 
 The project is especially aimed at people who want:
 
-- end-to-end encrypted communication
-- self-hostable infrastructure
+- e2ee communication
+- self-hostable infra
 - federated identities and communities
-- Discord-style servers with separate text and voice channels
-- a compact desktop-first interface
+- Discord-style servers with separate text and voice 'channels' (rooms)
+- a compact and customisable interface
 - fewer cloud dependencies
 - no subscription-gated profile cosmetics
-- an application that feels like a community chat client rather than an enterprise messenger
+- a familiar app
 
-Deltiecord uses Matrix **Spaces** as Discord-style servers, Matrix **rooms** as text channels and DMs, and MatrixRTC for voice/video communication.
+Deltiecord uses Matrix Spaces as Discord-style 'servers', Matrix rooms as text 'channels' and DMs, and MatrixRTC for voice/video communication.
 
 Some Deltiecord presentation features (such as voice-only rooms, channel categories, channel ordering and profile customization) use namespaced Matrix state/profile fields. Other Matrix clients are free to ignore these while the underlying rooms remain normal interoperable Matrix rooms.
 
-This can occasionally produce amusing results, such as someone using another Matrix client being perfectly capable of sending text messages into what Deltiecord presents as a voice-only channel.
+Sometimes this can lead to small bugs, like how other client user's may see the voice rooms as regular text rooms, and type there.
 
 ---
 
 ## Why Deltiecord?
 
-Deltiecord focuses heavily on a Discord-like desktop workflow that most Matrix clients do not currently prioritize.
+Deltiecord focuses heavily on a Discord-like user experiencie that most Matrix clients do not currently prioritize.
 
 Notable features include:
 
-- **End-to-end encrypted Matrix messaging**
-- **GIF search**, powered by GIPHY
-- **Inline video streaming**, including encrypted media without requiring the entire file to download first
-- **Separate voice channels** using MatrixRTC
-- **Voice, video and screen sharing**, with participant grids, speaking indicators,
+- End-to-end encrypted Matrix messaging
+- GIF search, powered by GIPHY
+- Inline video streaming, including encrypted media without requiring the entire file to download first
+- Separate voice channels using MatrixRTC
+- Voice, video and screen sharing, with participant grids, speaking indicators,
   fullscreen streams, per-user volume controls, mute and deafen controls
-- **Desktop-audio capture during screen sharing** where the operating system's
+- Desktop-audio capture during screen sharing where the operating system's
   capture portal and WebRTC stack support it
-- **DM/group-chat Home screen**, separated from Space channels
-- **Discord-style Spaces/server navigation**
-- **Discord-style room/channel categories**, including collapsible and reorderable
+- DM/group-chat Home screen, separated from Space channels
+- Discord-style Spaces/server navigation
+- Discord-style room/channel categories, including collapsible and reorderable
   categories
-- **Drag-and-drop channel ordering**, synchronized through namespaced Matrix room
+- Drag-and-drop channel ordering, synchronized through namespaced Matrix room
   state with an administrator-level permission by default
-- **Rich profiles**, including:
+- Rich profiles, including:
   - profile banners
   - custom profile colours and gradients
   - status messages
   - pronouns
   - timezone and local time
   - About Me
-- **Compact profile popovers and full profile views**
-- **WYSIWYG message composition**
-- **Spoilers**
-- **Replies**
-- **Message editing and deletion**
-- **Emoji reactions**
-- **Searchable emoji picker**
-- `:emoji:` **autocomplete**
-- **Rich link previews**
-- **Image and video embeds**
-- **Image/video context menus**
-- **Fullscreen media viewer**
-- **Message search**
-- **Pinned messages**
-- **Typing indicators**
-- **Presence**
-- **Read receipts**
-- **Per-room drafts**
-- **Desktop notifications**
-- **Drag-and-drop attachments**
-- **Clipboard image/file support**
-- **Configurable keyboard shortcuts**
-- **Multiple UI density and appearance settings**
-- **Bundled text and emoji fonts** with configurable application and fallback
+- Compact profile popovers and full profile views
+- WYSIWYG message composition
+- Spoilers
+- Replies
+- Message editing and deletion
+- Emoji reactions
+- Searchable emoji picker
+- `:emoji:` autocomplete
+- Rich link previews
+- image and video embeds
+- image/video context menus
+- Fullscreen media viewer
+- Message search
+- Pinned messages
+- Typing indicators
+- Presence
+- Read receipts
+- Per-room drafts
+- Desktop notifications
+- Drag-and-drop attachments
+- Clipboard image/file support
+- Configurable keyboard shortcuts
+- Multiple UI density and appearance settings
+- Bundled text and emoji fonts with configurable application and fallback
   font choices
-- **Custom profile theming without paying anyone €9.99/month for the privilege**
+- Custom profile theming
 
 Deltiecord is desktop-first. An Android app is planned, though the newest features and updates will remain desktop-first and mobile-second.
-
----
-
-## Matrix interoperability
-
-Deltiecord speaks Matrix.
-
-You do **not** need everyone in a conversation to use Deltiecord.
-
-For example:
-
-```text
-Deltiecord user
-      │
-      │ Matrix
-      ▼
-   Homeserver
-      │
-      ├── Element user
-      ├── FluffyChat user
-      ├── another Deltiecord user
-      └── users on federated homeservers
-```
-
-Deltiecord-specific state is namespaced so other clients can safely ignore it.
-
-A Deltiecord voice channel is still backed by a normal Matrix room, for example. Deltiecord simply presents it as a persistent RTC space and hides its normal text timeline.
-
-Likewise, Deltiecord channel categories and ordering affect presentation without changing the fundamental Matrix room hierarchy.
 
 ---
 
@@ -221,72 +191,10 @@ Android is a possible future target because the application architecture was int
 
 ---
 
-## Installation
-
-Prebuilt packages are provided with releases where available.
-
-Linux builds include:
-
-- `.deb`
-- `.AppImage`
-- `pkg.tar.zst`
-
-Windows builds include:
-
-- portable archive
-- setup.exe installer
-
-Package-manager repositories and automatic update distribution are also planned.
-
-See the release notes for the exact installation method for your platform.
-
----
-
-## Building from source
-
-Deltiecord is built with Flutter and the Matrix Dart SDK.
-
-A typical development setup begins with:
-
-```sh
-flutter pub get
-flutter analyze
-flutter test
-flutter run -d linux
-```
-
-Platform-specific Windows notes are in [docs/WINDOWS.md](docs/WINDOWS.md).
-The high-level design is described in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and Deltiecord's interoperable
-Matrix metadata is documented in
-[docs/MATRIX_EXTENSIONS.md](docs/MATRIX_EXTENSIONS.md).
-
-Release builds may require additional packaging tools and native dependencies for functionality such as WebRTC, screen sharing, secure storage and media playback.
-
----
-
-## Project philosophy
-
-Deltiecord should remain:
-
-- interoperable with normal Matrix clients
-- usable with ordinary Matrix homeservers
-- self-hosting friendly
-- privacy-conscious
-- desktop-first
-- compact rather than oversized
-- customizable without artificial monetization
-- understandable without requiring users to know how Matrix works internally
-
-Where Deltiecord adds its own Matrix metadata, it should remain namespaced, documented and safely ignorable by clients that do not support it.
-
-Deltiecord should generally prefer extending the **presentation of Matrix** rather than inventing an incompatible protocol.
-
----
-
 ## Contributing
 
 Issues, testing, documentation improvements and pull requests are welcome.
+Criticise this project as much as you wish! All actual human input is very very welcome.
 
 When contributing, please try to preserve:
 
@@ -315,4 +223,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.17 b60, prerelease**
+**Current release: v0.9.17 build 60, beta release**

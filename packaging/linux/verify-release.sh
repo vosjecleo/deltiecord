@@ -13,7 +13,7 @@ test -f "$library" || {
 # Dart DL shim was garbage-collected. Such a build fails only when main()
 # initializes encryption, so reject it before any package is assembled.
 if readelf --wide --symbols "$library" |
-  grep -E 'UND.*Dart_(CurrentIsolate|InitializeApi|DeletePersistentHandle|HandleFromPersistent|NewPersistentHandle)_DL'; then
+  grep -qE 'UND.*Dart_(CurrentIsolate|InitializeApi|DeletePersistentHandle|HandleFromPersistent|NewPersistentHandle)_DL'; then
   echo 'Release E2EE library contains unresolved Dart DL symbols.' >&2
   exit 1
 fi

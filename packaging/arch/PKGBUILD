@@ -17,7 +17,8 @@ pkgver() {
 
 build() {
   cd "$startdir/../.."
-  export RUSTFLAGS="${RUSTFLAGS:--C link-dead-code}"
+  # makepkg supplies its own RUSTFLAGS, so append rather than defaulting.
+  export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-dead-code"
   flutter pub get
   flutter build linux --release
   packaging/linux/verify-release.sh

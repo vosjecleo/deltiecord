@@ -95,6 +95,7 @@ abstract class ChatBackend extends ChangeNotifier {
     String? beforeRoomId,
   });
   int spaceChannelLayoutPowerLevel(String spaceId) => 100;
+  bool canManageSpaceChannelLayout(String spaceId) => false;
   bool canSetSpaceChannelLayoutPowerLevel(String spaceId) => false;
   Future<void> setSpaceChannelLayoutPowerLevel(
     String spaceId,

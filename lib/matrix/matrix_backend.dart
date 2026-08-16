@@ -564,6 +564,10 @@ class MatrixBackend extends ChatBackend {
       _spaceChannelLayoutPowerLevel(spaceId);
 
   @override
+  bool canManageSpaceChannelLayout(String spaceId) =>
+      _canManageSpaceChannelLayout(spaceId);
+
+  @override
   bool canSetSpaceChannelLayoutPowerLevel(String spaceId) =>
       _matrix.getRoomById(spaceId)?.canChangePowerLevel ?? false;
 

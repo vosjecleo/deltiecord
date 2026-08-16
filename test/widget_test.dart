@@ -285,15 +285,53 @@ void main() {
       ];
     await tester.pumpWidget(DeltiecordApp(backend: backend));
 
-    expect(find.text('▾ WORK'), findsOneWidget);
-    await tester.tap(find.text('▾ WORK'));
+    expect(find.text('WORK'), findsOneWidget);
+    await tester.tap(find.text('WORK'));
     await tester.pump();
     expect(backend.categoryCollapseChanges, [('work', true)]);
 
-    await tester.tap(find.byTooltip('Category actions'));
+    await tester.tap(find.text('WORK'), buttons: kSecondaryButton);
     await tester.pumpAndSettle();
     expect(find.text('Move up'), findsOneWidget);
     expect(find.text('Move down'), findsOneWidget);
+  });
+
+  testWidgets('channel layout controls follow the configured permission', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..mayArrangeChannels = false
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Workspace'),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!one:example.org',
+          name: 'one',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(
+          id: 'work',
+          name: 'WORK',
+          roomIds: ['!one:example.org'],
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    expect(
+      find.byKey(const ValueKey('room-drag-grip-!one:example.org')),
+      findsNothing,
+    );
+    expect(find.byIcon(Icons.more_vert), findsNothing);
+    await tester.tap(find.text('WORK'), buttons: kSecondaryButton);
+    await tester.pumpAndSettle();
+    expect(find.text('Rename category'), findsNothing);
   });
 
   testWidgets('rooms can be dragged into a Space category', (tester) async {
@@ -328,10 +366,12 @@ void main() {
       ];
     await tester.pumpWidget(DeltiecordApp(backend: backend));
 
+    final looseGrip = find.byKey(
+      const ValueKey('room-drag-grip-!loose:example.org'),
+    );
     await tester.dragFrom(
-      tester.getCenter(find.text('loose')),
-      tester.getCenter(find.text('▾ WORK')) -
-          tester.getCenter(find.text('loose')),
+      tester.getCenter(looseGrip),
+      tester.getCenter(find.text('WORK')) - tester.getCenter(looseGrip),
       touchSlopY: 0,
     );
     await tester.pumpAndSettle();
@@ -1254,6 +1294,7 @@ void main() {
   testWidgets('chat timestamps default to 24-hour time and allow AM/PM', (
     tester,
   ) async {
+    final today = DateTime.now();
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..roomList = const [
@@ -1270,7 +1311,7 @@ void main() {
           id: r'$time',
           sender: 'Alice',
           body: 'clock',
-          timestamp: DateTime(2026, 8, 16, 13, 5),
+          timestamp: DateTime(today.year, today.month, today.day, 13, 5),
           pending: false,
         ),
       ];
@@ -2131,6 +2172,9 @@ class FakeBackend extends ChatBackend {
   ) async => categoryCollapseChanges.add((categoryId, collapsed));
 
   @override
+  bool canManageSpaceChannelLayout(String spaceId) => mayArrangeChannels;
+
+  @override
   Future<void> moveRoomInSpace(
     String roomId, {
     String? categoryId,
@@ -2157,6 +2201,7 @@ class FakeBackend extends ChatBackend {
   bool deafened = false;
   bool muted = false;
   bool cameraEnabled = false;
+  bool mayArrangeChannels = true;
   Completer<void>? sendGate;
   int historyRequests = 0;
   int futureRequests = 0;

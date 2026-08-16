@@ -12,6 +12,15 @@ extension _MatrixRoomOperations on MatrixBackend {
         100;
   }
 
+  bool _canManageSpaceChannelLayout(String spaceId) {
+    final space = _matrix.getRoomById(spaceId);
+    if (space == null) return false;
+    return space.ownPowerLevel.level >=
+            _spaceChannelLayoutPowerLevel(spaceId) &&
+        space.canChangeStateEvent(MatrixBackend._spaceChannelsEventType) &&
+        space.canChangeStateEvent(EventTypes.SpaceChild);
+  }
+
   Future<void> _setSpaceChannelLayoutPowerLevel(
     String spaceId,
     int powerLevel,
@@ -27,6 +36,10 @@ extension _MatrixRoomOperations on MatrixBackend {
       content.tryGetMap<String, Object?>('events') ?? const {},
     );
     events[MatrixBackend._spaceChannelsEventType] = powerLevel.clamp(0, 100);
+    // Room ordering is carried by m.space.child state while categories use
+    // Deltiecord's namespaced layout state. Keep both at the same advertised
+    // threshold so the configurable permission describes the whole action.
+    events[EventTypes.SpaceChild] = powerLevel.clamp(0, 100);
     await _matrix.setRoomStateWithKey(spaceId, EventTypes.RoomPowerLevels, '', {
       ...content,
       'events': events,

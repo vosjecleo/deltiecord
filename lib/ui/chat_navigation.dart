@@ -850,7 +850,10 @@ class _RoomPanelState extends State<_RoomPanel> {
                                 ),
                               ),
                             ),
-                            if (backend.selectedSpaceId != null)
+                            if (backend.selectedSpaceId case final spaceId?
+                                when backend.canManageSpaceChannelLayout(
+                                  spaceId,
+                                ))
                               const PopupMenuItem(
                                 value: 'category',
                                 child: ListTile(
@@ -1210,6 +1213,10 @@ class _CategorizedRoomList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final categories = backend.selectedSpaceCategories;
+    final selectedSpaceId = backend.selectedSpaceId;
+    final canArrange =
+        selectedSpaceId != null &&
+        backend.canManageSpaceChannelLayout(selectedSpaceId);
     final categorizedIds = categories
         .expand((category) => category.roomIds)
         .toSet();
@@ -1223,6 +1230,7 @@ class _CategorizedRoomList extends StatelessWidget {
           backend: backend,
           name: 'CHANNELS',
           rooms: ungrouped,
+          canArrange: canArrange,
         ),
       for (var index = 0; index < categories.length; index++)
         _ChannelCategorySection(
@@ -1234,6 +1242,7 @@ class _CategorizedRoomList extends StatelessWidget {
               .map((id) => rooms.where((room) => room.id == id).firstOrNull)
               .whereType<RoomSummary>()
               .toList(growable: false),
+          canArrange: canArrange,
           categoryIndex: index,
           dragIndex: index + (ungrouped.isEmpty ? 0 : 1),
         ),
@@ -1242,6 +1251,7 @@ class _CategorizedRoomList extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 4),
       buildDefaultDragHandles: false,
       onReorderItem: (oldIndex, newIndex) {
+        if (!canArrange) return;
         if (ungrouped.isNotEmpty) {
           if (oldIndex == 0 || newIndex == 0) return;
           oldIndex--;
@@ -1261,6 +1271,7 @@ class _ChannelCategorySection extends StatelessWidget {
     required this.backend,
     required this.name,
     required this.rooms,
+    required this.canArrange,
     this.category,
     this.categoryIndex,
     this.dragIndex,
@@ -1269,6 +1280,7 @@ class _ChannelCategorySection extends StatelessWidget {
   final ChatBackend backend;
   final String name;
   final List<RoomSummary> rooms;
+  final bool canArrange;
   final ChannelCategorySummary? category;
   final int? categoryIndex;
   final int? dragIndex;
@@ -1301,13 +1313,81 @@ class _ChannelCategorySection extends StatelessWidget {
     }
   }
 
+  Future<void> _showContextMenu(BuildContext context, Offset position) async {
+    final current = category;
+    if (current == null || !canArrange) return;
+    final screen = MediaQuery.sizeOf(context);
+    final action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        position & const Size(1, 1),
+        Offset.zero & screen,
+      ),
+      items: [
+        const PopupMenuItem(
+          value: 'rename',
+          child: _RoomContextMenuEntry(
+            icon: Icons.edit_outlined,
+            label: 'Rename category',
+          ),
+        ),
+        PopupMenuItem(
+          value: 'up',
+          enabled: (categoryIndex ?? 0) > 0,
+          child: const _RoomContextMenuEntry(
+            icon: Icons.arrow_upward,
+            label: 'Move up',
+          ),
+        ),
+        const PopupMenuItem(
+          value: 'down',
+          child: _RoomContextMenuEntry(
+            icon: Icons.arrow_downward,
+            label: 'Move down',
+          ),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: 'delete',
+          child: _RoomContextMenuEntry(
+            icon: Icons.delete_outline,
+            label: 'Delete category',
+            color: Theme.of(context).colorScheme.error,
+          ),
+        ),
+      ],
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case 'rename':
+        await _rename(context);
+      case 'up':
+        await backend.reorderChannelCategory(
+          current.id,
+          max(0, (categoryIndex ?? 0) - 1),
+        );
+      case 'down':
+        await backend.reorderChannelCategory(
+          current.id,
+          (categoryIndex ?? 0) + 1,
+        );
+      case 'delete':
+        await backend.deleteChannelCategory(current.id);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final current = category;
     final collapsed = current?.collapsed ?? false;
     return DragTarget<RoomSummary>(
-      onAcceptWithDetails: (details) =>
-          backend.moveRoomInSpace(details.data.id, categoryId: current?.id),
+      onWillAcceptWithDetails: canArrange ? (_) => true : null,
+      onAcceptWithDetails: canArrange
+          ? (details) => backend.moveRoomInSpace(
+              details.data.id,
+              categoryId: current?.id,
+            )
+          : null,
       builder: (context, candidates, _) => DecoratedBox(
         decoration: BoxDecoration(
           color: candidates.isEmpty
@@ -1317,100 +1397,106 @@ class _ChannelCategorySection extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                if (current != null)
-                  ReorderableDragStartListener(
-                    index: dragIndex!,
-                    child: const Padding(
-                      padding: EdgeInsets.only(left: 7),
-                      child: Icon(Icons.drag_indicator, size: 15),
-                    ),
-                  ),
-                Expanded(
-                  child: InkWell(
-                    onTap: current == null
-                        ? null
-                        : () => backend.setChannelCategoryCollapsed(
-                            current.id,
-                            !collapsed,
+            Padding(
+              padding: EdgeInsets.only(top: current == null ? 2 : 5, bottom: 1),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onSecondaryTapDown: current == null
+                    ? null
+                    : (details) =>
+                          _showContextMenu(context, details.globalPosition),
+                child: SizedBox(
+                  height: 32,
+                  child: Row(
+                    children: [
+                      if (current != null && canArrange)
+                        ReorderableDragStartListener(
+                          index: dragIndex!,
+                          child: const SizedBox(
+                            width: 30,
+                            height: 32,
+                            child: Center(
+                              child: Icon(Icons.drag_indicator, size: 16),
+                            ),
                           ),
-                    child: _RoomSectionLabel('${collapsed ? '▸' : '▾'} $name'),
-                  ),
-                ),
-                if (current != null)
-                  PopupMenuButton<String>(
-                    tooltip: 'Category actions',
-                    iconSize: 16,
-                    onSelected: (action) {
-                      switch (action) {
-                        case 'rename':
-                          _rename(context);
-                        case 'up':
-                          backend.reorderChannelCategory(
-                            current.id,
-                            max(0, categoryIndex! - 1),
-                          );
-                        case 'down':
-                          backend.reorderChannelCategory(
-                            current.id,
-                            categoryIndex! + 1,
-                          );
-                        case 'delete':
-                          backend.deleteChannelCategory(current.id);
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'rename', child: Text('Rename')),
-                      PopupMenuItem(value: 'up', child: Text('Move up')),
-                      PopupMenuItem(value: 'down', child: Text('Move down')),
-                      PopupMenuDivider(),
-                      PopupMenuItem(value: 'delete', child: Text('Delete')),
+                        )
+                      else
+                        const SizedBox(width: 10),
+                      Expanded(
+                        child: InkWell(
+                          onTap: current == null
+                              ? null
+                              : () => backend.setChannelCategoryCollapsed(
+                                  current.id,
+                                  !collapsed,
+                                ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              children: [
+                                if (current != null) ...[
+                                  Icon(
+                                    collapsed
+                                        ? Icons.arrow_right
+                                        : Icons.arrow_drop_down,
+                                    size: 17,
+                                    color: context.deltiecord.muted,
+                                  ),
+                                  const SizedBox(width: 2),
+                                ],
+                                Flexible(
+                                  child: Text(
+                                    name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: context.deltiecord.muted,
+                                      fontSize: DeltiecordTypeScale.normal,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
                     ],
                   ),
-              ],
+                ),
+              ),
             ),
             if (!collapsed)
               for (final room in rooms)
                 DragTarget<RoomSummary>(
-                  onAcceptWithDetails: (details) => backend.moveRoomInSpace(
-                    details.data.id,
-                    categoryId: current?.id,
-                    beforeRoomId: room.id,
-                  ),
-                  builder: (context, candidates, _) => Draggable<RoomSummary>(
-                    data: room,
-                    dragAnchorStrategy: pointerDragAnchorStrategy,
-                    feedback: Material(
-                      color: context.deltiecord.elevated,
-                      child: SizedBox(
-                        width: 240,
-                        child: ListTile(
-                          dense: true,
-                          leading: _RoomIcon(room: room, size: 24),
-                          title: Text(room.name),
-                        ),
-                      ),
-                    ),
-                    childWhenDragging: Opacity(
-                      opacity: 0.35,
-                      child: _RoomListTile(backend: backend, room: room),
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: candidates.isEmpty
-                            ? null
-                            : Border(
-                                top: BorderSide(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 2,
-                                ),
+                  onWillAcceptWithDetails: canArrange ? (_) => true : null,
+                  onAcceptWithDetails: canArrange
+                      ? (details) => backend.moveRoomInSpace(
+                          details.data.id,
+                          categoryId: current?.id,
+                          beforeRoomId: room.id,
+                        )
+                      : null,
+                  builder: (context, candidates, _) => DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: candidates.isEmpty
+                          ? null
+                          : Border(
+                              top: BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 2,
                               ),
-                      ),
-                      child: _RoomListTile(backend: backend, room: room),
+                            ),
+                    ),
+                    child: _RoomListTile(
+                      backend: backend,
+                      room: room,
+                      canArrange: canArrange,
                     ),
                   ),
                 ),
+            const SizedBox(height: 2),
           ],
         ),
       ),
@@ -1419,10 +1505,15 @@ class _ChannelCategorySection extends StatelessWidget {
 }
 
 class _RoomListTile extends StatelessWidget {
-  const _RoomListTile({required this.backend, required this.room});
+  const _RoomListTile({
+    required this.backend,
+    required this.room,
+    this.canArrange,
+  });
 
   final ChatBackend backend;
   final RoomSummary room;
+  final bool? canArrange;
 
   Future<void> _edit(BuildContext context) async {
     final controller = TextEditingController(text: room.name);
@@ -1560,6 +1651,10 @@ class _RoomListTile extends StatelessWidget {
 
   Future<void> _showContextMenu(BuildContext context, Offset position) async {
     final screen = MediaQuery.sizeOf(context);
+    final selectedSpaceId = backend.selectedSpaceId;
+    final mayArrange =
+        selectedSpaceId != null &&
+        backend.canManageSpaceChannelLayout(selectedSpaceId);
     final spaceRooms = backend.selectedSpaceId == null
         ? const <RoomSummary>[]
         : backend.rooms;
@@ -1601,7 +1696,7 @@ class _RoomListTile extends StatelessWidget {
             label: 'Copy room link',
           ),
         ),
-        if (backend.selectedSpaceId != null) ...[
+        if (mayArrange) ...[
           const PopupMenuDivider(),
           PopupMenuItem(
             value: 'move-up',
@@ -1700,6 +1795,41 @@ class _RoomListTile extends StatelessWidget {
       );
     }
     final compactness = backend.preferences.compactness;
+    final selectedSpaceId = backend.selectedSpaceId;
+    final mayArrange =
+        canArrange ??
+        (selectedSpaceId != null &&
+            backend.canManageSpaceChannelLayout(selectedSpaceId));
+    Widget dragGrip() {
+      final grip = SizedBox(
+        key: ValueKey('room-drag-grip-${room.id}'),
+        width: 20,
+        height: 32,
+        child: const Center(child: Icon(Icons.drag_indicator, size: 16)),
+      );
+      if (!mayArrange) return const SizedBox.shrink();
+      return Draggable<RoomSummary>(
+        data: room,
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedback: Material(
+          color: context.deltiecord.elevated,
+          shape: RoundedRectangleBorder(
+            borderRadius: DeltiecordCorners.borderRadius,
+          ),
+          child: SizedBox(
+            width: 220,
+            child: ListTile(
+              dense: true,
+              leading: _RoomIcon(room: room, size: 24),
+              title: Text(room.name),
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.35, child: grip),
+        child: grip,
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onSecondaryTapDown: (details) =>
@@ -1707,10 +1837,18 @@ class _RoomListTile extends StatelessWidget {
       child: ListTile(
         dense: true,
         visualDensity: VisualDensity(vertical: -1 - (compactness * 2)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 9),
         minVerticalPadding: 0,
+        minLeadingWidth: 0,
+        horizontalTitleGap: 8,
         selected: backend.selectedRoom?.id == room.id,
-        leading: _RoomIcon(room: room, size: 26),
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (mayArrange) ...[dragGrip(), const SizedBox(width: 3)],
+            _RoomIcon(room: room, size: 25),
+          ],
+        ),
         title: Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: room.isVoice
             ? participantCount == 0
@@ -1723,47 +1861,9 @@ class _RoomListTile extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               )
             : null,
-        trailing: backend.selectedSpaceId == null
-            ? room.unreadCount > 0
-                  ? Badge(label: Text('${room.unreadCount}'))
-                  : null
-            : PopupMenuButton<String>(
-                tooltip: 'Edit room',
-                iconSize: 17,
-                onSelected: (action) {
-                  switch (action) {
-                    case 'rename':
-                      _edit(context);
-                    case 'text':
-                      backend.setRoomPresentation(
-                        room.id,
-                        RoomPresentation.text,
-                      );
-                    case 'voice':
-                      backend.setRoomPresentation(
-                        room.id,
-                        RoomPresentation.voice,
-                      );
-                  }
-                },
-                itemBuilder: (context) => [
-                  CheckedPopupMenuItem(
-                    value: 'text',
-                    checked: !room.isVoice,
-                    child: const Text('Text room'),
-                  ),
-                  CheckedPopupMenuItem(
-                    value: 'voice',
-                    checked: room.isVoice,
-                    child: const Text('Voice room'),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'rename',
-                    child: Text('Room settings'),
-                  ),
-                ],
-              ),
+        trailing: backend.selectedSpaceId == null && room.unreadCount > 0
+            ? Badge(label: Text('${room.unreadCount}'))
+            : null,
         onTap: () => backend.selectRoom(room.id),
       ),
     );

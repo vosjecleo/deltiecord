@@ -45,6 +45,7 @@ class MediaRangeProxy {
   final Map<String, _EncryptedMedia> _entries = {};
   final Random _random = Random.secure();
   Timer? _cleanupTimer;
+  var _accessSequence = 0;
 
   Future<Uri> register({
     required Uri upstream,
@@ -58,7 +59,7 @@ class MediaRangeProxy {
     _removeExpired();
     while (_entries.length >= maximumEntries) {
       final oldest = _entries.entries.reduce(
-        (a, b) => a.value.lastAccess.isBefore(b.value.lastAccess) ? a : b,
+        (a, b) => a.value.accessSequence < b.value.accessSequence ? a : b,
       );
       _removeEntry(oldest.key);
     }
@@ -72,6 +73,7 @@ class MediaRangeProxy {
       size: size,
       mimeType: mimeType,
       lastAccess: _clock(),
+      accessSequence: ++_accessSequence,
     );
     return Uri.parse('http://127.0.0.1:${server.port}/media/$id');
   }
@@ -110,6 +112,7 @@ class MediaRangeProxy {
       return;
     }
     media.lastAccess = _clock();
+    media.accessSequence = ++_accessSequence;
 
     try {
       final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
@@ -422,6 +425,7 @@ class _EncryptedMedia {
     required this.size,
     required this.mimeType,
     required this.lastAccess,
+    required this.accessSequence,
   });
 
   final Uri upstream;
@@ -431,4 +435,5 @@ class _EncryptedMedia {
   final int size;
   final String mimeType;
   DateTime lastAccess;
+  int accessSequence;
 }

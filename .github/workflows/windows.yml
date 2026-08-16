@@ -79,11 +79,22 @@ jobs:
         shell: pwsh
         run: |
           $output = Join-Path $env:RUNNER_TEMP 'flutter-test-output.txt'
-          & flutter test --concurrency=1 2>&1 | Tee-Object -FilePath $output
+          & flutter test --concurrency=1 --reporter=json 2>&1 | Tee-Object -FilePath $output
           $testExit = $LASTEXITCODE
           if ($testExit -ne 0) {
-            $tail = (Get-Content $output | Select-Object -Last 180) -join "`n"
-            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            $failures = foreach ($line in Get-Content $output) {
+              if (-not $line.StartsWith('{')) { continue }
+              try { $event = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+              if ($event.type -eq 'error') {
+                "$($event.error)`n$($event.stackTrace)"
+              }
+            }
+            $diagnostic = if ($failures) {
+              $failures -join "`n`n"
+            } else {
+              (Get-Content $output | Select-Object -Last 60) -join "`n"
+            }
+            $escaped = $diagnostic.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
             Write-Host "::error title=Windows Flutter test failure::$escaped"
             exit $testExit
           }

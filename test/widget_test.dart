@@ -1495,6 +1495,22 @@ void main() {
     expect(backend.preferences.roomPanelWidth, greaterThan(280));
   });
 
+  testWidgets('room panel survives transient narrow window constraints', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(470, 700);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final backend = FakeBackend()..currentStatus = SessionStatus.signedIn;
+
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('room-panel-resize-handle')), findsOneWidget);
+  });
+
   testWidgets('Space buttons remain square without selected side strips', (
     tester,
   ) async {

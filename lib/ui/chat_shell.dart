@@ -649,9 +649,17 @@ class _ChatShellState extends State<ChatShell> {
                     _sidePanelAvailable = hasSidePanel;
                     final preferredPanel =
                         widget.backend.preferences.roomPanelWidth;
-                    final panelWidth = preferredPanel.clamp(
-                      220.0,
+                    final maximumRoomPanelWidth = max(
+                      0.0,
                       constraints.maxWidth * 0.46,
+                    );
+                    final minimumRoomPanelWidth = min(
+                      220.0,
+                      maximumRoomPanelWidth,
+                    );
+                    final panelWidth = preferredPanel.clamp(
+                      minimumRoomPanelWidth,
+                      maximumRoomPanelWidth,
                     );
                     // Include the resize gutter so the lower controls form one
                     // uninterrupted strip across rail, room list, and composer.
@@ -686,8 +694,8 @@ class _ChatShellState extends State<ChatShell> {
                                                     .roomPanelWidth +
                                                 details.delta.dx)
                                             .clamp(
-                                              220.0,
-                                              constraints.maxWidth * 0.46,
+                                              minimumRoomPanelWidth,
+                                              maximumRoomPanelWidth,
                                             );
                                     widget.backend.updatePreferences(
                                       widget.backend.preferences.copyWith(

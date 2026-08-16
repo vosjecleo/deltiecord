@@ -105,7 +105,13 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> setRoomAvatar(String roomId, Uint8List? bytes);
   Future<void> leaveRoom(String roomId);
   Future<void> setMemberPowerLevel(String userId, int powerLevel);
-  Future<UserProfileSummary> getUserProfile(String userId);
+
+  /// Returns a cached profile unless [refresh] explicitly requests fresh
+  /// homeserver profile, presence, avatar, and banner data.
+  Future<UserProfileSummary> getUserProfile(
+    String userId, {
+    bool refresh = false,
+  });
   Future<void> updateOwnProfileFields({
     String? bio,
     String? pronouns,

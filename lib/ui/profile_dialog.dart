@@ -488,7 +488,7 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   late Future<UserProfileSummary> _profile = _loadProfile();
 
   Future<UserProfileSummary> _loadProfile() =>
-      widget.backend.getUserProfile(widget.member.userId);
+      widget.backend.getUserProfile(widget.member.userId, refresh: true);
 
   Future<void> _edit(UserProfileSummary profile) async {
     final changed = await showProfileEditor(context, widget.backend, profile);

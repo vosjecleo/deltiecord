@@ -11,7 +11,32 @@ const _profileColorSecondaryField = 'net.deltiecord.profile_color_secondary';
 /// Custom fields are written only when advertised by `m.profile_fields`; a
 /// server without that capability continues to expose an ordinary profile.
 extension _MatrixProfiles on MatrixBackend {
-  Future<UserProfileSummary> _getUserProfile(String userId) async {
+  Future<UserProfileSummary> _getUserProfile(
+    String userId, {
+    bool refresh = false,
+  }) {
+    final cached = _profileCache[userId];
+    if (!refresh &&
+        cached != null &&
+        DateTime.now().difference(cached.$2) <
+            MatrixBackend._profileCacheLifetime) {
+      // Reinsert to maintain least-recently-used order.
+      _profileCache.remove(userId);
+      _profileCache[userId] = cached;
+      return Future.value(cached.$1);
+    }
+    final pending = _profileRequests[userId];
+    if (pending != null) return pending;
+    final request = _fetchUserProfile(userId).onError((error, stackTrace) {
+      if (cached != null) return cached.$1;
+      if (error != null) Error.throwWithStackTrace(error, stackTrace);
+      throw StateError('Profile loading failed without an error.');
+    });
+    _profileRequests[userId] = request;
+    return request.whenComplete(() => _profileRequests.remove(userId));
+  }
+
+  Future<UserProfileSummary> _fetchUserProfile(String userId) async {
     final profile = await _matrix.getUserProfile(
       userId,
       maxCacheAge: Duration.zero,
@@ -29,7 +54,7 @@ extension _MatrixProfiles on MatrixBackend {
       // Profiles remain useful on homeservers with presence disabled.
     }
     final colorValue = profile.additionalProperties[_profileColorField];
-    return UserProfileSummary(
+    final result = UserProfileSummary(
       userId: userId,
       displayName:
           profile.displayname ?? userId.split(':').first.replaceFirst('@', ''),
@@ -51,6 +76,24 @@ extension _MatrixProfiles on MatrixBackend {
       extensibleFieldsSupported: capability?.enabled == true,
       blocked: _matrix.ignoredUsers.contains(userId),
     );
+    _profileCache.remove(userId);
+    _profileCache[userId] = (result, DateTime.now());
+    var mediaBytes = _profileCache.values.fold<int>(
+      0,
+      (total, entry) =>
+          total +
+          (entry.$1.avatarBytes?.length ?? 0) +
+          (entry.$1.bannerBytes?.length ?? 0),
+    );
+    while (_profileCache.length > MatrixBackend._maximumCachedProfiles ||
+        (mediaBytes > MatrixBackend._maximumCachedProfileMediaBytes &&
+            _profileCache.length > 1)) {
+      final removed = _profileCache.remove(_profileCache.keys.first);
+      mediaBytes -=
+          (removed?.$1.avatarBytes?.length ?? 0) +
+          (removed?.$1.bannerBytes?.length ?? 0);
+    }
+    return result;
   }
 
   Future<Uint8List?> _profileMedia(Uri? mxc, int width, int height) async {
@@ -177,6 +220,7 @@ extension _MatrixProfiles on MatrixBackend {
           if (exception.error != MatrixError.M_UNRECOGNIZED) rethrow;
         }
       }
+      _profileCache.remove(userId);
       _notifyBackendListeners();
     } catch (exception) {
       _error = _friendlyError(exception);

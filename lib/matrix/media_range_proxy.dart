@@ -14,6 +14,8 @@ typedef RangeDecryptor =
       int blockOffset,
     );
 
+typedef MediaProxyClock = DateTime Function();
+
 /// Serves encrypted Matrix media to a local player using bounded HTTP ranges.
 ///
 /// Matrix attachments use AES-CTR, so an aligned ciphertext range can be
@@ -23,16 +25,19 @@ typedef RangeDecryptor =
 class MediaRangeProxy {
   MediaRangeProxy({
     RangeDecryptor? decryptor,
+    MediaProxyClock? clock,
     this.entryTtl = const Duration(minutes: 30),
     this.maximumEntries = 32,
   }) : assert(maximumEntries > 0),
-       _decryptor = decryptor ?? _decryptAesCtrRange {
+       _decryptor = decryptor ?? _decryptAesCtrRange,
+       _clock = clock ?? DateTime.now {
     _upstream
       ..connectionTimeout = const Duration(seconds: 10)
       ..idleTimeout = const Duration(seconds: 15);
   }
 
   final RangeDecryptor _decryptor;
+  final MediaProxyClock _clock;
   final Duration entryTtl;
   final int maximumEntries;
   HttpServer? _server;
@@ -66,7 +71,7 @@ class MediaRangeProxy {
       iv: iv,
       size: size,
       mimeType: mimeType,
-      lastAccess: DateTime.now(),
+      lastAccess: _clock(),
     );
     return Uri.parse('http://127.0.0.1:${server.port}/media/$id');
   }
@@ -104,7 +109,7 @@ class MediaRangeProxy {
       await request.response.close();
       return;
     }
-    media.lastAccess = DateTime.now();
+    media.lastAccess = _clock();
 
     try {
       final rangeHeader = request.headers.value(HttpHeaders.rangeHeader);
@@ -355,7 +360,7 @@ class MediaRangeProxy {
   }
 
   void _removeExpired() {
-    final cutoff = DateTime.now().subtract(entryTtl);
+    final cutoff = _clock().subtract(entryTtl);
     for (final id
         in _entries.entries
             .where((entry) => entry.value.lastAccess.isBefore(cutoff))

@@ -340,8 +340,10 @@ void main() {
   });
 
   test('supports HEAD, rejects invalid ranges, and expires entries', () async {
+    var now = DateTime.utc(2026);
     final proxy = MediaRangeProxy(
       decryptor: (input, _, _, _) => input,
+      clock: () => now,
       entryTtl: const Duration(milliseconds: 20),
     );
     addTearDown(proxy.close);
@@ -364,7 +366,7 @@ void main() {
     final invalid = await invalidRequest.close();
     expect(invalid.statusCode, HttpStatus.requestedRangeNotSatisfiable);
 
-    await Future<void>.delayed(const Duration(milliseconds: 30));
+    now = now.add(const Duration(milliseconds: 21));
     final expired = await (await client.getUrl(local)).close();
     expect(expired.statusCode, HttpStatus.notFound);
   });

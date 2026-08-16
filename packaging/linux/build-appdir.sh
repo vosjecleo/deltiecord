@@ -28,3 +28,5 @@ install -m 0644 "$repo_root/THIRD-PARTY-NOTICES.md" \
   "$appdir/usr/share/doc/deltiecord/THIRD-PARTY-NOTICES.md"
 install -m 0644 "$bundle/data/flutter_assets/NOTICES.Z" \
   "$appdir/usr/share/doc/deltiecord/FLUTTER-NOTICES.Z"
+install -m 0755 "$repo_root/packaging/linux/deltiecord-launcher" \
+  "$appdir/AppRun"

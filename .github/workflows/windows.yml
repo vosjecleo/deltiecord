@@ -76,7 +76,17 @@ jobs:
         run: flutter analyze
 
       - name: Test
-        run: flutter test --concurrency=1
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'flutter-test-output.txt'
+          & flutter test --concurrency=1 2>&1 | Tee-Object -FilePath $output
+          $testExit = $LASTEXITCODE
+          if ($testExit -ne 0) {
+            $tail = (Get-Content $output | Select-Object -Last 180) -join "`n"
+            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Host "::error title=Windows Flutter test failure::$escaped"
+            exit $testExit
+          }
 
       - name: Build Windows release
         run: flutter build windows --release

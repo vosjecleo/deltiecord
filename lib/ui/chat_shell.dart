@@ -21,6 +21,7 @@ import '../models/chat_models.dart';
 import '../services/giphy_service.dart';
 import '../services/secret_redaction.dart';
 import '../services/temporary_attachment_store.dart';
+import '../services/timezone_catalog.dart';
 import '../services/emoji_repository.dart';
 import '../services/emoji_completion.dart';
 import '../services/draft_store.dart';
@@ -28,6 +29,7 @@ import 'giphy_dialog.dart';
 import 'emoji_picker_dialog.dart';
 import 'settings_screen.dart';
 import 'profile_dialog.dart';
+import 'profile_card.dart';
 import 'app_shortcuts.dart';
 import 'rich_message.dart';
 import 'matrix_html_text.dart';
@@ -225,6 +227,10 @@ class _ChatShellState extends State<ChatShell> {
       _sidePanelView = _SidePanelView.profile;
       _sidePanelVisible = true;
     });
+  }
+
+  void _showProfilePopover(RoomMemberSummary member, [Offset? anchor]) {
+    showMemberProfile(context, widget.backend, member, anchor: anchor);
   }
 
   void _saveActiveDraft() {
@@ -744,7 +750,7 @@ class _ChatShellState extends State<ChatShell> {
                                             ),
                                         onShowMembers: _showMembersPanel,
                                         onShowProfile: (request) =>
-                                            _showProfilePanel(
+                                            _showProfilePopover(
                                               request.$1,
                                               request.$2,
                                             ),

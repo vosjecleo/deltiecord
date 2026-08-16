@@ -435,6 +435,12 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
                             },
                             icon: const Icon(Icons.chat_bubble_outline),
                             label: const Text('Message'),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: accent,
+                              foregroundColor: deltiecordContrastingForeground(
+                                accent,
+                              ),
+                            ),
                           ),
                         ),
                       SizedBox(

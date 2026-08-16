@@ -12,6 +12,7 @@ import 'package:matrix/encryption/utils/crypto_setup_extension.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
+import '../services/font_preferences.dart';
 import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
 import '../services/secret_redaction.dart';
@@ -548,6 +549,20 @@ class MatrixBackend extends ChatBackend {
     categoryId: categoryId,
     beforeRoomId: beforeRoomId,
   );
+
+  @override
+  int spaceChannelLayoutPowerLevel(String spaceId) =>
+      _spaceChannelLayoutPowerLevel(spaceId);
+
+  @override
+  bool canSetSpaceChannelLayoutPowerLevel(String spaceId) =>
+      _matrix.getRoomById(spaceId)?.canChangePowerLevel ?? false;
+
+  @override
+  Future<void> setSpaceChannelLayoutPowerLevel(
+    String spaceId,
+    int powerLevel,
+  ) => _setSpaceChannelLayoutPowerLevel(spaceId, powerLevel);
 
   @override
   Future<void> renameRoom(String roomId, String name) =>

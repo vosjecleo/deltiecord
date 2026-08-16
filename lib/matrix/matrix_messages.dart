@@ -118,7 +118,7 @@ extension _MatrixMessages on MatrixBackend {
       if (evicted > 0) _timelineHasPrunedNewerEvents = true;
       await _decryptTimelineEvents(timeline);
       if (!identical(timeline, _timeline)) return;
-      await _hydrateTimelineMetadata(timeline);
+      unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
     } catch (exception) {
       _error = _friendlyError(exception);
     } finally {
@@ -232,7 +232,7 @@ extension _MatrixMessages on MatrixBackend {
       _timelineHasPrunedNewerEvents = activeTimeline.canRequestFuture;
       await _decryptTimelineEvents(activeTimeline);
       if (!identical(activeTimeline, _timeline)) return;
-      await _hydrateTimelineMetadata(activeTimeline);
+      unawaited(_hydrateCurrentTimeline(activeTimeline, _timelineGeneration));
     } catch (exception) {
       _error = _friendlyError(exception);
     } finally {

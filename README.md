@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: v0.9.16 b59 prerelease**
+> **Current release: v0.9.17 b60 prerelease**
 >
 > Deltiecord is currently a feature-complete desktop beta. It is usable for everyday testing, but bugs and rough edges should still be expected while the project approaches v1.0.
 
@@ -66,11 +66,16 @@ Notable features include:
 - **GIF search**, powered by GIPHY
 - **Inline video streaming**, including encrypted media without requiring the entire file to download first
 - **Separate voice channels** using MatrixRTC
-- **Voice, video and screen sharing**
+- **Voice, video and screen sharing**, with participant grids, speaking indicators,
+  fullscreen streams, per-user volume controls, mute and deafen controls
+- **Desktop-audio capture during screen sharing** where the operating system's
+  capture portal and WebRTC stack support it
 - **DM/group-chat Home screen**, separated from Space channels
 - **Discord-style Spaces/server navigation**
-- **Discord-style room/channel categories**
-- **Drag-and-drop channel ordering**
+- **Discord-style room/channel categories**, including collapsible and reorderable
+  categories
+- **Drag-and-drop channel ordering**, synchronized through namespaced Matrix room
+  state with an administrator-level permission by default
 - **Rich profiles**, including:
   - profile banners
   - custom profile colours and gradients
@@ -101,6 +106,8 @@ Notable features include:
 - **Clipboard image/file support**
 - **Configurable keyboard shortcuts**
 - **Multiple UI density and appearance settings**
+- **Bundled text and emoji fonts** with configurable application and fallback
+  font choices
 - **Custom profile theming without paying anyone €9.99/month for the privilege**
 
 Deltiecord is desktop-first. An Android app is planned, though the newest features and updates will remain desktop-first and mobile-second.
@@ -308,4 +315,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.16 b59, prerelease**
+**Current release: v0.9.17 b60, prerelease**

@@ -20,7 +20,7 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
-    <release version="0.9.16" date="2026-08-16" type="development">
+    <release version="0.9.17" date="2026-08-16" type="development">
       <description>
         <p>Hardens timeline navigation, profiles, audio, categories, documentation, and desktop release packaging.</p>
       </description>

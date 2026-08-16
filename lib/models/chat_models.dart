@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:webrtc_interface/webrtc_interface.dart';
 
+import '../services/font_preferences.dart';
+
 enum SessionStatus { starting, signedOut, signingIn, signedIn, failed }
 
 enum ConnectionStatus { connecting, online, reconnecting, offline }
@@ -56,7 +58,7 @@ class AppPreferences {
     this.sharePresence = true,
     this.accentColor = 0xff6975d9,
     this.fontFamily = 'Liberation Sans',
-    this.emojiFontFamily = 'Deltiecord Emoji',
+    this.emojiFontFamily = bundledEmojiFontFamily,
     this.showNativeTitleBar = true,
     this.rememberWindowState = true,
     this.shortcutBindings = defaultShortcutBindings,
@@ -73,6 +75,7 @@ class AppPreferences {
     this.microphoneVolume = 1,
     this.outputVolume = 1,
     this.callSound = true,
+    this.shareDesktopAudio = false,
     this.participantVolumes = const {},
   });
 
@@ -111,6 +114,7 @@ class AppPreferences {
   final double microphoneVolume;
   final double outputVolume;
   final bool callSound;
+  final bool shareDesktopAudio;
   final Map<String, double> participantVolumes;
 
   AppPreferences copyWith({
@@ -149,6 +153,7 @@ class AppPreferences {
     double? microphoneVolume,
     double? outputVolume,
     bool? callSound,
+    bool? shareDesktopAudio,
     Map<String, double>? participantVolumes,
   }) => AppPreferences(
     density: density ?? this.density,
@@ -189,6 +194,7 @@ class AppPreferences {
     microphoneVolume: microphoneVolume ?? this.microphoneVolume,
     outputVolume: outputVolume ?? this.outputVolume,
     callSound: callSound ?? this.callSound,
+    shareDesktopAudio: shareDesktopAudio ?? this.shareDesktopAudio,
     participantVolumes: participantVolumes ?? this.participantVolumes,
   );
 }

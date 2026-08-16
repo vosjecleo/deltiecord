@@ -62,6 +62,10 @@ class _SpaceBar extends StatelessWidget {
     final topic = TextEditingController(text: space.topic);
     Uint8List? avatar;
     var removeAvatar = false;
+    final originalLayoutPowerLevel = backend.spaceChannelLayoutPowerLevel(
+      space.id,
+    );
+    var layoutPowerLevel = originalLayoutPowerLevel;
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -114,6 +118,43 @@ class _SpaceBar extends StatelessWidget {
                       ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: layoutPowerLevel,
+                  decoration: const InputDecoration(
+                    labelText: 'Manage channels and categories',
+                    helperText:
+                        'Synced in Matrix room power levels; default is Admin.',
+                  ),
+                  items:
+                      const [
+                        DropdownMenuItem(value: 0, child: Text('Members (0)')),
+                        DropdownMenuItem(
+                          value: 50,
+                          child: Text('Moderators (50)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 100,
+                          child: Text('Admins (100)'),
+                        ),
+                      ] +
+                      (const [0, 50, 100].contains(originalLayoutPowerLevel)
+                          ? const []
+                          : [
+                              DropdownMenuItem(
+                                value: originalLayoutPowerLevel,
+                                child: Text(
+                                  'Custom ($originalLayoutPowerLevel)',
+                                ),
+                              ),
+                            ]),
+                  onChanged:
+                      backend.canSetSpaceChannelLayoutPowerLevel(space.id)
+                      ? (value) => setDialogState(
+                          () => layoutPowerLevel = value ?? 100,
+                        )
+                      : null,
+                ),
               ],
             ),
           ),
@@ -143,6 +184,9 @@ class _SpaceBar extends StatelessWidget {
     }
     if (avatar != null || removeAvatar) {
       await backend.setRoomAvatar(space.id, avatar);
+    }
+    if (layoutPowerLevel != originalLayoutPowerLevel) {
+      await backend.setSpaceChannelLayoutPowerLevel(space.id, layoutPowerLevel);
     }
   }
 
@@ -1334,8 +1378,9 @@ class _ChannelCategorySection extends StatelessWidget {
                     categoryId: current?.id,
                     beforeRoomId: room.id,
                   ),
-                  builder: (context, candidates, _) => LongPressDraggable(
+                  builder: (context, candidates, _) => Draggable<RoomSummary>(
                     data: room,
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
                     feedback: Material(
                       color: context.deltiecord.elevated,
                       child: SizedBox(

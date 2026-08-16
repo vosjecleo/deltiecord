@@ -5,6 +5,7 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../version.dart';
 import '../services/app_sounds.dart';
+import '../services/font_preferences.dart';
 import '../services/microphone_test.dart';
 import '../services/secret_redaction.dart';
 import 'accent_color_picker.dart';
@@ -455,7 +456,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     _SettingsPage.shortcuts => _shortcuts(),
     _SettingsPage.advanced => _section('Advanced diagnostics', [
       DropdownButtonFormField<String>(
-        initialValue: backend.preferences.emojiFontFamily,
+        initialValue: normalizeEmojiFontFamily(
+          backend.preferences.emojiFontFamily,
+        ),
         decoration: const InputDecoration(
           labelText: 'Fallback emoji font',
           helperText:

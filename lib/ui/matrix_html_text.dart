@@ -4,6 +4,46 @@ import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'deltiecord_theme.dart';
+
+final _emojiPresentationPattern = RegExp(
+  r'[\u{00A9}\u{00AE}\u{203C}\u{2049}\u{2122}\u{2139}\u{2194}-\u{21FF}\u{2300}-\u{23FF}\u{25A0}-\u{27BF}\u{2B00}-\u{2BFF}\u{1F000}-\u{1FAFF}]',
+  unicode: true,
+);
+
+List<InlineSpan> _emojiAwareTextSpans(
+  BuildContext context,
+  String text,
+  TextStyle style,
+) {
+  if (text.isEmpty) return const [];
+  final spans = <InlineSpan>[];
+  final buffer = StringBuffer();
+  bool? bufferedEmoji;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    spans.add(
+      TextSpan(
+        text: buffer.toString(),
+        style: bufferedEmoji == true
+            ? style.copyWith(fontFamily: context.deltiecordEmojiFont)
+            : style,
+      ),
+    );
+    buffer.clear();
+  }
+
+  for (final cluster in text.characters) {
+    final isEmoji = _emojiPresentationPattern.hasMatch(cluster);
+    if (bufferedEmoji != null && bufferedEmoji != isEmoji) flush();
+    bufferedEmoji = isEmoji;
+    buffer.write(cluster);
+  }
+  flush();
+  return spans;
+}
+
 class MatrixPlainText extends StatefulWidget {
   const MatrixPlainText({required this.text, this.style, super.key});
 
@@ -32,7 +72,13 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
     var offset = 0;
     for (final match in _urlPattern.allMatches(widget.text)) {
       if (match.start > offset) {
-        spans.add(TextSpan(text: widget.text.substring(offset, match.start)));
+        spans.addAll(
+          _emojiAwareTextSpans(
+            context,
+            widget.text.substring(offset, match.start),
+            widget.style ?? const TextStyle(),
+          ),
+        );
       }
       final matched = match.group(0)!;
       final trailing =
@@ -56,11 +102,25 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
           recognizer: recognizer,
         ),
       );
-      if (trailing.isNotEmpty) spans.add(TextSpan(text: trailing));
+      if (trailing.isNotEmpty) {
+        spans.addAll(
+          _emojiAwareTextSpans(
+            context,
+            trailing,
+            widget.style ?? const TextStyle(),
+          ),
+        );
+      }
       offset = match.end;
     }
     if (offset < widget.text.length) {
-      spans.add(TextSpan(text: widget.text.substring(offset)));
+      spans.addAll(
+        _emojiAwareTextSpans(
+          context,
+          widget.text.substring(offset),
+          widget.style ?? const TextStyle(),
+        ),
+      );
     }
     return SelectableText.rich(
       TextSpan(style: widget.style, children: spans),
@@ -111,8 +171,14 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       if (lastSpan is TextSpan && lastSpan.text == '\n') spans.removeLast();
     }
     if (spans.isEmpty) {
-      return SelectableText(
-        widget.fallback,
+      return SelectableText.rich(
+        TextSpan(
+          children: _emojiAwareTextSpans(
+            context,
+            widget.fallback,
+            const TextStyle(),
+          ),
+        ),
         contextMenuBuilder: _noContextMenu,
       );
     }
@@ -126,7 +192,9 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       nodes.expand((node) => _node(node, style)).toList(growable: false);
 
   List<InlineSpan> _node(dom.Node node, TextStyle style) {
-    if (node is dom.Text) return [TextSpan(text: node.data, style: style)];
+    if (node is dom.Text) {
+      return _emojiAwareTextSpans(context, node.data, style);
+    }
     if (node is! dom.Element) return const [];
     final tag = node.localName;
     if (tag == 'mx-reply') return const [];

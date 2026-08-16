@@ -255,6 +255,9 @@ class _MessageRowState extends State<_MessageRow> {
                                                 details.globalPosition,
                                         child: Text(
                                           message.sender,
+                                          key: ValueKey(
+                                            'message-sender-${message.id}',
+                                          ),
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
                                             fontSize:

@@ -63,8 +63,14 @@ extension _MatrixRoomMetadata on MatrixBackend {
       participants[userId] = VoiceParticipantSummary(
         userId: userId,
         displayName: user.calcDisplayname(),
-        avatarBytes: _senderAvatarBytes['${room.id}|$userId'],
-        speaking: userId == _voice?.activeSpeakerUserId,
+        avatarBytes:
+            _senderAvatarBytes['${room.id}|$userId'] ??
+            _senderAvatarBytes[userId],
+        speaking:
+            userId == _voice?.activeSpeakerUserId ||
+            (userId == _matrix.userID &&
+                !(_voice?.muted ?? true) &&
+                (_voice?.inputLevel ?? 0) >= 0.04),
         localVolume: _voice?.participantVolume(userId) ?? 1,
         locallyMuted: _voice?.participantLocallyMuted(userId) ?? false,
       );

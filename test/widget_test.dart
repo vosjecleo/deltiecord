@@ -296,6 +296,49 @@ void main() {
     expect(find.text('Move down'), findsOneWidget);
   });
 
+  testWidgets('rooms can be dragged into a Space category', (tester) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Workspace'),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!loose:example.org',
+          name: 'loose',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+        RoomSummary(
+          id: '!work:example.org',
+          name: 'work room',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(
+          id: 'work',
+          name: 'WORK',
+          roomIds: ['!work:example.org'],
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    await tester.dragFrom(
+      tester.getCenter(find.text('loose')),
+      tester.getCenter(find.text('▾ WORK')) -
+          tester.getCenter(find.text('loose')),
+      touchSlopY: 0,
+    );
+    await tester.pumpAndSettle();
+
+    expect(backend.roomMoves, contains(('!loose:example.org', 'work', null)));
+  });
+
   testWidgets('opens voice rooms without exposing a message composer', (
     tester,
   ) async {
@@ -344,10 +387,15 @@ void main() {
     await tester.tap(find.text('Lounge'));
     await tester.pump();
 
+    expect(find.text('Mute'), findsNothing);
+    expect(find.byTooltip('Voice options'), findsOneWidget);
+    await tester.tap(find.byTooltip('Voice options'));
+    await tester.pumpAndSettle();
     expect(find.text('Mute'), findsOneWidget);
     expect(find.text('Deafen'), findsOneWidget);
     expect(find.text('Camera on'), findsOneWidget);
-    expect(find.text('Share'), findsOneWidget);
+    expect(find.text('Share screen'), findsOneWidget);
+    expect(find.text('Share desktop audio'), findsOneWidget);
     await tester.tap(find.text('Deafen'));
     await tester.pump();
     expect(backend.deafened, isTrue);
@@ -685,7 +733,7 @@ void main() {
   ) async {
     late FakeBackend backend;
     final current = List.generate(
-      14,
+      44,
       (index) => ChatMessage(
         id: '\$current-$index',
         sender: 'Alice',
@@ -709,7 +757,7 @@ void main() {
       ..messageList = current;
     backend.historyLoader = () async {
       backend.messageList = [
-        ...current,
+        ...current.skip(6),
         ...List.generate(
           14,
           (index) => ChatMessage(
@@ -733,13 +781,27 @@ void main() {
     await tester.pumpWidget(DeltiecordApp(backend: backend));
     await tester.tap(find.text('anchor'));
     await tester.pump();
-    await tester.ensureVisible(find.text('Load older messages'));
+    final timelineScrollable = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(const Key('message-timeline')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    timelineScrollable.position.jumpTo(
+      timelineScrollable.position.maxScrollExtent,
+    );
     await tester.pump();
-    final anchor = find.text('Current message 13');
+    final anchor = find.text('Current message 35');
     expect(anchor, findsOneWidget);
     final before = tester.getTopLeft(anchor).dy;
 
-    await tester.tap(find.text('Load older messages'));
+    tester
+        .widget<TextButton>(
+          find.widgetWithText(TextButton, 'Load older messages'),
+        )
+        .onPressed!();
     await tester.pump();
     await tester.pump();
 
@@ -1679,6 +1741,9 @@ void main() {
         presence: UserPresence.online,
         bio: 'Matrix enthusiast',
         statusMessage: 'Building things',
+        timezone: 'Europe/Amsterdam',
+        profileColor: 0xffaa2233,
+        profileColorSecondary: 0xff2233aa,
       );
     await tester.pumpWidget(DeltiecordApp(backend: backend));
     await tester.tap(find.text('Alice').first);
@@ -1688,10 +1753,68 @@ void main() {
     expect(find.text('@alice:example.org'), findsOneWidget);
     expect(find.text('Matrix enthusiast'), findsOneWidget);
     expect(find.text('View full profile'), findsOneWidget);
+    expect(find.textContaining('UTC+02'), findsOneWidget);
+    final recipientGradient = tester.widget<DecoratedBox>(
+      find.byKey(const Key('recipient-profile-gradient')),
+    );
+    final recipientDecoration = recipientGradient.decoration as BoxDecoration;
+    expect(recipientDecoration.gradient, isNotNull);
+    expect(recipientDecoration.border, isNotNull);
     expect(
       tester.getTopLeft(find.byKey(const Key('view-full-profile-island'))).dy,
       tester.getTopLeft(find.byKey(const Key('message-composer-island'))).dy,
     );
+  });
+
+  testWidgets('in-chat sender opens a popover without replacing recipient', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!direct-popover:example.org',
+          name: 'Alice',
+          lastMessage: 'hello',
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ]
+      ..memberList = const [
+        RoomMemberSummary(userId: '@deltie:example.org', displayName: 'Deltie'),
+        RoomMemberSummary(userId: '@alice:example.org', displayName: 'Alice'),
+      ]
+      ..testProfile = const UserProfileSummary(
+        userId: '@alice:example.org',
+        displayName: 'Alice',
+      )
+      ..messageList = [
+        ChatMessage(
+          id: r'$direct-profile-popover',
+          sender: 'Alice',
+          senderId: '@alice:example.org',
+          body: 'hello from the timeline',
+          timestamp: DateTime(2026, 8, 16),
+          pending: false,
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('Alice').first);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('recipient-profile-panel')), findsOneWidget);
+    await tester.tap(
+      find.byKey(const ValueKey(r'message-sender-$direct-profile-popover')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('compact-profile-popup')), findsOneWidget);
+    expect(find.byKey(const Key('recipient-profile-panel')), findsOneWidget);
   });
 
   testWidgets('server rooms show a collapsible member side panel', (
@@ -1902,7 +2025,7 @@ class FakeBackend extends ChatBackend {
     String roomId, {
     String? categoryId,
     String? beforeRoomId,
-  }) async {}
+  }) async => roomMoves.add((roomId, categoryId, beforeRoomId));
 
   SessionStatus currentStatus = SessionStatus.starting;
   ConnectionStatus currentConnectionStatus = ConnectionStatus.online;
@@ -1936,6 +2059,7 @@ class FakeBackend extends ChatBackend {
   final List<(String, String)> toggledReactions = [];
   final List<(String, bool)> mutedRooms = [];
   final List<(String, bool)> categoryCollapseChanges = [];
+  final List<(String, String?, String?)> roomMoves = [];
   final List<String> jumpedEventIds = [];
   String? lastReplyToMessageId;
   String? lastEditMessageId;

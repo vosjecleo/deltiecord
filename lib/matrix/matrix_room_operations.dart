@@ -1,6 +1,58 @@
 part of 'matrix_backend.dart';
 
 extension _MatrixRoomOperations on MatrixBackend {
+  int _spaceChannelLayoutPowerLevel(String spaceId) {
+    final powerLevels = _matrix
+        .getRoomById(spaceId)
+        ?.getState(EventTypes.RoomPowerLevels)
+        ?.content;
+    return powerLevels
+            ?.tryGetMap<String, Object?>('events')
+            ?.tryGet<int>(MatrixBackend._spaceChannelsEventType) ??
+        100;
+  }
+
+  Future<void> _setSpaceChannelLayoutPowerLevel(
+    String spaceId,
+    int powerLevel,
+  ) async {
+    final space = _matrix.getRoomById(spaceId);
+    if (space == null || !space.canChangePowerLevel) {
+      throw StateError('You cannot change this Space permission.');
+    }
+    final content = Map<String, dynamic>.from(
+      space.getState(EventTypes.RoomPowerLevels)?.content ?? const {},
+    );
+    final events = Map<String, dynamic>.from(
+      content.tryGetMap<String, Object?>('events') ?? const {},
+    );
+    events[MatrixBackend._spaceChannelsEventType] = powerLevel.clamp(0, 100);
+    await _matrix.setRoomStateWithKey(spaceId, EventTypes.RoomPowerLevels, '', {
+      ...content,
+      'events': events,
+    });
+    _notifyBackendListeners();
+  }
+
+  Future<void> _ensureSpaceChannelLayoutPermission(String spaceId) async {
+    final space = _matrix.getRoomById(spaceId);
+    if (space == null) throw StateError('Space is unavailable.');
+    final existing = space
+        .getState(EventTypes.RoomPowerLevels)
+        ?.content
+        .tryGetMap<String, Object?>('events')
+        ?.tryGet<int>(MatrixBackend._spaceChannelsEventType);
+    if (existing == null && space.canChangePowerLevel) {
+      await _setSpaceChannelLayoutPowerLevel(spaceId, 100);
+    }
+    final required = existing ?? 100;
+    if (space.ownPowerLevel.level < required) {
+      throw StateError(
+        'This Space requires power level $required to change channel layout.',
+      );
+    }
+  }
+
   Map<String, dynamic> _spaceChannelLayout(String spaceId) {
     final override = _spaceChannelLayoutOverrides[spaceId];
     if (override != null) return Map.of(override);
@@ -39,6 +91,7 @@ extension _MatrixRoomOperations on MatrixBackend {
     String spaceId,
     Map<String, dynamic> content,
   ) async {
+    await _ensureSpaceChannelLayoutPermission(spaceId);
     await _matrix.setRoomStateWithKey(
       spaceId,
       MatrixBackend._spaceChannelsEventType,
@@ -318,7 +371,6 @@ extension _MatrixRoomOperations on MatrixBackend {
     final totalTimer = Stopwatch()..start();
     final stageTimer = Stopwatch()..start();
     final cacheHit = _roomMessageCache.containsKey(roomId);
-    var postLoadMs = 0;
     var keyBackupMs = 0;
     var timelineMs = 0;
     var decryptMs = 0;
@@ -332,16 +384,19 @@ extension _MatrixRoomOperations on MatrixBackend {
     try {
       final room = _matrix.getRoomById(roomId);
       if (room == null) throw StateError('That room is no longer available.');
-      await room.postLoad();
-      postLoadMs = stageTimer.elapsedMilliseconds;
-      stageTimer.reset();
       if (_presentationFor(room) == RoomPresentation.voice) {
         _timelineLoading = false;
         _notifyBackendListeners();
         return;
       }
-      await _loadRoomBackupKeys(room);
-      keyBackupMs = stageTimer.elapsedMilliseconds;
+      // Room.getTimeline performs postLoad itself. Start key-backup hydration
+      // alongside it so a cold encrypted room does not serialize two database
+      // operations before it can publish any text.
+      final backupFuture = () async {
+        final timer = Stopwatch()..start();
+        await _loadRoomBackupKeys(room);
+        return timer.elapsedMilliseconds;
+      }();
       stageTimer.reset();
       if (!_isCurrentSelection(roomId, generation)) return;
       final timeline = await room.getTimeline(
@@ -357,6 +412,14 @@ extension _MatrixRoomOperations on MatrixBackend {
       _timeline = timeline;
       _timelineDatabaseOffset = timeline.events.length;
       _captureFirstUnread(room, timeline);
+      // The SDK already decrypts locally-available events while constructing
+      // the Timeline. Publish that usable snapshot immediately; any remaining
+      // backup-backed events hydrate under the small loading strip.
+      _roomMessageCache[roomId] = List.unmodifiable(_mappedMessages);
+      _notifyBackendListeners();
+      keyBackupMs = await backupFuture;
+      if (!_isCurrentTimeline(timeline, generation)) return;
+      stageTimer.reset();
       await _decryptTimelineEvents(timeline);
       decryptMs = stageTimer.elapsedMilliseconds;
       if (!_isCurrentTimeline(timeline, generation)) return;
@@ -365,7 +428,7 @@ extension _MatrixRoomOperations on MatrixBackend {
       _notifyBackendListeners();
       _debugRoomOpenTiming(
         'usable_ms=${totalTimer.elapsedMilliseconds} '
-        'post_load_ms=$postLoadMs key_backup_ms=$keyBackupMs '
+        'key_backup_ms=$keyBackupMs '
         'timeline_ms=$timelineMs decrypt_ms=$decryptMs '
         'encrypted=${room.encrypted} cache_hit=$cacheHit '
         'events=${timeline.events.length}',

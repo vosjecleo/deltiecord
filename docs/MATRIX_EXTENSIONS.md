@@ -44,6 +44,12 @@ IDs; absent rooms are uncategorized. Actual room membership remains standard
 `m.space.child` for room ordering, so clients that understand Matrix Space
 ordering can retain a useful order without understanding categories.
 
+The Space's standard `m.room.power_levels` event controls who may write this
+layout through an `events["net.deltiecord.space.channels"]` entry. Deltiecord
+initializes that entry to `100` (administrator) and exposes it in Space
+settings. This permission and the layout state sync to every client; clients
+that do not understand the namespaced layout can safely ignore it.
+
 Collapsed categories are a per-account UI preference in
 `net.deltiecord.settings`, not public room state.
 

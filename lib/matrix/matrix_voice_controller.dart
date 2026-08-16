@@ -65,6 +65,7 @@ class MatrixVoiceController extends ChangeNotifier {
   double _microphoneVolume = 1;
   double _outputVolume = 1;
   bool _callSound = true;
+  bool _shareDesktopAudio = false;
 
   VoiceConnectionStatus get status => _status;
   String? get activeRoomId => _activeCall?.room.id;
@@ -125,6 +126,7 @@ class MatrixVoiceController extends ChangeNotifier {
     _microphoneVolume = preferences.microphoneVolume.clamp(0, 1);
     _outputVolume = preferences.outputVolume.clamp(0, 1);
     _callSound = preferences.callSound;
+    _shareDesktopAudio = preferences.shareDesktopAudio;
     final inputId = preferences.preferredAudioInputId;
     final outputId = preferences.preferredAudioOutputId;
     final cameraId = preferences.preferredCameraId;
@@ -173,6 +175,7 @@ class MatrixVoiceController extends ChangeNotifier {
             _status == VoiceConnectionStatus.connecting ||
             _status == VoiceConnectionStatus.reconnecting ||
             _status == VoiceConnectionStatus.connected,
+        shareDesktopAudio: () => _shareDesktopAudio,
       ),
     );
     unawaited(refreshAudioInputs());
@@ -533,6 +536,31 @@ class MatrixVoiceController extends ChangeNotifier {
 
   Future<void> setCameraEnabled(bool enabled) async {
     if (_disposed || _cameraEnabled == enabled) return;
+    final call = _activeCall;
+    final hasVideoTrack =
+        call?.backend.localUserMediaStream?.stream
+            ?.getVideoTracks()
+            .isNotEmpty ??
+        false;
+    if (call != null && (hasVideoTrack || !enabled)) {
+      _cameraEnabled = enabled;
+      notifyListeners();
+      if (hasVideoTrack) {
+        try {
+          await call.backend.setDeviceMuted(
+            call,
+            !enabled,
+            MediaInputKind.videoinput,
+          );
+        } catch (exception) {
+          _cameraEnabled = !enabled;
+          _error = friendlyError(exception);
+          notifyListeners();
+          rethrow;
+        }
+      }
+      return;
+    }
     _cameraEnabled = enabled;
     final roomId = activeRoomId;
     notifyListeners();

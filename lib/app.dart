@@ -5,6 +5,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'backend/chat_backend.dart';
 import 'models/chat_models.dart';
 import 'services/desktop_window_service.dart';
+import 'services/font_preferences.dart';
 import 'ui/chat_shell.dart';
 import 'ui/deltiecord_theme.dart';
 import 'ui/login_screen.dart';
@@ -20,6 +21,9 @@ class DeltiecordApp extends StatelessWidget {
       listenable: backend,
       builder: (context, _) {
         final preferences = backend.preferences;
+        final emojiFontFamily = normalizeEmojiFontFamily(
+          preferences.emojiFontFamily,
+        );
         if (backend.status == SessionStatus.signedIn) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => DesktopWindowService.apply(preferences),
@@ -99,9 +103,9 @@ class DeltiecordApp extends StatelessWidget {
               // Without an explicit fallback, Skia delegates missing glyphs
               // to the host font configuration and can select monochrome or
               // incomplete emoji fonts on otherwise identical installs.
-              fontFamilyFallback: preferences.emojiFontFamily == 'System'
+              fontFamilyFallback: emojiFontFamily == systemEmojiFontFamily
                   ? null
-                  : <String>[preferences.emojiFontFamily],
+                  : <String>[emojiFontFamily],
             );
         return MaterialApp(
           title: 'Deltiecord',
@@ -129,9 +133,9 @@ class DeltiecordApp extends StatelessWidget {
             extensions: [
               palette,
               DeltiecordEmojiTypography(
-                fontFamily: preferences.emojiFontFamily == 'System'
+                fontFamily: emojiFontFamily == systemEmojiFontFamily
                     ? null
-                    : preferences.emojiFontFamily,
+                    : emojiFontFamily,
               ),
             ],
             textTheme: textTheme,

@@ -21,6 +21,16 @@ abstract final class DeltiecordCorners {
   static const BorderRadius borderRadius = BorderRadius.all(corner);
 }
 
+/// Chooses the higher-contrast monochrome foreground for a user-selected
+/// colour. Profile colours are arbitrary, so theme defaults cannot guarantee
+/// that action labels remain legible.
+Color deltiecordContrastingForeground(Color background) {
+  final luminance = background.computeLuminance();
+  final whiteContrast = 1.05 / (luminance + 0.05);
+  final blackContrast = (luminance + 0.05) / 0.05;
+  return whiteContrast >= blackContrast ? Colors.white : Colors.black;
+}
+
 @immutable
 class DeltiecordPalette extends ThemeExtension<DeltiecordPalette> {
   const DeltiecordPalette({

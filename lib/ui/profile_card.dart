@@ -184,6 +184,9 @@ class DeltiecordProfileCard extends StatelessWidget {
                             label: const Text('Message'),
                             style: FilledButton.styleFrom(
                               backgroundColor: accent,
+                              foregroundColor: deltiecordContrastingForeground(
+                                accent,
+                              ),
                             ),
                           ),
                         ),

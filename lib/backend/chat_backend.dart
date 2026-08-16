@@ -94,6 +94,12 @@ abstract class ChatBackend extends ChangeNotifier {
     String? categoryId,
     String? beforeRoomId,
   });
+  int spaceChannelLayoutPowerLevel(String spaceId) => 100;
+  bool canSetSpaceChannelLayoutPowerLevel(String spaceId) => false;
+  Future<void> setSpaceChannelLayoutPowerLevel(
+    String spaceId,
+    int powerLevel,
+  ) async {}
   Future<void> renameRoom(String roomId, String name);
   Future<void> setRoomTopic(String roomId, String topic);
   Future<void> setRoomAvatar(String roomId, Uint8List? bytes);

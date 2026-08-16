@@ -64,6 +64,7 @@ class _ConversationState extends State<_Conversation> {
   final _scrollController = ScrollController();
   final _timelineViewportKey = GlobalKey();
   final Map<String, GlobalKey> _messageKeys = {};
+  final Map<GlobalKey, String> _messageIdsByKey = {};
   String? _roomId;
   bool _loadingAnchoredHistory = false;
   bool _draggingFiles = false;
@@ -71,6 +72,8 @@ class _ConversationState extends State<_Conversation> {
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _navigationGeneration = 0;
+  int _timelineInputGeneration = 0;
+  int? _timelineLayoutFingerprint;
   String? _highlightedMessageId;
   VoidCallback? _dismissMessageActions;
 
@@ -117,6 +120,7 @@ class _ConversationState extends State<_Conversation> {
   }
 
   void _noteTimelineUserInput(PointerEvent _) {
+    _timelineInputGeneration++;
     _timelineUserInputUntil = DateTime.now().add(const Duration(seconds: 1));
   }
 
@@ -151,8 +155,10 @@ class _ConversationState extends State<_Conversation> {
         ?.findRenderObject();
     if (renderObject is! RenderBox || !renderObject.attached) return;
     final newOffset = renderObject.localToGlobal(Offset.zero).dy;
+    // The timeline is reversed. Increasing the scroll offset moves a retained
+    // row toward the bottom, so compensate with the inverse displacement.
     final corrected =
-        (_scrollController.position.pixels + newOffset - anchor.$2).clamp(
+        (_scrollController.position.pixels - (newOffset - anchor.$2)).clamp(
           0.0,
           _scrollController.position.maxScrollExtent,
         );
@@ -166,6 +172,7 @@ class _ConversationState extends State<_Conversation> {
       const Duration(milliseconds: 700),
     );
     final anchor = _captureVisibleAnchor();
+    final inputGeneration = _timelineInputGeneration;
     try {
       await load();
       if (!mounted) return;
@@ -175,6 +182,7 @@ class _ConversationState extends State<_Conversation> {
       for (var pass = 0; pass < 4; pass++) {
         await WidgetsBinding.instance.endOfFrame;
         if (!mounted) return;
+        if (inputGeneration != _timelineInputGeneration) return;
         final before = _scrollController.position.pixels;
         _restoreVisibleAnchor(anchor);
         if ((_scrollController.position.pixels - before).abs() < 0.5) break;
@@ -223,26 +231,60 @@ class _ConversationState extends State<_Conversation> {
   void didUpdateWidget(covariant _Conversation oldWidget) {
     super.didUpdateWidget(oldWidget);
     final roomId = widget.backend.selectedRoom?.id;
-    final passiveAnchor = !_loadingAnchoredHistory && _roomId == roomId
+    final layoutFingerprint = _messageLayoutFingerprint(
+      widget.backend.messages,
+    );
+    final layoutChanged = _timelineLayoutFingerprint != layoutFingerprint;
+    final passiveAnchor =
+        !_loadingAnchoredHistory && _roomId == roomId && layoutChanged
         ? _captureVisibleAnchor()
         : null;
+    final inputGeneration = _timelineInputGeneration;
     if (_roomId != roomId) {
       _roomId = roomId;
       _scrolledAwayFromPresent = false;
       _messageKeys.clear();
+      _messageIdsByKey.clear();
       _navigationGeneration++;
       _highlightedMessageId = null;
+      _timelineLayoutFingerprint = layoutFingerprint;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _focusComposerAfterBuild();
     } else if (oldWidget.sending && !widget.sending) {
       _focusComposerAfterBuild();
     }
+    _timelineLayoutFingerprint = layoutFingerprint;
     if (passiveAnchor != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _loadingAnchoredHistory || _roomId != roomId) return;
+        if (!mounted ||
+            _loadingAnchoredHistory ||
+            _roomId != roomId ||
+            inputGeneration != _timelineInputGeneration) {
+          return;
+        }
         _restoreVisibleAnchor(passiveAnchor);
       });
     }
+  }
+
+  int _messageLayoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
+    messages.map(
+      (message) => Object.hash(
+        message.id,
+        message.body,
+        message.formattedBody,
+        message.reply?.eventId,
+        message.attachment?.name,
+        message.linkPreview?.url,
+        message.reactions.length,
+      ),
+    ),
+  );
+
+  GlobalKey _messageKeyFor(String eventId) {
+    final key = _messageKeys.putIfAbsent(eventId, GlobalKey.new);
+    _messageIdsByKey[key] = eventId;
+    return key;
   }
 
   @override
@@ -446,6 +488,15 @@ class _ConversationState extends State<_Conversation> {
     final messages = backend.messages;
     final retainedIds = messages.map((message) => message.id).toSet();
     _messageKeys.removeWhere((eventId, _) => !retainedIds.contains(eventId));
+    _messageIdsByKey
+      ..clear()
+      ..addEntries(
+        _messageKeys.entries.map((entry) => MapEntry(entry.value, entry.key)),
+      );
+    final messageIndexes = <String, int>{
+      for (var index = 0; index < messages.length; index++)
+        messages[index].id: index,
+    };
     final mediaMessages = messages
         .where(
           (message) =>
@@ -631,19 +682,11 @@ class _ConversationState extends State<_Conversation> {
                                             ? 1
                                             : 0),
                                     findChildIndexCallback: (key) {
-                                      String? messageId;
-                                      for (final entry
-                                          in _messageKeys.entries) {
-                                        if (identical(entry.value, key)) {
-                                          messageId = entry.key;
-                                          break;
-                                        }
-                                      }
+                                      final messageId = key is GlobalKey
+                                          ? _messageIdsByKey[key]
+                                          : null;
                                       if (messageId == null) return null;
-                                      final index = messages.indexWhere(
-                                        (message) => message.id == messageId,
-                                      );
-                                      return index < 0 ? null : index;
+                                      return messageIndexes[messageId];
                                     },
                                     itemBuilder: (context, index) {
                                       if (index == messages.length) {
@@ -687,10 +730,7 @@ class _ConversationState extends State<_Conversation> {
                                               const Duration(minutes: 7) ||
                                           message.reply != null;
                                       return Column(
-                                        key: _messageKeys.putIfAbsent(
-                                          message.id,
-                                          GlobalKey.new,
-                                        ),
+                                        key: _messageKeyFor(message.id),
                                         children: [
                                           if (message.id ==
                                               backend.firstUnreadMessageId)

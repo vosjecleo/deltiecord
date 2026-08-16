@@ -538,8 +538,9 @@ extension _MatrixSession on MatrixBackend {
       fontFamily: _supportedInterfaceFont(
         content?.tryGet<String>('font_family'),
       ),
-      emojiFontFamily:
-          content?.tryGet<String>('emoji_font_family') ?? 'Deltiecord Emoji',
+      emojiFontFamily: normalizeEmojiFontFamily(
+        content?.tryGet<String>('emoji_font_family'),
+      ),
       showNativeTitleBar:
           content?.tryGet<bool>('show_native_title_bar') ?? true,
       rememberWindowState:
@@ -563,6 +564,7 @@ extension _MatrixSession on MatrixBackend {
       outputVolume:
           (content?['output_volume'] as num?)?.toDouble().clamp(0, 1) ?? 1,
       callSound: content?.tryGet<bool>('call_sound') ?? true,
+      shareDesktopAudio: content?.tryGet<bool>('share_desktop_audio') ?? false,
       participantVolumes:
           content
               ?.tryGetMap<String, Object?>('participant_volumes')
@@ -677,6 +679,7 @@ extension _MatrixSession on MatrixBackend {
           'microphone_volume': preferences.microphoneVolume,
           'output_volume': preferences.outputVolume,
           'call_sound': preferences.callSound,
+          'share_desktop_audio': preferences.shareDesktopAudio,
           'participant_volumes': preferences.participantVolumes,
         },
       );

@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: v0.9.16 b58 prerelease**
+> **Current release: v0.9.16 b59 prerelease**
 >
 > Deltiecord is currently a feature-complete desktop beta. It is usable for everyday testing, but bugs and rough edges should still be expected while the project approaches v1.0.
 
@@ -308,4 +308,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.16 b58, prerelease**
+**Current release: v0.9.16 b59, prerelease**

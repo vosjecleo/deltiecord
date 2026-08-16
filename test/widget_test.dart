@@ -21,6 +21,19 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
   });
 
+  testWidgets('applies the bundled emoji font to ordinary application text', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..currentStatus = SessionStatus.signedOut;
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(
+      app.theme!.textTheme.bodyMedium!.fontFamilyFallback,
+      contains('Deltiecord Emoji'),
+    );
+  });
+
   testWidgets('shows joined rooms and opens a timeline', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn

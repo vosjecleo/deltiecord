@@ -95,6 +95,13 @@ class DeltiecordApp extends StatelessWidget {
               fontFamily: preferences.fontFamily == 'System'
                   ? null
                   : preferences.fontFamily,
+              // Keep emoji rendering deterministic across Linux and Windows.
+              // Without an explicit fallback, Skia delegates missing glyphs
+              // to the host font configuration and can select monochrome or
+              // incomplete emoji fonts on otherwise identical installs.
+              fontFamilyFallback: preferences.emojiFontFamily == 'System'
+                  ? null
+                  : <String>[preferences.emojiFontFamily],
             );
         return MaterialApp(
           title: 'Deltiecord',

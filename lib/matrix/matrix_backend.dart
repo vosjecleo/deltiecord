@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -67,6 +68,8 @@ class MatrixBackend extends ChatBackend {
   bool _timelineDatabaseExhausted = false;
   bool _timelineServerExhausted = false;
   bool _timelineHasPrunedNewerEvents = false;
+  bool _timelineHydrationRunning = false;
+  bool _timelineHydrationRequested = false;
   final Set<String> _loadedBackupRoomIds = {};
   final Map<String, Uint8List> _avatarBytes = {};
   final Map<String, Uri?> _avatarUris = {};
@@ -686,6 +689,7 @@ class MatrixBackend extends ChatBackend {
 
   Future<void> _closeTimeline() async {
     _timelineGeneration++;
+    _timelineHydrationRequested = false;
     _timeline?.cancelSubscriptions();
     _timeline = null;
     _timelineDatabaseOffset = 0;
@@ -701,6 +705,11 @@ class MatrixBackend extends ChatBackend {
 
   String _friendlyError(Object exception) {
     return safeErrorMessage(exception);
+  }
+
+  void _debugRoomOpenTiming(String message) {
+    if (const bool.fromEnvironment('dart.vm.product')) return;
+    developer.log(message, name: 'deltiecord.room_open');
   }
 
   @override

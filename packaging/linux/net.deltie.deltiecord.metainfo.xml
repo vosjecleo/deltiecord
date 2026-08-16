@@ -15,11 +15,16 @@
     </p>
   </description>
   <launchable type="desktop-id">net.deltie.deltiecord.desktop</launchable>
-  <url type="homepage">https://deltie.net</url>
+  <url type="homepage">https://deltie.net/cord</url>
   <provides>
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.16" date="2026-08-16" type="development">
+      <description>
+        <p>Hardens timeline navigation, profiles, audio, categories, documentation, and desktop release packaging.</p>
+      </description>
+    </release>
     <release version="0.9.15" date="2026-08-16" type="development">
       <description>
         <p>Adds context-aware profile cards and fixes bounded history pagination repeating pages.</p>

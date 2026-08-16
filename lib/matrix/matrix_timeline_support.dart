@@ -1,5 +1,10 @@
 part of 'matrix_backend.dart';
 
+/// Decrypts timeline events and progressively hydrates optional metadata.
+///
+/// Text is published before avatars, replies, and previews. Hydration passes
+/// are serialized because sync bursts can otherwise duplicate network work and
+/// let stale room results outlive a fast room switch.
 extension _MatrixTimelineSupport on MatrixBackend {
   Future<void> _hydrateSenderAvatars(Timeline timeline) async {
     for (final event in timeline.events) {
@@ -148,9 +153,37 @@ extension _MatrixTimelineSupport on MatrixBackend {
     int generation,
   ) async {
     if (!_isCurrentTimeline(timeline, generation)) return;
-    await _hydrateTimelineMetadata(timeline);
-    if (!_isCurrentTimeline(timeline, generation)) return;
-    _roomMessageCache[timeline.room.id] = List.unmodifiable(_mappedMessages);
+    _timelineHydrationRequested = true;
+    if (_timelineHydrationRunning) return;
+    _timelineHydrationRunning = true;
+    try {
+      while (_timelineHydrationRequested) {
+        _timelineHydrationRequested = false;
+        final currentTimeline = _timeline;
+        final currentGeneration = _timelineGeneration;
+        if (currentTimeline == null ||
+            !_isCurrentTimeline(currentTimeline, currentGeneration)) {
+          continue;
+        }
+        final metadataTimer = Stopwatch()..start();
+        await _hydrateTimelineMetadata(currentTimeline);
+        if (!_isCurrentTimeline(currentTimeline, currentGeneration)) continue;
+        _roomMessageCache[currentTimeline.room.id] = List.unmodifiable(
+          _mappedMessages,
+        );
+        _debugRoomOpenTiming(
+          'metadata_ms=${metadataTimer.elapsedMilliseconds} '
+          'events=${currentTimeline.events.length}',
+        );
+      }
+    } finally {
+      _timelineHydrationRunning = false;
+      // A timeline update can race the final loop condition. Reschedule rather
+      // than allowing two hydration passes to overlap network and cache work.
+      if (_timelineHydrationRequested && _timeline != null) {
+        unawaited(_hydrateCurrentTimeline(_timeline!, _timelineGeneration));
+      }
+    }
   }
 
   Future<void> _markSelectedRoomRead() async {

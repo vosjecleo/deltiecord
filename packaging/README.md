@@ -8,12 +8,12 @@ The script creates the Debian package, AppImage, checksums, and build metadata i
 `.pkg.tar.zst`. Generated artifacts and downloaded packaging tools are
 intentionally ignored by Git.
 
-Install the Debian package with `sudo apt install ./dist/deltiecord_0.9.15_amd64.deb`.
+Install the Debian package with `sudo apt install ./dist/deltiecord_0.9.16_amd64.deb`.
 The package removes only application files when uninstalled; Matrix/session data
 remains in the user's normal XDG application-data and Secret Service stores.
 
-Run the AppImage with `chmod +x dist/Deltiecord-0.9.15-x86_64.AppImage` followed by
-`./dist/Deltiecord-0.9.15-x86_64.AppImage`. A working desktop Secret Service is
+Run the AppImage with `chmod +x dist/Deltiecord-0.9.16-x86_64.AppImage` followed by
+`./dist/Deltiecord-0.9.16-x86_64.AppImage`. A working desktop Secret Service is
 required for persisted login and E2EE keys. Audio requires a reachable PulseAudio
 or PipeWire-Pulse service. Wayland screen sharing requires PipeWire,
 `xdg-desktop-portal`, and a working desktop portal backend such as

@@ -91,6 +91,11 @@ class EmojiEntry {
   }
 }
 
+/// Lazily loaded local Unicode emoji catalogue and alias search index.
+///
+/// Search never requires the network. Project-specific names and aliases live
+/// in `assets/emoji/aliases.json` so they can be maintained without changing
+/// completion logic.
 class EmojiRepository {
   EmojiRepository._();
 

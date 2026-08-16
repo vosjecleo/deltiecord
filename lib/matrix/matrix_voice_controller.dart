@@ -9,14 +9,33 @@ import '../models/chat_models.dart';
 import '../services/app_sounds.dart';
 import 'deltiecord_webrtc_delegate.dart';
 
+/// Platform boundary for WebRTC's process-wide audio output selection.
+abstract interface class RtcAudioOutputSelector {
+  Future<void> select(String deviceId);
+}
+
+final class WebRtcAudioOutputSelector implements RtcAudioOutputSelector {
+  const WebRtcAudioOutputSelector();
+
+  @override
+  Future<void> select(String deviceId) =>
+      flutter_webrtc.Helper.selectAudioOutput(deviceId);
+}
+
 /// Owns MatrixRTC/WebRTC resources independently from session and timeline
 /// state. This uses matrix-dart-sdk's MatrixRTC model and flutter-webrtc's
 /// native bindings; see CREDITS.md. Exactly one call may be active at a time.
 class MatrixVoiceController extends ChangeNotifier {
-  MatrixVoiceController(this._client, {required this.friendlyError});
+  MatrixVoiceController(
+    this._client, {
+    required this.friendlyError,
+    RtcAudioOutputSelector? audioOutputSelector,
+  }) : _audioOutputSelector =
+           audioOutputSelector ?? const WebRtcAudioOutputSelector();
 
   final Client _client;
   final String Function(Object error) friendlyError;
+  final RtcAudioOutputSelector _audioOutputSelector;
   VoIP? _voip;
   GroupCallSession? _activeCall;
   StreamSubscription<MatrixRTCCallEvent>? _callSubscription;
@@ -133,9 +152,7 @@ class MatrixVoiceController extends ChangeNotifier {
     final selectedOutputId = _selectedAudioOutputId;
     if (selectedOutputId != null) {
       unawaited(
-        flutter_webrtc.Helper.selectAudioOutput(
-          selectedOutputId,
-        ).catchError((_) {}),
+        _audioOutputSelector.select(selectedOutputId).catchError((_) {}),
       );
     }
     unawaited(_applyRemoteAudioSettings());
@@ -228,7 +245,7 @@ class MatrixVoiceController extends ChangeNotifier {
   Future<void> selectAudioOutput(String? deviceId) async {
     if (_disposed || _selectedAudioOutputId == deviceId) return;
     try {
-      await flutter_webrtc.Helper.selectAudioOutput(deviceId ?? 'default');
+      await _audioOutputSelector.select(deviceId ?? 'default');
       _selectedAudioOutputId = deviceId;
       _error = null;
     } catch (exception) {

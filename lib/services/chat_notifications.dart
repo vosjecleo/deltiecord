@@ -5,6 +5,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'desktop_window_service.dart';
 
+/// Safe, bounded navigation data carried by a desktop notification.
 class NotificationTarget {
   const NotificationTarget({required this.roomId, required this.eventId});
 
@@ -49,6 +50,10 @@ abstract interface class ChatNotificationSink {
   Future<void> dispose();
 }
 
+/// Native Linux/Windows notification implementation.
+///
+/// Activation first emits a Matrix-independent target, then asks the platform
+/// window service to foreground the existing process.
 class DesktopChatNotificationSink implements ChatNotificationSink {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();

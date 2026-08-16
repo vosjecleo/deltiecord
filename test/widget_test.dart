@@ -474,6 +474,83 @@ void main() {
     expect(backend.lastReplyToMessageId, r'$reply');
   });
 
+  testWidgets('repeated reply jumps retain their event targets and blink', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!replies:example.org',
+          name: 'replies',
+          lastMessage: 'second response',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$response-two',
+          sender: 'Bob',
+          body: 'second response',
+          timestamp: DateTime(2026, 8, 16, 12, 3),
+          pending: false,
+          reply: const ReplyPreview(
+            eventId: r'$target-two',
+            sender: 'Alice',
+            body: 'second target body',
+          ),
+        ),
+        ChatMessage(
+          id: r'$target-two',
+          sender: 'Alice',
+          body: 'second target body',
+          timestamp: DateTime(2026, 8, 16, 12, 2),
+          pending: false,
+        ),
+        ChatMessage(
+          id: r'$response-one',
+          sender: 'Bob',
+          body: 'first response',
+          timestamp: DateTime(2026, 8, 16, 12, 1),
+          pending: false,
+          reply: const ReplyPreview(
+            eventId: r'$target-one',
+            sender: 'Alice',
+            body: 'first target body',
+          ),
+        ),
+        ChatMessage(
+          id: r'$target-one',
+          sender: 'Alice',
+          body: 'first target body',
+          timestamp: DateTime(2026, 8, 16, 12),
+          pending: false,
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('replies'));
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key(r'reply-preview-$response-one')));
+    await tester.pump(const Duration(milliseconds: 170));
+    await tester.pump();
+    var highlighted = tester.widget<AnimatedContainer>(
+      find.byKey(const Key(r'message-row-$target-one')),
+    );
+    expect((highlighted.decoration as BoxDecoration).color, isNotNull);
+
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.tap(find.byKey(const Key(r'reply-preview-$response-two')));
+    await tester.pump(const Duration(milliseconds: 170));
+    await tester.pump();
+    highlighted = tester.widget<AnimatedContainer>(
+      find.byKey(const Key(r'message-row-$target-two')),
+    );
+    expect((highlighted.decoration as BoxDecoration).color, isNotNull);
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
   testWidgets('edits, deletes, and reacts through message actions', (
     tester,
   ) async {
@@ -588,6 +665,72 @@ void main() {
     await tester.tap(find.text('Load older messages'));
 
     expect(backend.historyRequests, 1);
+  });
+
+  testWidgets('history insertion preserves the visible event offset', (
+    tester,
+  ) async {
+    late FakeBackend backend;
+    final current = List.generate(
+      14,
+      (index) => ChatMessage(
+        id: '\$current-$index',
+        sender: 'Alice',
+        body: 'Current message $index',
+        timestamp: DateTime(2026, 8, 16, 12).subtract(Duration(minutes: index)),
+        pending: false,
+      ),
+    );
+    backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..moreHistory = true
+      ..roomList = const [
+        RoomSummary(
+          id: '!anchor:example.org',
+          name: 'anchor',
+          lastMessage: 'Current message 0',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = current;
+    backend.historyLoader = () async {
+      backend.messageList = [
+        ...current,
+        ...List.generate(
+          14,
+          (index) => ChatMessage(
+            id: '\$older-$index',
+            sender: 'Bob',
+            body: 'Older message $index with a variable height\nsecond line',
+            timestamp: DateTime(
+              2026,
+              8,
+              16,
+              11,
+            ).subtract(Duration(minutes: index)),
+            pending: false,
+          ),
+        ),
+      ];
+      backend.moreHistory = false;
+      backend.notifyListeners();
+    };
+
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('anchor'));
+    await tester.pump();
+    await tester.ensureVisible(find.text('Load older messages'));
+    await tester.pump();
+    final anchor = find.text('Current message 13');
+    expect(anchor, findsOneWidget);
+    final before = tester.getTopLeft(anchor).dy;
+
+    await tester.tap(find.text('Load older messages'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.getTopLeft(anchor).dy, closeTo(before, 1));
   });
 
   testWidgets('historical windows expose a load newer control', (tester) async {
@@ -1772,6 +1915,7 @@ class FakeBackend extends ChatBackend {
   int historyRequests = 0;
   int futureRequests = 0;
   int jumpPresentRequests = 0;
+  Future<void> Function()? historyLoader;
   final List<String> sentMessages = [];
   final List<String?> sentMessageRoomIds = [];
   final List<String?> sentAttachmentRoomIds = [];
@@ -1779,6 +1923,7 @@ class FakeBackend extends ChatBackend {
   final List<(String, String)> toggledReactions = [];
   final List<(String, bool)> mutedRooms = [];
   final List<(String, bool)> categoryCollapseChanges = [];
+  final List<String> jumpedEventIds = [];
   String? lastReplyToMessageId;
   String? lastEditMessageId;
   String? removedDeviceId;
@@ -2016,7 +2161,10 @@ class FakeBackend extends ChatBackend {
   @override
   Future<List<ChatMessage>> loadPinnedMessages() async => pinnedMessages;
   @override
-  Future<void> jumpToEvent(String eventId) async {}
+  Future<void> jumpToEvent(String eventId) async {
+    jumpedEventIds.add(eventId);
+  }
+
   @override
   Future<void> setNotificationPreviewsEnabled(bool enabled) async {}
   @override
@@ -2088,6 +2236,7 @@ class FakeBackend extends ChatBackend {
   @override
   Future<void> loadMoreHistory() async {
     historyRequests++;
+    await historyLoader?.call();
   }
 
   @override

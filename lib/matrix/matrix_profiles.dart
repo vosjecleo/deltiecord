@@ -6,6 +6,10 @@ const _profileBannerField = 'net.deltiecord.banner';
 const _profileColorField = 'net.deltiecord.profile_color';
 const _profileColorSecondaryField = 'net.deltiecord.profile_color_secondary';
 
+/// Reads and writes standard and namespaced extensible Matrix profile fields.
+///
+/// Custom fields are written only when advertised by `m.profile_fields`; a
+/// server without that capability continues to expose an ordinary profile.
 extension _MatrixProfiles on MatrixBackend {
   Future<UserProfileSummary> _getUserProfile(String userId) async {
     final profile = await _matrix.getUserProfile(

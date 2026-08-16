@@ -315,6 +315,13 @@ extension _MatrixRoomOperations on MatrixBackend {
 
   Future<void> _selectRoom(String roomId) async {
     if (_selectedRoomId == roomId && _timeline != null) return;
+    final totalTimer = Stopwatch()..start();
+    final stageTimer = Stopwatch()..start();
+    final cacheHit = _roomMessageCache.containsKey(roomId);
+    var postLoadMs = 0;
+    var keyBackupMs = 0;
+    var timelineMs = 0;
+    var decryptMs = 0;
     _cacheCurrentRoomMessages();
     await _closeTimeline();
     final generation = _timelineGeneration;
@@ -326,17 +333,23 @@ extension _MatrixRoomOperations on MatrixBackend {
       final room = _matrix.getRoomById(roomId);
       if (room == null) throw StateError('That room is no longer available.');
       await room.postLoad();
+      postLoadMs = stageTimer.elapsedMilliseconds;
+      stageTimer.reset();
       if (_presentationFor(room) == RoomPresentation.voice) {
         _timelineLoading = false;
         _notifyBackendListeners();
         return;
       }
       await _loadRoomBackupKeys(room);
+      keyBackupMs = stageTimer.elapsedMilliseconds;
+      stageTimer.reset();
       if (!_isCurrentSelection(roomId, generation)) return;
       final timeline = await room.getTimeline(
         onUpdate: () => _onTimelineUpdate(generation),
         limit: _preferences.timelineChunkSize,
       );
+      timelineMs = stageTimer.elapsedMilliseconds;
+      stageTimer.reset();
       if (!_isCurrentSelection(roomId, generation)) {
         timeline.cancelSubscriptions();
         return;
@@ -345,10 +358,18 @@ extension _MatrixRoomOperations on MatrixBackend {
       _timelineDatabaseOffset = timeline.events.length;
       _captureFirstUnread(room, timeline);
       await _decryptTimelineEvents(timeline);
+      decryptMs = stageTimer.elapsedMilliseconds;
       if (!_isCurrentTimeline(timeline, generation)) return;
       _roomMessageCache[roomId] = List.unmodifiable(_mappedMessages);
       _timelineLoading = false;
       _notifyBackendListeners();
+      _debugRoomOpenTiming(
+        'usable_ms=${totalTimer.elapsedMilliseconds} '
+        'post_load_ms=$postLoadMs key_backup_ms=$keyBackupMs '
+        'timeline_ms=$timelineMs decrypt_ms=$decryptMs '
+        'encrypted=${room.encrypted} cache_hit=$cacheHit '
+        'events=${timeline.events.length}',
+      );
       unawaited(_hydrateCurrentTimeline(timeline, generation));
       timeline.requestKeys(tryOnlineBackup: true, onlineKeyBackupOnly: false);
       unawaited(_markSelectedRoomRead());

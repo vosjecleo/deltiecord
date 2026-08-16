@@ -216,6 +216,7 @@ class _MessageRowState extends State<_MessageRow> {
           onEnter: _enter,
           onExit: _exit,
           child: AnimatedContainer(
+            key: Key('message-row-${message.id}'),
             duration: widget.backend.preferences.reducedMotion
                 ? Duration.zero
                 : const Duration(milliseconds: 110),
@@ -296,6 +297,7 @@ class _MessageRowState extends State<_MessageRow> {
                                 ),
                               if (message.reply case final reply?)
                                 InkWell(
+                                  key: Key('reply-preview-${message.id}'),
                                   onTap: () =>
                                       widget.onJumpToReply(reply.eventId),
                                   child: Container(

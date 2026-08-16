@@ -1,5 +1,10 @@
 part of 'matrix_backend.dart';
 
+/// Owns the Matrix client session, sync listeners, preferences, and shutdown.
+///
+/// Every listener and RTC resource created here has a matching logout/dispose
+/// path. Room-specific asynchronous work is guarded elsewhere by the timeline
+/// generation established by this lifecycle.
 extension _MatrixSession on MatrixBackend {
   Future<void> _initializeSession() async {
     try {

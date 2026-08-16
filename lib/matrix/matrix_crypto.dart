@@ -1,5 +1,9 @@
 part of 'matrix_backend.dart';
 
+/// Cross-signing, secret storage, key-backup, and device recovery operations.
+///
+/// These methods deliberately delegate protocol and cryptographic behavior to
+/// matrix-dart-sdk instead of duplicating security-sensitive algorithms.
 extension _MatrixCrypto on MatrixBackend {
   Future<void> _refreshEncryptionSetup() async {
     if (_client == null || !_matrix.isLogged()) return;

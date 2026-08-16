@@ -4,7 +4,8 @@
 >
 > Deltiecord is currently a feature-complete desktop beta. It is usable for everyday testing, but bugs and rough edges should still be expected while the project approaches v1.0.
 
-Official download mirror lives at deltie.net/cord
+Official builds and release notes are available on the
+[Deltiecord releases page](https://deltie.net/cord).
 
 ## Preface
 
@@ -41,7 +42,7 @@ The project is especially aimed at people who want:
 - end-to-end encrypted communication
 - self-hostable infrastructure
 - federated identities and communities
-- Discord-style servers with seperate text- and voice channels
+- Discord-style servers with separate text and voice channels
 - a compact desktop-first interface
 - fewer cloud dependencies
 - no subscription-gated profile cosmetics
@@ -102,7 +103,7 @@ Notable features include:
 - **Multiple UI density and appearance settings**
 - **Custom profile theming without paying anyone €9.99/month for the privilege**
 
-Deltiecord is desktop-first. An android app is planned, and the GPU is working on that, though the newest features and updates will always come desktop-first, mobile-second.
+Deltiecord is desktop-first. An Android app is planned, though the newest features and updates will remain desktop-first and mobile-second.
 
 ---
 
@@ -154,7 +155,7 @@ Matrix end-to-end encryption is implemented through the existing Matrix SDK and 
 
 Deltiecord stores account/session information in the operating system's application-data locations and uses secure storage where appropriate.
 
-For more detail, see the project's networking/security documentation.
+For more detail, see [Networking and privacy](docs/networking.md).
 
 ---
 
@@ -186,7 +187,7 @@ The work between 0.9 and 1.0 is primarily bug fixing, testing, performance work,
 
 ## Known bugs
 
-Known issues are tracked in `KNOWN_ISSUES.md`.
+Known issues are tracked in [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 If something feels strange (particularly timeline scrolling, RTC/device handling, media behavior or an unusual UI interaction) please check there before reporting it.
 
@@ -247,7 +248,11 @@ flutter test
 flutter run -d linux
 ```
 
-Platform-specific build dependencies are documented separately.
+Platform-specific Windows notes are in [docs/WINDOWS.md](docs/WINDOWS.md).
+The high-level design is described in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and Deltiecord's interoperable
+Matrix metadata is documented in
+[docs/MATRIX_EXTENSIONS.md](docs/MATRIX_EXTENSIONS.md).
 
 Release builds may require additional packaging tools and native dependencies for functionality such as WebRTC, screen sharing, secure storage and media playback.
 
@@ -296,10 +301,11 @@ They do, however, need to work.
 
 Deltiecord would not exist without the Matrix ecosystem and the open-source projects it builds upon.
 
-See `CREDITS.md` for dependency, library, font, dataset and project acknowledgements.
+See [CREDITS.md](CREDITS.md) for dependency, library, font, dataset and project acknowledgements.
 
-See `LICENSE` for Deltiecord's license and the appropriate third-party notices for bundled dependencies and assets.
+See [LICENSE](LICENSE) for Deltiecord's license and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for bundled dependencies and assets.
 
 ---
 
-**Current release: v0.9.16 b58 — prerelease**
+**Current release: v0.9.16 b58, prerelease**

@@ -3,6 +3,10 @@ import 'package:flutter/services.dart';
 import '../models/chat_models.dart';
 import 'desktop_platform.dart';
 
+/// Small native window-control boundary shared by Linux and Windows runners.
+///
+/// Unsupported targets and widget tests degrade to no-ops rather than making
+/// session restoration depend on a registered native channel.
 class DesktopWindowService {
   DesktopWindowService._();
 

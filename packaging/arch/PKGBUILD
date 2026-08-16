@@ -1,9 +1,9 @@
 pkgname=deltiecord
-pkgver=0.9.15
+pkgver=0.9.16
 pkgrel=1
 pkgdesc='Compact Matrix desktop client'
 arch=('x86_64')
-url='https://deltie.net'
+url='https://deltie.net/cord'
 license=('AGPL-3.0-or-later')
 options=('!debug')
 depends=('gtk3' 'libsecret' 'libpulse' 'alsa-lib' 'libv4l' 'mpv' 'pipewire' 'xdg-desktop-portal')
@@ -36,6 +36,8 @@ package() {
     "$pkgdir/usr/share/metainfo/net.deltie.deltiecord.appdata.xml"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/deltiecord/LICENSE"
   install -Dm644 CREDITS.md "$pkgdir/usr/share/doc/deltiecord/CREDITS.md"
+  install -Dm644 THIRD-PARTY-NOTICES.md \
+    "$pkgdir/usr/share/doc/deltiecord/THIRD-PARTY-NOTICES.md"
   install -Dm644 "$bundle/data/flutter_assets/NOTICES.Z" \
-    "$pkgdir/usr/share/doc/deltiecord/THIRD-PARTY-NOTICES.Z"
+    "$pkgdir/usr/share/doc/deltiecord/FLUTTER-NOTICES.Z"
 }

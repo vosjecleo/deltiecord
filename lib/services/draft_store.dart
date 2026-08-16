@@ -11,6 +11,11 @@ class StoredDraft {
   final List<dynamic> delta;
 }
 
+/// Persists private, room-scoped composer documents outside Matrix state.
+///
+/// Writes are debounced and the file is owner-only on Unix. Reply/edit targets
+/// remain transient UI state so reopening a stale draft cannot modify or send
+/// an unrelated event.
 class DraftStore {
   DraftStore([this._file]);
 

@@ -24,5 +24,7 @@ ln -s usr/share/icons/hicolor/scalable/apps/net.deltie.deltiecord.svg "$appdir/n
 ln -s net.deltie.deltiecord.svg "$appdir/.DirIcon"
 install -m 0644 "$repo_root/LICENSE" "$appdir/usr/share/doc/deltiecord/LICENSE"
 install -m 0644 "$repo_root/CREDITS.md" "$appdir/usr/share/doc/deltiecord/CREDITS.md"
+install -m 0644 "$repo_root/THIRD-PARTY-NOTICES.md" \
+  "$appdir/usr/share/doc/deltiecord/THIRD-PARTY-NOTICES.md"
 install -m 0644 "$bundle/data/flutter_assets/NOTICES.Z" \
-  "$appdir/usr/share/doc/deltiecord/THIRD-PARTY-NOTICES.Z"
+  "$appdir/usr/share/doc/deltiecord/FLUTTER-NOTICES.Z"

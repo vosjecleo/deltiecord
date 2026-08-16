@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Deltiecord
+Comment=Compact Matrix desktop client
+Exec=deltiecord
+Icon=net.deltie.deltiecord
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupNotify=true
+StartupWMClass=deltiecord
+Keywords=Matrix;Chat;Messaging;

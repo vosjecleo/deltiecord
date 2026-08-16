@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+
+# AppImage libraries live below APPDIR; distribution packages use /usr. Keep
+# this path setup in one launcher so plugins resolve identically in both forms.
+if [ -n "${APPDIR:-}" ]; then
+  deltiecord_prefix="$APPDIR/usr"
+else
+  deltiecord_prefix="/usr"
+fi
+
+export LD_LIBRARY_PATH="$deltiecord_prefix/lib/deltiecord/lib:$deltiecord_prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$deltiecord_prefix/lib/deltiecord/deltiecord" "$@"

@@ -1,0 +1,64 @@
+name: deltiecord
+description: A lightweight Matrix client with an old-school desktop focus.
+publish_to: none
+version: 0.9.15+57
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  file_picker: ^11.0.2
+  flutter:
+    sdk: flutter
+  flutter_local_notifications: ^22.3.0
+  flutter_localizations:
+    sdk: flutter
+  flutter_quill: ^11.5.1
+  flutter_vodozemac: ^0.7.1
+  html: ^0.15.6
+  image: ^4.9.1
+  matrix: ^10.0.1
+  markdown: ^7.3.1
+  media_kit: ^1.2.6
+  media_kit_libs_video: ^1.0.7
+  media_kit_video: ^2.0.1
+  mime: ^2.0.0
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  sqflite: ^2.4.3
+  sqflite_common_ffi: ^2.4.2
+  vodozemac: ^0.7.0
+  vsc_quill_delta_to_html: ^1.0.5
+  url_launcher: ^6.3.2
+  flutter_webrtc: ^1.6.0
+  webrtc_interface: ^1.5.1
+  flutter_secure_storage: ^10.3.1
+  super_clipboard: ^0.9.1
+  super_drag_and_drop: ^0.9.1
+  timezone: ^0.11.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/emoji/emojis.json
+    - assets/emoji/aliases.json
+    - assets/fonts/licenses/
+  fonts:
+    - family: Liberation Sans
+      fonts:
+        - asset: assets/fonts/LiberationSans-Regular.ttf
+        - asset: assets/fonts/LiberationSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/LiberationSans-Italic.ttf
+          style: italic
+        - asset: assets/fonts/LiberationSans-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: Deltiecord Emoji
+      fonts:
+        - asset: assets/fonts/NotoColorEmoji.ttf

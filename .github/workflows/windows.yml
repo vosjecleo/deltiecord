@@ -1,0 +1,116 @@
+name: Windows release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_ARCHIVE: https://storage.googleapis.com/flutter_infra_release/releases/stable/windows/flutter_windows_3.44.9-stable.zip
+  FLUTTER_SHA256: 8ef1107d226654736755bc51b969d6bd46787ff0241650f942e774fb0ca7d0ac
+  RUSTUP_INIT: https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-pc-windows-msvc/rustup-init.exe
+  RUSTUP_INIT_SHA256: 86478e53f769379d7f0ebfa7c9aa97cb76ca92233f79aa2cc0dbee2efaac73c7
+  RUST_TOOLCHAIN: 1.97.1
+
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install verified Rust toolchain
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+          $cargoHome = Join-Path $env:RUNNER_TEMP 'cargo'
+          $rustupHome = Join-Path $env:RUNNER_TEMP 'rustup'
+          Invoke-WebRequest -Uri $env:RUSTUP_INIT -OutFile $installer
+          $actual = (Get-FileHash $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:RUSTUP_INIT_SHA256) {
+            throw "rustup-init checksum mismatch: $actual"
+          }
+          $env:CARGO_HOME = $cargoHome
+          $env:RUSTUP_HOME = $rustupHome
+          & $installer -y --no-modify-path --profile minimal --default-toolchain $env:RUST_TOOLCHAIN
+          if ($LASTEXITCODE -ne 0) {
+            throw "rustup-init failed with exit code $LASTEXITCODE"
+          }
+          $hostTriple = (& "$cargoHome\bin\rustc.exe" -vV | Select-String '^host: (.+)$').Matches.Groups[1].Value
+          $exactToolchain = Join-Path $rustupHome "toolchains\$env:RUST_TOOLCHAIN-$hostTriple"
+          $stableToolchain = Join-Path $rustupHome "toolchains\stable-$hostTriple"
+          cmd /c mklink /J $stableToolchain $exactToolchain
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to alias the pinned Rust toolchain as stable: $LASTEXITCODE"
+          }
+          "CARGO_HOME=$cargoHome" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RUSTUP_HOME=$rustupHome" | Out-File -FilePath $env:GITHUB_ENV -Append
+          (Join-Path $cargoHome 'bin') | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install verified Flutter SDK
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'flutter.zip'
+          $destination = Join-Path $env:RUNNER_TEMP 'flutter-sdk'
+          Invoke-WebRequest -Uri $env:FLUTTER_ARCHIVE -OutFile $archive
+          $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:FLUTTER_SHA256) {
+            throw "Flutter SDK checksum mismatch: $actual"
+          }
+          Expand-Archive -Path $archive -DestinationPath $destination
+          (Join-Path $destination 'flutter\bin') | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --concurrency=1
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Package portable release
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([^+\s]+)').Matches.Groups[1].Value
+          $release = (Resolve-Path 'build/windows/x64/runner/Release').Path
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item LICENSE, CREDITS.md, THIRD-PARTY-NOTICES.md -Destination $release
+          Compress-Archive -Path "$release/*" -DestinationPath "dist/Deltiecord-$version-windows-x64-portable.zip" -CompressionLevel Optimal
+          "DELTIECORD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "DELTIECORD_RELEASE=$release" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build per-user installer
+        shell: pwsh
+        run: |
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) {
+            throw 'The pinned Windows runner image does not contain Inno Setup 6.'
+          }
+          & $iscc "/DMyAppVersion=$env:DELTIECORD_VERSION" "/DSourceDir=$env:DELTIECORD_RELEASE" "/DOutputDir=$pwd\dist" packaging/windows/deltiecord.iss
+
+      - name: Write checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content dist/SHA256SUMS
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Deltiecord-${{ env.DELTIECORD_VERSION }}-windows-x64
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30

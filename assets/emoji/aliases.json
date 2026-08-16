@@ -1,0 +1,59 @@
+{
+  "_instructions": "Edit a name or aliases here, then rebuild/restart Deltiecord. Categories: smileysAndPeople, animalsAndNature, foodAndDrink, travelAndPlaces, activities, objects, symbols, flags.",
+  "😭": {
+    "name": "Loudly crying face",
+    "aliases": ["sob", "cry", "loudly_crying"]
+  },
+  "😂": {
+    "name": "Face with tears of joy",
+    "aliases": ["joy", "tears_of_joy"]
+  },
+  "🤣": {
+    "name": "Rolling on the floor laughing",
+    "aliases": ["rofl"]
+  },
+  "❤️": {
+    "name": "Red heart",
+    "aliases": ["heart", "love"]
+  },
+  "👍": {
+    "name": "Thumbs up",
+    "aliases": ["thumbsup", "+1"]
+  },
+  "👎": {
+    "name": "Thumbs down",
+    "aliases": ["thumbsdown", "-1"]
+  },
+  "💀": {
+    "name": "Skull",
+    "aliases": ["skull", "dead"]
+  },
+  "🙏": {
+    "name": "Folded hands",
+    "aliases": ["pray", "please"]
+  },
+  "🔥": {
+    "name": "Fire",
+    "aliases": ["fire", "lit"]
+  },
+  "🎉": {
+    "name": "Party popper",
+    "aliases": ["tada", "party"]
+  },
+  "👀": {
+    "name": "Eyes",
+    "aliases": ["eyes"]
+  },
+  "🤔": {
+    "name": "Thinking face",
+    "aliases": ["thinking"]
+  },
+  "😅": {
+    "name": "Grinning face with sweat",
+    "aliases": ["sweat_smile"]
+  },
+  "😎": {
+    "name": "Smiling face with sunglasses",
+    "aliases": ["sunglasses"]
+  }
+}

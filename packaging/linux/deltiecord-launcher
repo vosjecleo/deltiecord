@@ -5,6 +5,10 @@ set -eu
 # this path setup in one launcher so plugins resolve identically in both forms.
 if [ -n "${APPDIR:-}" ]; then
   deltiecord_prefix="$APPDIR/usr"
+elif [ -x "$(dirname "$0")/usr/lib/deltiecord/deltiecord" ]; then
+  # Type-2 runtimes do not consistently export APPDIR in extract-and-run
+  # mode. Resolve the extracted/mounted AppDir from AppRun itself.
+  deltiecord_prefix="$(CDPATH= cd -- "$(dirname "$0")" && pwd)/usr"
 else
   deltiecord_prefix="/usr"
 fi

@@ -27,7 +27,7 @@ jobs:
       - name: Install Debian build dependencies
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl xz-utils git clang cmake make ninja-build pkg-config fakeroot binutils file patchelf libgtk-3-dev libsecret-1-dev libpulse-dev libasound2-dev libv4l-dev libmpv-dev libpipewire-0.3-dev appstream dbus-x11 xvfb
+          apt-get install -y --no-install-recommends ca-certificates curl xz-utils git clang cmake make ninja-build pkg-config fakeroot binutils file patchelf libgtk-3-dev libsecret-1-dev libpulse-dev libasound2-dev libv4l-dev libmpv-dev libpipewire-0.3-dev appstream dbus-x11 xvfb xauth
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Install verified Rust toolchain
         run: |
@@ -75,6 +75,8 @@ jobs:
           set -e
           if [ "$status" -ne 124 ]; then
             cat debian-smoke.log
+            message="$(tail -n 20 debian-smoke.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/$/%0A/g')"
+            printf '::error title=Debian smoke launch failed::status=%s %s\n' "$status" "$message"
             printf 'Deltiecord exited unexpectedly with status %s\n' "$status" >&2
             exit 1
           fi

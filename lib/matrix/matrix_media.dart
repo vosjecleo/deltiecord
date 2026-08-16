@@ -37,6 +37,10 @@ extension _MatrixMedia on MatrixBackend {
     _mediaPlaybackReferences.clear();
     _mediaRangeProxy.clear();
     _linkPreviews.clear();
+    _linkPreviewRetryAfter.clear();
+    _linkPreviewAttempts.clear();
+    _linkPreviewRetryTimer?.cancel();
+    _linkPreviewRetryTimer = null;
     _notifyBackendListeners();
     await _refreshStorageUsage();
   }

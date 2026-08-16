@@ -124,6 +124,10 @@ extension _MatrixSession on MatrixBackend {
       _decryptedPreviews.clear();
       _replyPreviews.clear();
       _linkPreviews.clear();
+      _linkPreviewRetryAfter.clear();
+      _linkPreviewAttempts.clear();
+      _linkPreviewRetryTimer?.cancel();
+      _linkPreviewRetryTimer = null;
       _outboundSessionsReset.clear();
       _roomsMarkingRead.clear();
       _lastMarkedReadEventIds.clear();
@@ -144,6 +148,8 @@ extension _MatrixSession on MatrixBackend {
       _profilePresence = UserPresence.offline;
       _profileStatusMessage = null;
       _profileColor = null;
+      _profileCache.clear();
+      _profileRequests.clear();
       _profileFieldsCapability = null;
       _profileFieldsCapabilityLoaded = false;
       _mediaRangeProxy.clear();
@@ -293,6 +299,7 @@ extension _MatrixSession on MatrixBackend {
         );
         _profileAvatarBytes = response.data;
       }
+      _profileCache.remove(userId);
     } catch (exception) {
       _error = _friendlyError(exception);
     } finally {
@@ -309,6 +316,7 @@ extension _MatrixSession on MatrixBackend {
         'displayname': displayName.trim(),
       });
       _profileDisplayName = displayName.trim();
+      _profileCache.remove(userId);
       _notifyBackendListeners();
     } catch (exception) {
       _error = _friendlyError(exception);
@@ -329,6 +337,8 @@ extension _MatrixSession on MatrixBackend {
             : MatrixFile(bytes: bytes, name: fileName, mimeType: mimeType),
       );
       _profileAvatarBytes = bytes;
+      final userId = _matrix.userID;
+      if (userId != null) _profileCache.remove(userId);
       _notifyBackendListeners();
     } catch (exception) {
       _error = _friendlyError(exception);

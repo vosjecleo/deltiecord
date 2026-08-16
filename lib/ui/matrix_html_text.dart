@@ -200,13 +200,16 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
     if (tag == 'mx-reply') return const [];
     if (tag == 'br') return const [TextSpan(text: '\n')];
     if (node.attributes.containsKey('data-mx-spoiler') && !_spoilersRevealed) {
+      const concealedColor = Color(0xff777985);
       return [
         TextSpan(
-          text: '  SPOILER  ',
+          // Draw the real glyph run in the same colour as its background. The
+          // spoiler therefore occupies exactly the size of the concealed text
+          // at the current font scale instead of using a fixed-size badge.
+          text: node.text,
           style: style.copyWith(
-            color: const Color(0xff17181c),
-            backgroundColor: const Color(0xff777985),
-            fontWeight: FontWeight.w600,
+            color: concealedColor,
+            backgroundColor: concealedColor,
           ),
           recognizer: _spoilerTap,
         ),

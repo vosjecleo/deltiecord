@@ -808,6 +808,97 @@ void main() {
     expect(tester.getTopLeft(anchor).dy, closeTo(before, 1));
   });
 
+  testWidgets('live messages keep a present timeline pinned to the bottom', (
+    tester,
+  ) async {
+    final initialMessages = List.generate(
+      30,
+      (index) => ChatMessage(
+        id: '\$live-$index',
+        sender: index.isEven ? 'Alice' : 'Bob',
+        body: 'Live message $index',
+        timestamp: DateTime(2026, 8, 16, 12).subtract(Duration(minutes: index)),
+        pending: false,
+      ),
+    );
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!live:example.org',
+          name: 'live',
+          lastMessage: 'Live message 0',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = initialMessages;
+
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('live'));
+    await tester.pumpAndSettle();
+    final timeline = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(const Key('message-timeline')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(timeline.position.pixels, 0);
+
+    backend.messageList = [
+      ChatMessage(
+        id: r'$live-new',
+        sender: 'Alice',
+        body: 'A new live message',
+        timestamp: DateTime(2026, 8, 16, 12, 1),
+        pending: false,
+      ),
+      ...initialMessages,
+    ];
+    backend.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+
+    expect(timeline.position.pixels, 0);
+    expect(find.text('A new live message'), findsOneWidget);
+
+    // Homeserver acknowledgement may replace a local echo with a different
+    // event ID while retaining the same visible message.
+    backend.messageList = [
+      ChatMessage(
+        id: r'$live-accepted',
+        sender: 'Alice',
+        body: 'A new live message',
+        timestamp: DateTime(2026, 8, 16, 12, 1),
+        pending: false,
+      ),
+      ...initialMessages,
+    ];
+    backend.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+    expect(timeline.position.pixels, 0);
+
+    // Progressive reply/preview hydration can change a live row's height on a
+    // later backend notification without introducing another event.
+    backend.messageList = [
+      ChatMessage(
+        id: r'$live-accepted',
+        sender: 'Alice',
+        body: 'A new live message\nwith hydrated metadata',
+        timestamp: DateTime(2026, 8, 16, 12, 1),
+        pending: false,
+      ),
+      ...initialMessages,
+    ];
+    backend.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+    expect(timeline.position.pixels, 0);
+  });
+
   testWidgets('historical windows expose a load newer control', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
@@ -1034,16 +1125,18 @@ void main() {
     await tester.pump();
 
     final richMessage = find.byType(MatrixHtmlText);
-    final spoiler = find.descendant(
-      of: richMessage,
-      matching: find.textContaining('SPOILER'),
+    final selectable = tester.widget<SelectableText>(
+      find.descendant(of: richMessage, matching: find.byType(SelectableText)),
     );
-    expect(spoiler, findsOneWidget);
-    expect(
-      find.descendant(of: richMessage, matching: find.textContaining('secret')),
-      findsNothing,
-    );
-    await tester.tap(spoiler);
+    TextSpan? concealed;
+    selectable.textSpan!.visitChildren((span) {
+      if (span is TextSpan && span.text == 'secret') concealed = span;
+      return true;
+    });
+    expect(concealed, isNotNull);
+    expect(concealed!.style!.color, concealed!.style!.backgroundColor);
+    expect(concealed!.recognizer, isA<TapGestureRecognizer>());
+    (concealed!.recognizer! as TapGestureRecognizer).onTap!();
     await tester.pump();
     expect(
       find.descendant(
@@ -1634,6 +1727,7 @@ void main() {
     expect(find.byKey(const Key('profile-side-panel')), findsNothing);
     await tester.tap(find.text('View full profile'));
     await tester.pumpAndSettle();
+    expect(backend.profileRefreshRequests, 1);
     expect(find.text('Online'), findsOneWidget);
     expect(find.byIcon(Icons.schedule), findsOneWidget);
     expect(
@@ -2067,6 +2161,7 @@ class FakeBackend extends ChatBackend {
   int historyRequests = 0;
   int futureRequests = 0;
   int jumpPresentRequests = 0;
+  int profileRefreshRequests = 0;
   Future<void> Function()? historyLoader;
   final List<String> sentMessages = [];
   final List<String?> sentMessageRoomIds = [];
@@ -2270,10 +2365,16 @@ class FakeBackend extends ChatBackend {
   @override
   Future<void> setMemberPowerLevel(String userId, int powerLevel) async {}
   @override
-  Future<UserProfileSummary> getUserProfile(String userId) async =>
-      profileCompleter?.future ??
-      testProfile ??
-      UserProfileSummary(userId: userId, displayName: userId);
+  Future<UserProfileSummary> getUserProfile(
+    String userId, {
+    bool refresh = false,
+  }) async {
+    if (refresh) profileRefreshRequests++;
+    return profileCompleter?.future ??
+        testProfile ??
+        UserProfileSummary(userId: userId, displayName: userId);
+  }
+
   @override
   Future<void> updateOwnProfileFields({
     String? bio,

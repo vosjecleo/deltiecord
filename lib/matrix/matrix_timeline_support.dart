@@ -99,6 +99,12 @@ extension _MatrixTimelineSupport on MatrixBackend {
     _linkPreviews.removeWhere(
       (eventId, _) => !retainedEventIds.contains(eventId),
     );
+    _linkPreviewRetryAfter.removeWhere(
+      (eventId, _) => !retainedEventIds.contains(eventId),
+    );
+    _linkPreviewAttempts.removeWhere(
+      (eventId, _) => !retainedEventIds.contains(eventId),
+    );
     for (final eventId
         in _mediaPlaybackSources.keys
             .where((eventId) => !retainedEventIds.contains(eventId))

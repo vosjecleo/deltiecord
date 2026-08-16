@@ -74,6 +74,7 @@ class _ConversationState extends State<_Conversation> {
   int _navigationGeneration = 0;
   int _timelineInputGeneration = 0;
   int? _timelineLayoutFingerprint;
+  String? _newestMessageId;
   String? _highlightedMessageId;
   VoidCallback? _dismissMessageActions;
 
@@ -81,6 +82,7 @@ class _ConversationState extends State<_Conversation> {
   void initState() {
     super.initState();
     _roomId = widget.backend.selectedRoom?.id;
+    _newestMessageId = widget.backend.messages.firstOrNull?.id;
     _scrollController.addListener(_loadTimelineNearEdges);
     _focusComposerAfterBuild();
   }
@@ -235,8 +237,20 @@ class _ConversationState extends State<_Conversation> {
       widget.backend.messages,
     );
     final layoutChanged = _timelineLayoutFingerprint != layoutFingerprint;
+    final newestMessageId = widget.backend.messages.firstOrNull?.id;
+    final receivedNewHead =
+        _roomId == roomId &&
+        _newestMessageId != null &&
+        newestMessageId != null &&
+        newestMessageId != _newestMessageId;
+    final wasAtPresent =
+        !_scrolledAwayFromPresent &&
+        (!_scrollController.hasClients || _scrollController.offset <= 48);
     final passiveAnchor =
-        !_loadingAnchoredHistory && _roomId == roomId && layoutChanged
+        !_loadingAnchoredHistory &&
+            _roomId == roomId &&
+            layoutChanged &&
+            !wasAtPresent
         ? _captureVisibleAnchor()
         : null;
     final inputGeneration = _timelineInputGeneration;
@@ -248,12 +262,25 @@ class _ConversationState extends State<_Conversation> {
       _navigationGeneration++;
       _highlightedMessageId = null;
       _timelineLayoutFingerprint = layoutFingerprint;
+      _newestMessageId = newestMessageId;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _focusComposerAfterBuild();
     } else if (oldWidget.sending && !widget.sending) {
       _focusComposerAfterBuild();
     }
     _timelineLayoutFingerprint = layoutFingerprint;
+    _newestMessageId = newestMessageId;
+    if (receivedNewHead && wasAtPresent) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _roomId != roomId || !_scrollController.hasClients) {
+          return;
+        }
+        // In a reversed timeline offset zero is the present. A live event is
+        // already inserted there, so keep the viewport pinned without an
+        // animated correction that can flash the previous row first.
+        _scrollController.jumpTo(0);
+      });
+    }
     if (passiveAnchor != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted ||

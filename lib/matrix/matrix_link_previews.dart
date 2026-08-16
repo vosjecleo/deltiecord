@@ -9,7 +9,9 @@ extension _MatrixLinkPreviews on MatrixBackend {
   /// Failed or empty homeserver previews intentionally remain plain links.
   Future<void> _hydrateLinkPreviews(Timeline timeline) async {
     for (final event in timeline.events) {
+      final retryAfter = _linkPreviewRetryAfter[event.eventId];
       if (_linkPreviews.containsKey(event.eventId) ||
+          (retryAfter != null && DateTime.now().isBefore(retryAfter)) ||
           event.type != EventTypes.Message ||
           event.hasAttachment) {
         continue;
@@ -75,10 +77,39 @@ extension _MatrixLinkPreviews on MatrixBackend {
                 result.videoUrl == null
             ? null
             : result;
-      } catch (_) {
-        _linkPreviews[event.eventId] = null;
+        _linkPreviewRetryAfter.remove(event.eventId);
+        _linkPreviewAttempts.remove(event.eventId);
+      } catch (exception) {
+        // URL preview services may be temporarily unavailable during sync or
+        // homeserver startup. Do not turn that transient failure into a null
+        // result cached for the lifetime of the timeline.
+        final attempts = (_linkPreviewAttempts[event.eventId] ?? 0) + 1;
+        _linkPreviewAttempts[event.eventId] = attempts;
+        developer.log(
+          'Homeserver URL preview attempt failed (${exception.runtimeType}).',
+          name: 'deltiecord.preview',
+        );
+        if (attempts >= 3) {
+          _linkPreviews[event.eventId] = null;
+          _linkPreviewRetryAfter.remove(event.eventId);
+          continue;
+        }
+        _linkPreviewRetryAfter[event.eventId] = DateTime.now().add(
+          const Duration(seconds: 30),
+        );
+        _scheduleLinkPreviewRetry(timeline);
       }
     }
+  }
+
+  void _scheduleLinkPreviewRetry(Timeline timeline) {
+    if (_linkPreviewRetryTimer?.isActive == true) return;
+    _linkPreviewRetryTimer = Timer(const Duration(seconds: 31), () async {
+      _linkPreviewRetryTimer = null;
+      if (!identical(timeline, _timeline)) return;
+      await _hydrateLinkPreviews(timeline);
+      if (identical(timeline, _timeline)) _notifyBackendListeners();
+    });
   }
 
   Future<Uint8List?> _previewImageBytes(Uri uri) async {

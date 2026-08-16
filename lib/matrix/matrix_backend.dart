@@ -38,6 +38,9 @@ final _webUrlPattern = RegExp(r'https?://[^\s<>]+');
 /// consulted as behavioral references; no source from either client is copied.
 /// See CREDITS.md for project links and license information.
 class MatrixBackend extends ChatBackend {
+  static const _maximumCachedProfiles = 48;
+  static const _maximumCachedProfileMediaBytes = 32 * 1024 * 1024;
+  static const _profileCacheLifetime = Duration(minutes: 15);
   static const _settingsAccountDataType = 'net.deltiecord.settings';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
   static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
@@ -79,6 +82,12 @@ class MatrixBackend extends ChatBackend {
   final Map<String, String> _decryptedPreviews = {};
   final Map<String, ReplyPreview> _replyPreviews = {};
   final Map<String, LinkPreview?> _linkPreviews = {};
+  final Map<String, DateTime> _linkPreviewRetryAfter = {};
+  final Map<String, int> _linkPreviewAttempts = {};
+  Timer? _linkPreviewRetryTimer;
+  final LinkedHashMap<String, (UserProfileSummary, DateTime)> _profileCache =
+      LinkedHashMap();
+  final Map<String, Future<UserProfileSummary>> _profileRequests = {};
   final Set<String> _outboundSessionsReset = {};
   bool _refreshingRoomMetadata = false;
   bool _roomMetadataRefreshRequested = false;
@@ -594,8 +603,10 @@ class MatrixBackend extends ChatBackend {
   Future<void> clearMediaCache() => _clearMediaCache();
 
   @override
-  Future<UserProfileSummary> getUserProfile(String userId) =>
-      _getUserProfile(userId);
+  Future<UserProfileSummary> getUserProfile(
+    String userId, {
+    bool refresh = false,
+  }) => _getUserProfile(userId, refresh: refresh);
 
   @override
   Future<void> updateOwnProfileFields({
@@ -713,6 +724,10 @@ class MatrixBackend extends ChatBackend {
     _timelineHasPrunedNewerEvents = false;
     _replyPreviews.clear();
     _linkPreviews.clear();
+    _linkPreviewRetryAfter.clear();
+    _linkPreviewAttempts.clear();
+    _linkPreviewRetryTimer?.cancel();
+    _linkPreviewRetryTimer = null;
     _mediaPlaybackSources.clear();
     _mediaPlaybackReferences.clear();
     _mediaRangeProxy.clear();
@@ -731,6 +746,9 @@ class MatrixBackend extends ChatBackend {
   void dispose() {
     _typingStopTimer?.cancel();
     _settingsSaveTimer?.cancel();
+    _linkPreviewRetryTimer?.cancel();
+    _profileCache.clear();
+    _profileRequests.clear();
     final voice = _voice;
     _voice = null;
     voice?.removeListener(notifyListeners);

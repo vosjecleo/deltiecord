@@ -3,10 +3,14 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 flutter_bin="${FLUTTER_BIN:-flutter}"
+# flutter_vodozemac 0.7.1's release link can discard the Dart DL shim as
+# otherwise-unreferenced code. Retaining linked code is required for AOT E2EE.
+export RUSTFLAGS="${RUSTFLAGS:--C link-dead-code}"
 cd "$repo_root"
 rm -rf dist
 mkdir -p dist
 "$flutter_bin" build linux --release
+packaging/linux/verify-release.sh
 packaging/linux/build-deb.sh
 packaging/linux/build-appimage.sh
 if command -v makepkg >/dev/null; then

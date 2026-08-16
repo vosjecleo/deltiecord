@@ -8,6 +8,10 @@ The script creates the Debian package, AppImage, checksums, and build metadata i
 `.pkg.tar.zst`. Generated artifacts and downloaded packaging tools are
 intentionally ignored by Git.
 
+Use the release script rather than invoking `flutter build` directly. It also
+applies the release-only Rust FFI retention flag required by the current
+flutter_vodozemac dependency.
+
 Install the Debian package with `sudo apt install ./dist/deltiecord_0.9.16_amd64.deb`.
 The package removes only application files when uninstalled; Matrix/session data
 remains in the user's normal XDG application-data and Secret Service stores.

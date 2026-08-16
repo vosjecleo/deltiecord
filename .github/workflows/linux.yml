@@ -15,6 +15,8 @@ env:
   RUSTUP_INIT: https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init
   RUSTUP_INIT_SHA256: 4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
   RUST_TOOLCHAIN: 1.97.1
+  # Keep flutter_vodozemac's Dart DL shim in AOT release builds.
+  RUSTFLAGS: -C link-dead-code
 
 jobs:
   debian:
@@ -54,6 +56,7 @@ jobs:
           flutter analyze
           flutter test --concurrency=1
           flutter build linux --release
+          packaging/linux/verify-release.sh
           packaging/linux/build-deb.sh
           packaging/linux/build-appimage.sh
           version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"

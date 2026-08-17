@@ -93,7 +93,7 @@ class DeltiecordPushService : PushService() {
                 @Suppress("DEPRECATION")
                 android.app.Notification.Builder(context)
             }
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Deltiecord")
                 .setContentText("New Matrix activity")
                 .setAutoCancel(true)

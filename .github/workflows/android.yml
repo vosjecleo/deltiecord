@@ -89,13 +89,23 @@ jobs:
             echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.'
             exit 1
           fi
-          if [[ -z "$KEY_ALIAS" ]]; then
-            if ! keytool_output="$(keytool -J-Duser.language=en -list -v \
+          effective_store_password="$STORE_PASSWORD"
+          effective_key_password="$KEY_PASSWORD"
+          if ! keytool_output="$(keytool -J-Duser.language=en -list -v \
+            -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
+            -storepass "$effective_store_password" 2>&1)"; then
+            if keytool_output="$(keytool -J-Duser.language=en -list -v \
               -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
-              -storepass "$STORE_PASSWORD" 2>&1)"; then
-              echo '::error title=Invalid Android keystore::The supplied keystore could not be opened with DELTIECORD_ANDROID_STORE_PASSWORD.'
+              -storepass "$KEY_PASSWORD" 2>&1)"; then
+              echo '::warning title=Android signing secrets swapped::The key password opened the keystore; using the two password secrets in the opposite roles for this build.'
+              effective_store_password="$KEY_PASSWORD"
+              effective_key_password="$STORE_PASSWORD"
+            else
+              echo '::error title=Invalid Android keystore::The supplied keystore could not be opened with either configured Android password secret.'
               exit 1
             fi
+          fi
+          if [[ -z "$KEY_ALIAS" ]]; then
             KEY_ALIAS="$(sed -n 's/^Alias name: //p' <<<"$keytool_output" | head -n 1)"
           fi
           if [[ -z "$KEY_ALIAS" ]]; then
@@ -104,9 +114,9 @@ jobs:
           fi
           chmod 0600 "$RUNNER_TEMP/deltiecord-release.jks"
           echo "DELTIECORD_ANDROID_KEYSTORE=$RUNNER_TEMP/deltiecord-release.jks" >>"$GITHUB_ENV"
-          echo "DELTIECORD_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >>"$GITHUB_ENV"
+          echo "DELTIECORD_ANDROID_STORE_PASSWORD=$effective_store_password" >>"$GITHUB_ENV"
           echo "DELTIECORD_ANDROID_KEY_ALIAS=$KEY_ALIAS" >>"$GITHUB_ENV"
-          echo "DELTIECORD_ANDROID_KEY_PASSWORD=$KEY_PASSWORD" >>"$GITHUB_ENV"
+          echo "DELTIECORD_ANDROID_KEY_PASSWORD=$effective_key_password" >>"$GITHUB_ENV"
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .

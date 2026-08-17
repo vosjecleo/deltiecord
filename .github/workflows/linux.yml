@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 env:
-  FLUTTER_ARCHIVE: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.44.9-stable.tar.xz
-  FLUTTER_SHA256: a9120fa4a01048bdef438ddc3a2d4b7389662ea98a95db86eeaf10382bc4efcb
+  FLUTTER_ARCHIVE: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.0-stable.tar.xz
+  FLUTTER_SHA256: 26cd99d3d94b1367e6b50535a18aeef0282c10a535bbe3ec493534dcdab75296
   RUSTUP_INIT: https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init
   RUSTUP_INIT_SHA256: 4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
   RUST_TOOLCHAIN: 1.97.1

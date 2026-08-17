@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../deltiecord_theme.dart';
 import 'mobile_widgets.dart';
+import 'mobile_channel_manager.dart';
 
 class MobileNavigationPanel extends StatefulWidget {
   const MobileNavigationPanel({
@@ -40,6 +44,7 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
         })
         .toList(growable: false);
     return SafeArea(
+      bottom: false,
       child: Column(
         children: [
           Expanded(
@@ -214,10 +219,12 @@ class _SpaceRail extends StatelessWidget {
                   selected: backend.selectedSpaceId == space.id,
                   tooltip: space.name,
                   onTap: () => backend.selectSpace(space.id),
+                  onLongPress: () => _showSpaceActions(context, space),
                   child: MobileAvatar(
                     bytes: space.avatarBytes,
                     fallback: space.name,
                     size: 46,
+                    square: true,
                   ),
                 ),
               _RailButton(
@@ -261,6 +268,190 @@ class _SpaceRail extends StatelessWidget {
     );
     controller.dispose();
     if (name != null && name.isNotEmpty) await backend.createSpace(name: name);
+  }
+
+  Future<void> _showSpaceActions(
+    BuildContext context,
+    SpaceSummary space,
+  ) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                space.muted
+                    ? Icons.notifications_outlined
+                    : Icons.notifications_off_outlined,
+              ),
+              title: Text(space.muted ? 'Unmute Space' : 'Mute Space'),
+              onTap: () => Navigator.pop(sheetContext, 'mute'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings_outlined),
+              title: const Text('Space settings'),
+              onTap: () => Navigator.pop(sheetContext, 'settings'),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.logout,
+                color: Theme.of(context).colorScheme.error,
+              ),
+              title: Text(
+                'Leave Space',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+              onTap: () => Navigator.pop(sheetContext, 'leave'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || action == null) return;
+    switch (action) {
+      case 'mute':
+        await backend.setRoomMuted(space.id, !space.muted);
+      case 'settings':
+        await _editSpace(context, space);
+      case 'leave':
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('Leave ${space.name}?'),
+            content: const Text(
+              'Rooms inside the Space are not left automatically.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Leave'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed == true) await backend.leaveRoom(space.id);
+    }
+  }
+
+  Future<void> _editSpace(BuildContext context, SpaceSummary space) async {
+    final name = TextEditingController(text: space.name);
+    final topic = TextEditingController(text: space.topic);
+    var muted = space.muted;
+    Uint8List? avatar;
+    var removeAvatar = false;
+    var openChannelManager = false;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Space settings'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Space name'),
+                ),
+                TextField(
+                  controller: topic,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Description / topic',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final result = await FilePicker.pickFiles(
+                          type: FileType.image,
+                          withData: true,
+                        );
+                        final bytes = result?.files.single.bytes;
+                        if (bytes != null) {
+                          setDialogState(() {
+                            avatar = bytes;
+                            removeAvatar = false;
+                          });
+                        }
+                      },
+                      icon: const Icon(Icons.image_outlined),
+                      label: const Text('Choose picture'),
+                    ),
+                    if (space.avatarBytes != null || avatar != null)
+                      TextButton(
+                        onPressed: () => setDialogState(() {
+                          avatar = null;
+                          removeAvatar = true;
+                        }),
+                        child: const Text('Remove picture'),
+                      ),
+                  ],
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Mute Space'),
+                  value: muted,
+                  onChanged: (value) => setDialogState(() => muted = value),
+                ),
+                if (backend.canManageSpaceChannelLayout(space.id))
+                  ListTile(
+                    key: const ValueKey('mobile-channel-management'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.reorder),
+                    title: const Text('Manage channels and categories'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      openChannelManager = true;
+                      Navigator.pop(dialogContext, false);
+                    },
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final newName = name.text.trim();
+    final newTopic = topic.text.trim();
+    name.dispose();
+    topic.dispose();
+    if (openChannelManager) {
+      if (context.mounted) await showMobileChannelManager(context, backend);
+      return;
+    }
+    if (save != true) return;
+    if (newName.isNotEmpty && newName != space.name) {
+      await backend.renameRoom(space.id, newName);
+    }
+    if (newTopic != space.topic) {
+      await backend.setRoomTopic(space.id, newTopic);
+    }
+    if (avatar != null || removeAvatar) {
+      await backend.setRoomAvatar(space.id, avatar);
+    }
+    if (muted != space.muted) await backend.setRoomMuted(space.id, muted);
   }
 
   Future<void> _discoverSpaces(BuildContext context) async {
@@ -309,12 +500,14 @@ class _RailButton extends StatelessWidget {
     required this.onTap,
     required this.child,
     this.selected = false,
+    this.onLongPress,
     super.key,
   });
   final String tooltip;
   final VoidCallback onTap;
   final Widget child;
   final bool selected;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -329,6 +522,7 @@ class _RailButton extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
+          onLongPress: onLongPress,
           child: SizedBox.square(dimension: 54, child: Center(child: child)),
         ),
       ),

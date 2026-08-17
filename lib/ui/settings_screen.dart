@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
@@ -8,6 +10,8 @@ import '../services/app_sounds.dart';
 import '../services/font_preferences.dart';
 import '../services/microphone_test.dart';
 import '../services/secret_redaction.dart';
+import '../services/unified_push.dart';
+import '../services/update_checker.dart';
 import 'accent_color_picker.dart';
 import 'security_center.dart';
 import 'app_shortcuts.dart';
@@ -53,6 +57,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   _SettingsPage _page = _SettingsPage.account;
   bool _mobilePageOpen = false;
   Future<UserProfileSummary>? _ownProfile;
+  Future<UnifiedPushState>? _unifiedPushState;
+  bool _checkingForUpdates = false;
   late final MicrophoneTestController _microphoneTest =
       MicrophoneTestController();
 
@@ -66,11 +72,20 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     backend.refreshProfile();
     backend.refreshStorageUsage();
     _reloadOwnProfile();
+    if (UnifiedPushPlatform.instance.supported) _reloadUnifiedPush();
   }
 
   void _reloadOwnProfile() {
     final userId = backend.userId;
     if (userId != null) _ownProfile = backend.getUserProfile(userId);
+  }
+
+  void _reloadUnifiedPush() {
+    final userId = backend.userId;
+    if (userId == null) return;
+    setState(() {
+      _unifiedPushState = UnifiedPushPlatform.instance.state(userId);
+    });
   }
 
   @override
@@ -121,29 +136,42 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 ),
               ),
               body: mobile
-                  ? AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      transitionBuilder: (child, animation) => SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0.12, 0),
-                          end: Offset.zero,
-                        ).animate(animation),
-                        child: child,
-                      ),
-                      child: _mobilePageOpen
-                          ? _settingsPagePane(
-                              key: ValueKey('mobile-settings-${_page.name}'),
-                              padding: const EdgeInsets.fromLTRB(
-                                16,
-                                14,
-                                16,
-                                36,
+                  ? ClipRect(
+                      child: TweenAnimationBuilder<double>(
+                        key: ValueKey(
+                          'mobile-settings-transition-$_mobilePageOpen-${_page.name}',
+                        ),
+                        tween: Tween(begin: 1, end: 0),
+                        duration: const Duration(milliseconds: 180),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, progress, child) =>
+                            Transform.translate(
+                              offset: Offset(
+                                MediaQuery.sizeOf(context).width *
+                                    0.14 *
+                                    progress *
+                                    (_mobilePageOpen ? 1 : -1),
+                                0,
                               ),
-                            )
-                          : _settingsNavigation(
-                              key: const ValueKey('mobile-settings-navigation'),
-                              mobile: true,
+                              child: child,
                             ),
+                        child: _mobilePageOpen
+                            ? _settingsPagePane(
+                                key: ValueKey('mobile-settings-${_page.name}'),
+                                padding: const EdgeInsets.fromLTRB(
+                                  16,
+                                  14,
+                                  16,
+                                  20,
+                                ),
+                              )
+                            : _settingsNavigation(
+                                key: const ValueKey(
+                                  'mobile-settings-navigation',
+                                ),
+                                mobile: true,
+                              ),
+                      ),
                     )
                   : Row(
                       children: [
@@ -436,10 +464,12 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         icon: const Icon(Icons.play_arrow),
         label: const Text('Test call sound'),
       ),
-      const SizedBox(height: 12),
-      const Text(
-        'Screen selection uses the standard desktop portal on Linux/Wayland.',
-      ),
+      if (defaultTargetPlatform == TargetPlatform.linux) ...[
+        const SizedBox(height: 12),
+        const Text(
+          'Screen selection uses the standard desktop portal on Linux/Wayland.',
+        ),
+      ],
     ]),
     _SettingsPage.notifications => _section('Notifications', [
       SwitchListTile(
@@ -476,6 +506,72 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           backend.preferences.copyWith(notificationSound: value),
         ),
       ),
+      if (UnifiedPushPlatform.instance.supported) ...[
+        const Divider(height: 28),
+        Text('UnifiedPush', style: Theme.of(context).textTheme.titleMedium),
+        const Text(
+          'Uses a distributor app such as ntfy to wake Deltiecord for Matrix '
+          'activity without Firebase. Configure that app with '
+          'https://push.deltie.net, then select it here.',
+        ),
+        if (_unifiedPushState case final stateFuture?)
+          FutureBuilder<UnifiedPushState>(
+            future: stateFuture,
+            builder: (context, snapshot) {
+              final state = snapshot.data;
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  state?.registered == true
+                      ? Icons.notifications_active
+                      : Icons.notifications_off_outlined,
+                ),
+                title: Text(
+                  state?.registered == true
+                      ? 'UnifiedPush registered'
+                      : 'UnifiedPush not registered',
+                ),
+                subtitle: Text(
+                  state?.error != null
+                      ? 'Distributor error: ${state!.error}'
+                      : state?.distributor ??
+                            'Install and configure a UnifiedPush distributor.',
+                ),
+                trailing: snapshot.connectionState != ConnectionState.done
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+              );
+            },
+          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: _chooseUnifiedPushDistributor,
+              icon: const Icon(Icons.hub_outlined),
+              label: const Text('Choose distributor'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _refreshUnifiedPushRegistration,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh registration'),
+            ),
+            TextButton.icon(
+              onPressed: _disableUnifiedPush,
+              icon: const Icon(Icons.link_off),
+              label: const Text('Disable'),
+            ),
+          ],
+        ),
+        const Text(
+          'The private push endpoint is stored by Android and is never shown '
+          'or written to logs. Notification content is fetched from Matrix.',
+        ),
+      ],
     ]),
     _SettingsPage.privacy => _privacy(),
     _SettingsPage.appearance => _appearance(),
@@ -596,6 +692,34 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       const Text(
         'Deltiecord v$deltiecordVersion\n'
         'A compact, old-school desktop Matrix client built with Flutter.',
+      ),
+      const SizedBox(height: 12),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            key: const ValueKey('check-for-updates'),
+            onPressed: _checkingForUpdates ? null : _checkForUpdates,
+            icon: _checkingForUpdates
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.system_update_alt),
+            label: Text(
+              _checkingForUpdates ? 'Checking…' : 'Check for updates',
+            ),
+          ),
+          TextButton.icon(
+            onPressed: () => launchUrl(
+              Uri.parse(deltiecordReleasesPage),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('Release downloads'),
+          ),
+        ],
       ),
       const SizedBox(height: 12),
       const Text(
@@ -810,6 +934,21 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           preferences.copyWith(autoplayGifs: value),
         ),
       ),
+      if (defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.windows)
+        SwitchListTile(
+          key: const Key('channel-drag-drop-toggle'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Enable channel drag and drop'),
+          subtitle: const Text(
+            'Off by default to prevent accidental room and category moves. '
+            'Permission checks still apply.',
+          ),
+          value: preferences.enableChannelDragAndDrop,
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(enableChannelDragAndDrop: value),
+          ),
+        ),
       const SizedBox(height: 12),
       DropdownButtonFormField<String>(
         initialValue: preferences.fontFamily,
@@ -843,25 +982,27 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           backend.preferences.copyWith(accentColor: color),
         ),
       ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Native title bar'),
-        subtitle: const Text(
-          'Show GTK window decorations on Linux. Applies after restart.',
+      if (defaultTargetPlatform == TargetPlatform.linux) ...[
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Native title bar'),
+          subtitle: const Text(
+            'Show GTK window decorations on Linux. Applies after restart.',
+          ),
+          value: preferences.showNativeTitleBar,
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(showNativeTitleBar: value),
+          ),
         ),
-        value: preferences.showNativeTitleBar,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(showNativeTitleBar: value),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Remember window size and position'),
+          value: preferences.rememberWindowState,
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(rememberWindowState: value),
+          ),
         ),
-      ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Remember window size and position'),
-        value: preferences.rememberWindowState,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(rememberWindowState: value),
-        ),
-      ),
+      ],
     ]);
   }
 
@@ -939,6 +1080,99 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             ),
           ),
     ]);
+  }
+
+  Future<void> _chooseUnifiedPushDistributor() async {
+    final platform = UnifiedPushPlatform.instance;
+    final userId = backend.userId;
+    if (userId == null) return;
+    try {
+      final distributors = await platform.distributors();
+      if (!mounted) return;
+      if (distributors.isEmpty) {
+        _showSettingMessage(
+          'No configured UnifiedPush distributor was found. Install ntfy and '
+          'configure it with https://push.deltie.net first.',
+        );
+        return;
+      }
+      final selected = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Choose UnifiedPush distributor'),
+          children: [
+            for (final distributor in distributors)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(dialogContext, distributor),
+                child: Text(distributor),
+              ),
+          ],
+        ),
+      );
+      if (selected == null) return;
+      await platform.selectDistributor(selected, userId);
+      await _waitForUnifiedPushEndpoint(userId);
+    } catch (exception) {
+      if (mounted) _showSettingMessage('UnifiedPush setup failed: $exception');
+    }
+  }
+
+  Future<void> _refreshUnifiedPushRegistration() async {
+    final userId = backend.userId;
+    if (userId == null) return;
+    try {
+      await UnifiedPushPlatform.instance.register(userId);
+      await _waitForUnifiedPushEndpoint(userId);
+    } catch (exception) {
+      if (mounted) {
+        _showSettingMessage('UnifiedPush refresh failed: $exception');
+      }
+    }
+  }
+
+  Future<void> _waitForUnifiedPushEndpoint(String userId) async {
+    final platform = UnifiedPushPlatform.instance;
+    for (var attempt = 0; attempt < 20; attempt++) {
+      final state = await platform.state(userId);
+      if (state.endpoint case final endpoint?) {
+        await backend.setUnifiedPushEndpoint(endpoint);
+        if (mounted) {
+          _reloadUnifiedPush();
+          _showSettingMessage('UnifiedPush registered.');
+        }
+        return;
+      }
+      if (state.error != null) break;
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    if (mounted) {
+      _reloadUnifiedPush();
+      _showSettingMessage(
+        'The distributor has not returned an endpoint yet. Check its account '
+        'and connection, then refresh registration.',
+      );
+    }
+  }
+
+  Future<void> _disableUnifiedPush() async {
+    final userId = backend.userId;
+    if (userId == null) return;
+    final platform = UnifiedPushPlatform.instance;
+    final state = await platform.state(userId);
+    if (state.endpoint case final endpoint?) {
+      await backend.removeUnifiedPushEndpoint(endpoint);
+    }
+    await platform.unregister(userId);
+    if (mounted) {
+      _reloadUnifiedPush();
+      _showSettingMessage('UnifiedPush disabled.');
+    }
+  }
+
+  void _showSettingMessage(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Widget _devices() => _section('Devices', [
@@ -1109,6 +1343,43 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(safeErrorMessage(exception))));
+    }
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() => _checkingForUpdates = true);
+    final checker = UpdateChecker();
+    try {
+      final result = await checker.check(
+        currentVersion: deltiecordVersion,
+        currentBuild: int.parse(deltiecordBuildNumber),
+      );
+      if (!mounted) return;
+      final message = result.updateAvailable
+          ? 'Deltiecord v${result.version} build ${result.build} is available.'
+          : 'Deltiecord is up to date.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: result.updateAvailable
+              ? SnackBarAction(
+                  label: 'Downloads',
+                  onPressed: () => launchUrl(
+                    Uri.parse(deltiecordReleasesPage),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                )
+              : null,
+        ),
+      );
+    } catch (exception) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(safeErrorMessage(exception))));
+    } finally {
+      checker.close();
+      if (mounted) setState(() => _checkingForUpdates = false);
     }
   }
 }

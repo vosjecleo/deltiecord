@@ -93,6 +93,7 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
                 child: DeltiecordProfileCard(
                   profile: profile,
                   onClose: () => Navigator.pop(context),
+                  onRefresh: _refresh,
                   onEdit: own && widget.onEditOwnProfile != null
                       ? () {
                           Navigator.pop(context);
@@ -116,15 +117,6 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
                         },
                   blocked: profile.blocked,
                 ),
-              ),
-            ),
-            Positioned(
-              right: 112,
-              top: 14,
-              child: IconButton.filledTonal(
-                tooltip: 'Refresh profile',
-                onPressed: _refresh,
-                icon: const Icon(Icons.refresh),
               ),
             ),
           ],

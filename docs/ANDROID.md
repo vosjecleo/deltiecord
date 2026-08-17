@@ -22,15 +22,19 @@ scroll position, and local per-room draft while panels move on or off screen.
 
 ## Signing
 
-Prerelease CI builds use Android's development signing identity so testers can
-sideload the APK without a secret committed to Git. This identity is not suitable
-for a stable public release. A production keystore and its passwords must be
-provided to Gradle through CI secrets or an ignored local properties file. Never
+Release CI requires a persistent signing identity. It will fail rather than
+silently produce an APK with a GitHub runner's temporary debug certificate.
+Provide the keystore through the `DELTIECORD_ANDROID_KEYSTORE_BASE64`,
+`DELTIECORD_ANDROID_STORE_PASSWORD`, `DELTIECORD_ANDROID_KEY_ALIAS`, and
+`DELTIECORD_ANDROID_KEY_PASSWORD` repository secrets. Local release builds may
+use ignored `android/key.properties` values with the equivalent fields. Never
 commit a keystore or signing password.
 
-Changing signing identities later prevents an in-place upgrade of an APK signed
-with the old identity. Choose and securely back up the production identity before
-the stable Android release.
+Changing signing identities prevents an in-place Android upgrade. Builds 62 and
+63 were signed by ephemeral CI debug identities, which caused the reported
+"App not installed" upgrades. Users of those APKs need one uninstall before the
+first persistently signed build; upgrades after that keep working. Back up the
+release keystore independently before publishing that build.
 
 ## Notifications and background operation
 
@@ -38,11 +42,18 @@ Deltiecord creates an Android message notification channel and preserves the
 existing encrypted-preview privacy preference. Notification payloads select the
 corresponding room/event when the process receives them.
 
-The application deliberately has no Firebase Cloud Messaging dependency. In the
-current prerelease, incoming notifications rely on the Matrix sync process being
-alive. Android or vendor battery management may suspend that process. Reliable
-private mobile push will require a separately documented Matrix-compatible push
-gateway design; it is not silently routed through Google infrastructure.
+The application deliberately has no Firebase Cloud Messaging dependency. Its
+Notifications settings use the standard UnifiedPush Android connector. Install
+and configure an external distributor (such as the ntfy Android app) for
+`https://push.deltie.net`, select it in Deltiecord, then Deltiecord registers the
+complete private distributor endpoint with the Matrix HTTP push gateway at
+`https://push.deltie.net/_matrix/push/v1/notify`. Neither distributor credentials
+nor generated endpoint capabilities are shipped or logged by Deltiecord.
+
+Push payloads are treated as generic Matrix activity wake-ups, not as trusted
+plaintext message content. Opening a push resumes normal authenticated Matrix
+sync. The distributor and gateway therefore improve suspended-app delivery
+without making them a source for decrypted message text.
 
 An active MatrixRTC session may also be constrained by vendor background policy.
 The in-app persistent call island is implemented, but a production Android

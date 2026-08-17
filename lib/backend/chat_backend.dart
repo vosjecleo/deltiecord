@@ -174,6 +174,12 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> setSelectedRoomMuted(bool muted);
   Future<void> setRoomMuted(String roomId, bool muted);
   Future<void> setNotificationPreviewsEnabled(bool enabled);
+
+  /// Registers the private UnifiedPush capability endpoint with Matrix.
+  /// Implementations must never log or display the full endpoint.
+  Future<void> setUnifiedPushEndpoint(String endpoint) async {}
+
+  Future<void> removeUnifiedPushEndpoint(String endpoint) async {}
   Future<void> updatePreferences(AppPreferences preferences);
   Future<void> loadMoreHistory();
   Future<void> loadMoreFuture();

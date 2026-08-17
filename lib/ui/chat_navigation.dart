@@ -1365,6 +1365,7 @@ class _CategorizedRoomList extends StatelessWidget {
     final categories = backend.selectedSpaceCategories;
     final selectedSpaceId = backend.selectedSpaceId;
     final canArrange =
+        backend.preferences.enableChannelDragAndDrop &&
         selectedSpaceId != null &&
         backend.canManageSpaceChannelLayout(selectedSpaceId);
     final categorizedIds = categories
@@ -1434,6 +1435,8 @@ class _ChannelCategorySection extends StatelessWidget {
   final ChannelCategorySummary? category;
   final int? categoryIndex;
   final int? dragIndex;
+
+  static const double _gripColumnWidth = 26;
 
   Future<void> _rename(BuildContext context) async {
     final current = category;
@@ -1564,7 +1567,7 @@ class _ChannelCategorySection extends StatelessWidget {
                           index: dragIndex!,
                           child: SizedBox(
                             key: ValueKey('category-drag-grip-${current.id}'),
-                            width: 30,
+                            width: _gripColumnWidth,
                             height: 32,
                             child: Center(
                               child: Transform.translate(
@@ -1578,7 +1581,7 @@ class _ChannelCategorySection extends StatelessWidget {
                           ),
                         )
                       else
-                        const SizedBox(width: 10),
+                        const SizedBox(width: _gripColumnWidth),
                       Expanded(
                         child: InkWell(
                           onTap: current == null
@@ -1955,12 +1958,13 @@ class _RoomListTile extends StatelessWidget {
     final selectedSpaceId = backend.selectedSpaceId;
     final mayArrange =
         canArrange ??
-        (selectedSpaceId != null &&
+        (backend.preferences.enableChannelDragAndDrop &&
+            selectedSpaceId != null &&
             backend.canManageSpaceChannelLayout(selectedSpaceId));
     Widget dragGrip() {
       final grip = SizedBox(
         key: ValueKey('room-drag-grip-${room.id}'),
-        width: 20,
+        width: _ChannelCategorySection._gripColumnWidth,
         height: 32,
         child: Center(
           child: Transform.translate(
@@ -2007,7 +2011,7 @@ class _RoomListTile extends StatelessWidget {
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (mayArrange) ...[dragGrip(), const SizedBox(width: 3)],
+            if (mayArrange) dragGrip(),
             _RoomIcon(room: room, size: 25),
           ],
         ),

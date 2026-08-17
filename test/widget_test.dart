@@ -276,6 +276,9 @@ void main() {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..currentSpaceId = '!space:example.org'
+      ..currentPreferences = const AppPreferences(
+        enableChannelDragAndDrop: true,
+      )
       ..spaceList = const [
         SpaceSummary(
           id: '!space:example.org',
@@ -337,6 +340,9 @@ void main() {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..currentSpaceId = '!space:example.org'
+      ..currentPreferences = const AppPreferences(
+        enableChannelDragAndDrop: true,
+      )
       ..spaceList = const [
         SpaceSummary(id: '!space:example.org', name: 'Workspace'),
       ]
@@ -414,10 +420,40 @@ void main() {
     expect(find.text('Rename category'), findsNothing);
   });
 
+  testWidgets('channel drag handles are opt-in even for administrators', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..mayArrangeChannels = true
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Workspace'),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!one:example.org',
+          name: 'one',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    expect(
+      find.byKey(const ValueKey('room-drag-grip-!one:example.org')),
+      findsNothing,
+    );
+  });
+
   testWidgets('rooms can be dragged into a Space category', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..currentSpaceId = '!space:example.org'
+      ..currentPreferences = const AppPreferences(
+        enableChannelDragAndDrop: true,
+      )
       ..spaceList = const [
         SpaceSummary(id: '!space:example.org', name: 'Workspace'),
       ]

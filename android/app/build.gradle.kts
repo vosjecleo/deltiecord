@@ -1,8 +1,30 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+val signingProperties = Properties()
+val signingPropertiesFile = rootProject.file("key.properties")
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.inputStream().use(signingProperties::load)
+}
+val releaseStoreFile = System.getenv("DELTIECORD_ANDROID_KEYSTORE")
+    ?: signingProperties.getProperty("storeFile")
+val releaseStorePassword = System.getenv("DELTIECORD_ANDROID_STORE_PASSWORD")
+    ?: signingProperties.getProperty("storePassword")
+val releaseKeyAlias = System.getenv("DELTIECORD_ANDROID_KEY_ALIAS")
+    ?: signingProperties.getProperty("keyAlias")
+val releaseKeyPassword = System.getenv("DELTIECORD_ANDROID_KEY_PASSWORD")
+    ?: signingProperties.getProperty("keyPassword")
+val hasReleaseSigning = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "net.deltie.deltiecord"
@@ -25,12 +47,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("deltiecordRelease") {
+                storeFile = file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Prerelease sideloads use Flutter's local debug keystore. Official
-            // v1 builds inject a private release keystore outside the source
-            // tree; signing credentials are never committed.
-            signingConfig = signingConfigs.getByName("debug")
+            // Stable update signatures come from an untracked key.properties
+            // file or CI secrets. Debug signing remains a development fallback
+            // only; release packaging verifies that real signing is present.
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("deltiecordRelease")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
@@ -47,4 +84,10 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    implementation("org.unifiedpush.android:connector:3.0.10") {
+        // flutter_secure_storage already supplies the Android Tink artifact.
+        // Both artifacts contain the same core classes, so including the
+        // connector's JVM Tink dependency makes D8 reject the application.
+        exclude(group = "com.google.crypto.tink", module = "tink")
+    }
 }

@@ -680,7 +680,7 @@ class _MobileMessageRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 46,
+                width: 40,
                 child: grouped
                     ? null
                     : GestureDetector(

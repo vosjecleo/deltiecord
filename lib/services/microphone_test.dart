@@ -124,10 +124,10 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
   _WebRtcMicrophoneTestSession._();
 
   final _levelController = StreamController<double>.broadcast();
-  final _renderer = webrtc.RTCVideoRenderer();
   webrtc.MediaStream? _localStream;
   webrtc.RTCPeerConnection? _sender;
   webrtc.RTCPeerConnection? _receiver;
+  webrtc.MediaStreamTrack? _monitorTrack;
   Timer? _meterTimer;
   bool _sampling = false;
   bool _disposed = false;
@@ -146,7 +146,6 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
   }
 
   Future<void> _initialize(MicrophoneTestConfiguration config) async {
-    await _renderer.initialize();
     _sender = await webrtc.createPeerConnection({
       'sdpSemantics': 'unified-plan',
     });
@@ -160,9 +159,10 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
       if (!_disposed) unawaited(_sender!.addCandidate(candidate));
     };
     _receiver!.onTrack = (event) {
-      if (_disposed || event.streams.isEmpty) return;
-      _renderer.srcObject = event.streams.first;
-      unawaited(_renderer.setVolume(0));
+      if (_disposed || event.track.kind != 'audio') return;
+      _monitorTrack = event.track;
+      event.track.enabled = false;
+      unawaited(webrtc.Helper.setVolume(0, event.track));
     };
 
     _localStream = await webrtc.navigator.mediaDevices.getUserMedia({
@@ -212,8 +212,14 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
   Stream<double> get levels => _levelController.stream;
 
   @override
-  Future<void> setListening(bool enabled) =>
-      _renderer.setVolume(enabled ? 1 : 0);
+  Future<void> setListening(bool enabled) async {
+    final track = _monitorTrack;
+    if (track == null) {
+      throw StateError('Microphone monitor track is not ready.');
+    }
+    track.enabled = enabled;
+    await webrtc.Helper.setVolume(enabled ? 1 : 0, track);
+  }
 
   @override
   Future<void> dispose() async {
@@ -232,8 +238,7 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
     await _receiver?.close();
     await _receiver?.dispose();
     _receiver = null;
-    _renderer.srcObject = null;
-    await _renderer.dispose();
+    _monitorTrack = null;
     await _levelController.close();
   }
 }

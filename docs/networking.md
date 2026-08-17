@@ -16,9 +16,11 @@ link and does not contact that site from the user's IP address.
 Privacy settings contain an optional `Fetch link previews directly on this
 device` fallback. It is off on every new installation. When explicitly enabled,
 the client may fetch a public HTTP(S) page only after the homeserver preview
-fails. Every DNS result and redirect target must be public, the connection is
-pinned to a validated address, proxies and cookies are disabled, documents and
-images are bounded, and strict content-type, redirect, and timeout limits apply.
+fails. Every DNS result and redirect target must be public and the actual TLS
+peer address is validated before sending a request, so DNS rebinding cannot
+redirect preview traffic into a private network. Proxies and cookies are
+disabled, documents and images are bounded, and strict content-type, redirect,
+and timeout limits apply.
 Matrix tokens and headers are never sent to a preview site.
 
 ## MatrixRTC and WebRTC infrastructure
@@ -59,12 +61,24 @@ removed when playback ends, on logout, and at shutdown.
 The old automatic FxTwitter/direct fallback is not used. Direct webpage preview
 traffic occurs only after the user enables the privacy setting described above.
 
-## Android push status
+## Android UnifiedPush
 
-Android currently keeps the Matrix sync connection alive only while normal
-platform lifecycle rules permit it; it does not depend on Firebase. UnifiedPush
-support requires both an installed distributor and a Matrix-compatible push
-gateway URL registered as an HTTP pusher with the homeserver. A distributor
-endpoint alone cannot consume the Matrix Push Gateway API, so Deltiecord does
-not register a half-working or hardcoded gateway. This is the remaining piece
-needed before UnifiedPush can be offered as an explicit Android setting.
+Opt-in and user-triggered from Android notification settings. Deltiecord uses
+the standard external UnifiedPush distributor protocol and contains no Firebase
+dependency or shared ntfy credentials. The selected distributor supplies a
+private, high-entropy endpoint. Deltiecord registers that complete endpoint as
+the Matrix pushkey through
+`https://push.deltie.net/_matrix/push/v1/notify` and keeps it in private Android
+preferences. The endpoint is a bearer capability and is never displayed in the
+UI or written to logs.
+
+The gateway and distributor receive Matrix push metadata sufficient to wake the
+application and display a generic activity notification. Deltiecord obtains
+room contents through normal authenticated Matrix sync after the notification is
+opened; the push path is not treated as a source of decrypted plaintext.
+
+## Release update checks
+
+User-triggered only. The About page can fetch the bounded JSON release manifest
+from `https://deltie.net/cord/releases.json` and open the public releases page.
+No automatic update request is made during startup.

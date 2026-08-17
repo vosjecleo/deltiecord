@@ -419,10 +419,35 @@ class PinnedDirectPreviewTransport implements DirectPreviewTransport {
       ..idleTimeout = _requestTimeout
       ..autoUncompress = true;
     client.findProxy = (_) => 'DIRECT';
-    client.connectionFactory = (target, _, _) => Socket.startConnect(
-      address,
-      target.hasPort ? target.port : (target.isScheme('https') ? 443 : 80),
-    );
+    client.connectionFactory = (target, _, _) async {
+      final port = target.hasPort
+          ? target.port
+          : (target.isScheme('https') ? 443 : 80);
+      // HttpClient expects a connection factory to return an already-secured
+      // socket for HTTPS. The old implementation returned a plain pinned
+      // socket, which made every HTTPS preview fail with HTTP 400. TLS needs
+      // the hostname for SNI/certificate verification, so resolve/connect by
+      // hostname and validate the *actual* peer before returning the task.
+      // This catches DNS rebinding before HttpClient can send the request.
+      final ConnectionTask<Socket> task;
+      if (target.isScheme('https')) {
+        task = await SecureSocket.startConnect(
+          target.host,
+          port,
+          supportedProtocols: const ['http/1.1'],
+        );
+      } else {
+        task = await Socket.startConnect(address, port);
+      }
+      final socket = await task.socket;
+      if (!isPublicInternetAddress(socket.remoteAddress)) {
+        socket.destroy();
+        throw const HttpException(
+          'Preview connection was redirected to a private address.',
+        );
+      }
+      return task;
+    };
     try {
       final request = await client.getUrl(url).timeout(_requestTimeout);
       request

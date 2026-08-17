@@ -42,6 +42,11 @@ an external dependency under its own license.
   provide the cryptographic implementation used through the Matrix SDK.
 - [flutter_secure_storage](https://github.com/juliansteenbakker/flutter_secure_storage)
   provides OS-keyring-backed storage for sessions and private configuration.
+- [UnifiedPush Android connector](https://codeberg.org/UnifiedPush/android-connector)
+  provides the standard distributor integration used for private Android push.
+  The connector is Apache-2.0 licensed. Deltiecord's configured Matrix gateway
+  uses [ntfy](https://github.com/binwiederhier/ntfy), which is Apache-2.0 and
+  GPL-2.0 licensed depending on the component; no ntfy server code is bundled.
 - [GIPHY](https://developers.giphy.com/) supplies GIF search results through its
   public API. Deltiecord contains its own small client; a rate-limited HTTPS
   proxy holds the shared API key so client binaries never contain it.

@@ -47,10 +47,14 @@ extension _MatrixTimelineSupport on MatrixBackend {
         repliedTo = await _matrix.encryption!.decryptRoomEvent(repliedTo);
       }
       if (repliedTo.type != EventTypes.Message) continue;
+      // Keep the original event ID as the navigation target, but render its
+      // latest replacement so reply previews cannot preserve a stale body.
+      final originalEventId = repliedTo.eventId;
+      final displayEvent = repliedTo.getDisplayEvent(timeline);
       _replyPreviews[event.eventId] = ReplyPreview(
-        eventId: repliedTo.eventId,
-        sender: repliedTo.senderFromMemoryOrFallback.calcDisplayname(),
-        body: repliedTo.calcUnlocalizedBody(
+        eventId: originalEventId,
+        sender: displayEvent.senderFromMemoryOrFallback.calcDisplayname(),
+        body: displayEvent.calcUnlocalizedBody(
           hideReply: true,
           hideEdit: true,
           plaintextBody: true,

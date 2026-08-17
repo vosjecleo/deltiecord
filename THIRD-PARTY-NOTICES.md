@@ -10,6 +10,7 @@ The application also bundles:
 - Liberation Sans under the SIL Open Font License 1.1
 - Noto Color Emoji under the SIL Open Font License 1.1
 - the Jome Unicode emoji catalogue under the MIT License
+- the UnifiedPush Android connector under the Apache License 2.0
 
 The complete font and emoji licence texts are shipped in
 `assets/fonts/licenses/` and therefore in every Flutter release bundle.

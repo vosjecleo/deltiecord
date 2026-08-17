@@ -12,6 +12,7 @@ class MobileAvatar extends StatelessWidget {
     this.size = 44,
     this.borderColor,
     this.speaking = false,
+    this.square = false,
     super.key,
   });
 
@@ -21,6 +22,7 @@ class MobileAvatar extends StatelessWidget {
   final double size;
   final Color? borderColor;
   final bool speaking;
+  final bool square;
 
   @override
   Widget build(BuildContext context) => SizedBox.square(
@@ -32,7 +34,8 @@ class MobileAvatar extends StatelessWidget {
           child: Container(
             padding: EdgeInsets.all(borderColor == null ? 0 : 2),
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
+              shape: square ? BoxShape.rectangle : BoxShape.circle,
+              borderRadius: square ? BorderRadius.circular(11) : null,
               border: borderColor == null
                   ? null
                   : Border.all(color: borderColor!, width: 2),
@@ -40,12 +43,14 @@ class MobileAvatar extends StatelessWidget {
             child: Container(
               padding: EdgeInsets.all(speaking ? 2 : 0),
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
+                shape: square ? BoxShape.rectangle : BoxShape.circle,
+                borderRadius: square ? BorderRadius.circular(9) : null,
                 border: speaking
                     ? Border.all(color: const Color(0xff23c483), width: 2)
                     : null,
               ),
-              child: ClipOval(
+              child: ClipPath(
+                clipper: square ? _SquarcleClipper() : const _OvalClipper(),
                 child: bytes == null
                     ? ColoredBox(
                         color: Theme.of(context).colorScheme.secondaryContainer,
@@ -89,6 +94,27 @@ class MobileAvatar extends StatelessWidget {
       ],
     ),
   );
+}
+
+class _OvalClipper extends CustomClipper<Path> {
+  const _OvalClipper();
+
+  @override
+  Path getClip(Size size) => Path()..addOval(Offset.zero & size);
+
+  @override
+  bool shouldReclip(_OvalClipper oldClipper) => false;
+}
+
+class _SquarcleClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) => Path()
+    ..addRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(9)),
+    );
+
+  @override
+  bool shouldReclip(_SquarcleClipper oldClipper) => false;
 }
 
 String mobilePresenceLabel(UserPresence presence) => switch (presence) {

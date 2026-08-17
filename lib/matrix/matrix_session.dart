@@ -6,6 +6,10 @@ part of 'matrix_backend.dart';
 /// path. Room-specific asynchronous work is guarded elsewhere by the timeline
 /// generation established by this lifecycle.
 extension _MatrixSession on MatrixBackend {
+  static final Uri _unifiedPushGateway = Uri.parse(
+    'https://push.deltie.net/_matrix/push/v1/notify',
+  );
+
   Future<void> _initializeSession() async {
     try {
       await _syncSubscription?.cancel();
@@ -70,6 +74,7 @@ extension _MatrixSession on MatrixBackend {
         unawaited(_refreshProfile());
         unawaited(_refreshRoomMetadata());
         unawaited(_refreshMediaConfig());
+        unawaited(_restoreUnifiedPushPusher());
       }
     } catch (exception) {
       _status = SessionStatus.failed;
@@ -100,7 +105,13 @@ extension _MatrixSession on MatrixBackend {
       _initializeVoice();
       _status = SessionStatus.signedIn;
       _connectionStatus = ConnectionStatus.online;
+      // Login does not recreate the Matrix client, so it does not pass through
+      // the session-restoration hydration path above. Hydrate the same profile
+      // and room metadata here before the first sync-dependent UI settles.
+      unawaited(_refreshProfile());
+      unawaited(_refreshRoomMetadata());
       unawaited(_refreshMediaConfig());
+      unawaited(_restoreUnifiedPushPusher());
       await refreshEncryptionSetup();
     } catch (exception) {
       _status = SessionStatus.signedOut;
@@ -584,6 +595,8 @@ extension _MatrixSession on MatrixBackend {
           (content?['output_volume'] as num?)?.toDouble().clamp(0, 1) ?? 1,
       callSound: content?.tryGet<bool>('call_sound') ?? true,
       shareDesktopAudio: content?.tryGet<bool>('share_desktop_audio') ?? false,
+      enableChannelDragAndDrop:
+          content?.tryGet<bool>('enable_channel_drag_and_drop') ?? false,
       participantVolumes:
           content
               ?.tryGetMap<String, Object?>('participant_volumes')
@@ -718,6 +731,7 @@ extension _MatrixSession on MatrixBackend {
           'output_volume': preferences.outputVolume,
           'call_sound': preferences.callSound,
           'share_desktop_audio': preferences.shareDesktopAudio,
+          'enable_channel_drag_and_drop': preferences.enableChannelDragAndDrop,
           'participant_volumes': preferences.participantVolumes,
         },
       );
@@ -747,6 +761,54 @@ extension _MatrixSession on MatrixBackend {
       _error = _friendlyError(exception);
       _notifyBackendListeners();
     }
+  }
+
+  Future<void> _setUnifiedPushEndpoint(String endpoint) async {
+    final uri = Uri.tryParse(endpoint);
+    if (_matrix.userID == null ||
+        uri == null ||
+        uri.scheme != 'https' ||
+        uri.host != 'push.deltie.net' ||
+        !uri.pathSegments.any((part) => part.startsWith('up'))) {
+      throw ArgumentError('UnifiedPush returned an invalid endpoint.');
+    }
+    await _matrix.postPusher(
+      Pusher(
+        appId: 'net.deltie.deltiecord',
+        pushkey: endpoint,
+        appDisplayName: 'Deltiecord',
+        deviceDisplayName: Platform.isAndroid
+            ? 'Deltiecord Android'
+            : 'Deltiecord',
+        kind: 'http',
+        lang: 'en',
+        data: PusherData(url: _unifiedPushGateway),
+      ),
+      append: true,
+    );
+  }
+
+  Future<void> _restoreUnifiedPushPusher() async {
+    final userId = _matrix.userID;
+    final platform = UnifiedPushPlatform.instance;
+    if (userId == null || !platform.supported) return;
+    try {
+      final state = await platform.state(userId);
+      if (state.distributor != null) await platform.register(userId);
+      if (state.endpoint case final endpoint?) {
+        await _setUnifiedPushEndpoint(endpoint);
+      }
+    } catch (_) {
+      // Push is an optional background optimization. Distributor absence or a
+      // stale endpoint must never prevent an otherwise healthy Matrix login.
+    }
+  }
+
+  Future<void> _removeUnifiedPushEndpoint(String endpoint) async {
+    if (_matrix.userID == null || endpoint.isEmpty) return;
+    await _matrix.deletePusher(
+      PusherId(appId: 'net.deltie.deltiecord', pushkey: endpoint),
+    );
   }
 
   void _clearSessionError() {

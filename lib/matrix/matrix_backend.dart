@@ -18,6 +18,7 @@ import '../services/link_preview_policy.dart';
 import '../services/link_preview_service.dart';
 import '../services/secret_redaction.dart';
 import '../services/timeline_window_policy.dart';
+import '../services/unified_push.dart';
 import 'matrix_client_factory.dart';
 import 'media_range_proxy.dart';
 import 'matrix_voice_controller.dart';
@@ -501,6 +502,14 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> setNotificationPreviewsEnabled(bool enabled) =>
       _setNotificationPreviewsEnabled(enabled);
+
+  @override
+  Future<void> setUnifiedPushEndpoint(String endpoint) =>
+      _setUnifiedPushEndpoint(endpoint);
+
+  @override
+  Future<void> removeUnifiedPushEndpoint(String endpoint) =>
+      _removeUnifiedPushEndpoint(endpoint);
 
   @override
   Future<void> updatePreferences(AppPreferences preferences) =>

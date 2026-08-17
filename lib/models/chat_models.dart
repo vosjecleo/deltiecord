@@ -77,6 +77,7 @@ class AppPreferences {
     this.outputVolume = 1,
     this.callSound = true,
     this.shareDesktopAudio = false,
+    this.enableChannelDragAndDrop = false,
     this.participantVolumes = const {},
   });
 
@@ -122,6 +123,7 @@ class AppPreferences {
   final double outputVolume;
   final bool callSound;
   final bool shareDesktopAudio;
+  final bool enableChannelDragAndDrop;
   final Map<String, double> participantVolumes;
 
   AppPreferences copyWith({
@@ -162,6 +164,7 @@ class AppPreferences {
     double? outputVolume,
     bool? callSound,
     bool? shareDesktopAudio,
+    bool? enableChannelDragAndDrop,
     Map<String, double>? participantVolumes,
   }) => AppPreferences(
     density: density ?? this.density,
@@ -205,6 +208,8 @@ class AppPreferences {
     outputVolume: outputVolume ?? this.outputVolume,
     callSound: callSound ?? this.callSound,
     shareDesktopAudio: shareDesktopAudio ?? this.shareDesktopAudio,
+    enableChannelDragAndDrop:
+        enableChannelDragAndDrop ?? this.enableChannelDragAndDrop,
     participantVolumes: participantVolumes ?? this.participantVolumes,
   );
 }

@@ -340,10 +340,13 @@ class _RichComposerState extends State<_RichComposer> {
                 key: const Key('message-composer-island'),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 4,
-                  vertical: _composerIslandVerticalInset,
+                  // The one-pixel outline replaces one pixel of the existing
+                  // inset on each edge, preserving shared bottom geometry.
+                  vertical: _composerIslandVerticalInset - 1,
                 ),
                 decoration: BoxDecoration(
                   color: context.deltiecord.island,
+                  border: Border.all(color: Colors.black, width: 1),
                   borderRadius: DeltiecordCorners.borderRadius,
                 ),
                 child: Row(

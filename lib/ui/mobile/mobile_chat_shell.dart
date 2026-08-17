@@ -33,6 +33,8 @@ class _MobileChatShellState extends State<MobileChatShell> {
   String? _lastRoomId;
   bool _openingRoom = false;
   final Map<int, Offset> _pointerStarts = {};
+  double? _navigationDragProgress;
+  bool? _dragStartedWithNavigation;
 
   ChatBackend get backend => widget.backend;
 
@@ -121,19 +123,60 @@ class _MobileChatShellState extends State<MobileChatShell> {
           // while a right drag anywhere on the timeline reliably opens nav.
           onPointerDown: (event) =>
               _pointerStarts[event.pointer] = event.position,
-          onPointerCancel: (event) => _pointerStarts.remove(event.pointer),
+          onPointerMove: (event) {
+            final start = _pointerStarts[event.pointer];
+            if (start == null || _detailsVisible || room == null) return;
+            final delta = event.position - start;
+            if (delta.dx.abs() < 6 || delta.dx.abs() < delta.dy.abs() * 1.15) {
+              return;
+            }
+            final startedVisible =
+                _dragStartedWithNavigation ?? _navigationVisible;
+            if ((startedVisible && delta.dx >= 0) ||
+                (!startedVisible && delta.dx <= 0)) {
+              return;
+            }
+            if (_navigationDragProgress == null) {
+              FocusManager.instance.primaryFocus?.unfocus();
+            }
+            final width = MediaQuery.sizeOf(context).width;
+            final progress = startedVisible
+                ? (1 + delta.dx / width).clamp(0.0, 1.0)
+                : (delta.dx / width).clamp(0.0, 1.0);
+            setState(() {
+              _dragStartedWithNavigation = startedVisible;
+              _navigationDragProgress = progress;
+            });
+          },
+          onPointerCancel: (event) {
+            _pointerStarts.remove(event.pointer);
+            if (_navigationDragProgress != null) {
+              setState(() {
+                _navigationDragProgress = null;
+                _dragStartedWithNavigation = null;
+              });
+            }
+          },
           onPointerUp: (event) {
             final start = _pointerStarts.remove(event.pointer);
             if (start == null) return;
+            final progress = _navigationDragProgress;
+            final startedVisible = _dragStartedWithNavigation;
+            if (progress != null && startedVisible != null) {
+              setState(() {
+                _navigationVisible = startedVisible
+                    ? progress >= 0.78
+                    : progress >= 0.18;
+                _navigationDragProgress = null;
+                _dragStartedWithNavigation = null;
+              });
+              return;
+            }
             final delta = event.position - start;
             if (delta.dx.abs() < 72 || delta.dx.abs() < delta.dy.abs() * 1.25) {
               return;
             }
-            if (!_detailsVisible && !_navigationVisible && delta.dx > 0) {
-              setState(() => _navigationVisible = true);
-            } else if (_navigationVisible && room != null && delta.dx < 0) {
-              setState(() => _navigationVisible = false);
-            } else if (_detailsVisible && delta.dx > 0) {
+            if (_detailsVisible && delta.dx > 0) {
               setState(() => _detailsVisible = false);
             }
           },
@@ -141,10 +184,12 @@ class _MobileChatShellState extends State<MobileChatShell> {
             children: [
               Positioned.fill(
                 child: AnimatedSlide(
-                  offset: _navigationVisible && room != null
-                      ? const Offset(0.12, 0)
-                      : Offset.zero,
-                  duration: _duration,
+                  offset: room == null
+                      ? Offset.zero
+                      : Offset(0.12 * _navigationProgress, 0),
+                  duration: _navigationDragProgress == null
+                      ? _duration
+                      : Duration.zero,
                   curve: Curves.easeOutCubic,
                   child: room == null
                       ? const _NoRoomSelected()
@@ -183,13 +228,13 @@ class _MobileChatShellState extends State<MobileChatShell> {
               ),
               Positioned.fill(
                 child: AnimatedSlide(
-                  offset: _navigationVisible
-                      ? Offset.zero
-                      : const Offset(-1, 0),
-                  duration: _duration,
+                  offset: Offset(-1 + _navigationProgress, 0),
+                  duration: _navigationDragProgress == null
+                      ? _duration
+                      : Duration.zero,
                   curve: Curves.easeOutCubic,
                   child: IgnorePointer(
-                    ignoring: !_navigationVisible,
+                    ignoring: _navigationProgress < 0.02,
                     child: Material(
                       elevation: 12,
                       child: MobileNavigationPanel(
@@ -257,6 +302,9 @@ class _MobileChatShellState extends State<MobileChatShell> {
   Duration get _duration => backend.preferences.reducedMotion
       ? Duration.zero
       : const Duration(milliseconds: 220);
+
+  double get _navigationProgress =>
+      _navigationDragProgress ?? (_navigationVisible ? 1 : 0);
 }
 
 class _NoRoomSelected extends StatelessWidget {

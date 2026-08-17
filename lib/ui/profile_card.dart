@@ -54,11 +54,14 @@ class DeltiecordProfileCard extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [gradientTop, gradientBottom],
         ),
-        border: Border.all(color: accent.withValues(alpha: 0.75), width: 2),
         borderRadius: DeltiecordCorners.borderRadius,
         boxShadow: const [
           BoxShadow(color: Color(0x44000000), blurRadius: 18, spreadRadius: 2),
         ],
+      ),
+      foregroundDecoration: BoxDecoration(
+        border: Border.all(color: accent.withValues(alpha: 0.75), width: 2),
+        borderRadius: DeltiecordCorners.borderRadius,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(

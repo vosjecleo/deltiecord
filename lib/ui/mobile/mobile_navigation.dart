@@ -45,9 +45,9 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
         .toList(growable: false);
     return SafeArea(
       bottom: false,
-      child: Column(
+      child: Stack(
         children: [
-          Expanded(
+          Positioned.fill(
             child: Row(
               children: [
                 _SpaceRail(backend: backend),
@@ -120,10 +120,15 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
               ],
             ),
           ),
-          _MobileUserIsland(
-            backend: backend,
-            onOpenSettings: widget.onOpenSettings,
-            onOpenProfile: widget.onOpenProfile,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: _MobileUserIsland(
+              backend: backend,
+              onOpenSettings: widget.onOpenSettings,
+              onOpenProfile: widget.onOpenProfile,
+            ),
           ),
         ],
       ),
@@ -212,7 +217,7 @@ class _SpaceRail extends StatelessWidget {
         const Divider(indent: 14, endIndent: 14),
         Expanded(
           child: ListView(
-            padding: EdgeInsets.zero,
+            padding: const EdgeInsets.only(bottom: 84),
             children: [
               for (final space in backend.spaces)
                 _RailButton(
@@ -538,7 +543,7 @@ class _RoomList extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListView.builder(
     key: const ValueKey('mobile-room-list'),
-    padding: const EdgeInsets.symmetric(horizontal: 8),
+    padding: const EdgeInsets.fromLTRB(8, 0, 8, 84),
     itemCount: rooms.length,
     itemBuilder: (context, index) {
       final room = rooms[index];
@@ -612,6 +617,7 @@ class _SpaceRoomList extends StatelessWidget {
     }
     return ListView(
       key: const ValueKey('mobile-space-room-list'),
+      padding: const EdgeInsets.only(bottom: 84),
       children: children,
     );
   }
@@ -666,6 +672,7 @@ class _MobileUserIsland extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: context.deltiecord.elevated,
+        border: Border.all(color: Colors.black, width: 1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(

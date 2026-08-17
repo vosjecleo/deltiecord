@@ -458,6 +458,7 @@ extension _MatrixSession on MatrixBackend {
         body: notificationBody,
         roomId: room.id,
         eventId: event.eventId,
+        senderAvatar: _senderAvatarBytes[event.senderId],
         sound: _preferences.notificationSound,
       );
     }
@@ -733,18 +734,14 @@ extension _MatrixSession on MatrixBackend {
   }
 
   Future<void> _setUnifiedPushEndpoint(String endpoint) async {
-    final uri = Uri.tryParse(endpoint);
-    if (_matrix.userID == null ||
-        uri == null ||
-        uri.scheme != 'https' ||
-        uri.host != 'push.deltie.net' ||
-        !uri.pathSegments.any((part) => part.startsWith('up'))) {
+    final normalized = normalizeUnifiedPushEndpoint(endpoint);
+    if (_matrix.userID == null || normalized == null) {
       throw ArgumentError('UnifiedPush returned an invalid endpoint.');
     }
     await _matrix.postPusher(
       Pusher(
         appId: 'net.deltie.deltiecord',
-        pushkey: endpoint,
+        pushkey: normalized,
         appDisplayName: 'Deltiecord',
         deviceDisplayName: Platform.isAndroid
             ? 'Deltiecord Android'
@@ -762,8 +759,14 @@ extension _MatrixSession on MatrixBackend {
     final platform = UnifiedPushPlatform.instance;
     if (userId == null || !platform.supported) return;
     try {
-      final state = await platform.state(userId);
+      await platform.ensureDefaultDistributor(userId);
+      var state = await platform.state(userId);
       if (state.distributor != null) await platform.register(userId);
+      for (var attempt = 0; attempt < 20 && state.endpoint == null; attempt++) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        state = await platform.state(userId);
+        if (state.error != null) break;
+      }
       if (state.endpoint case final endpoint?) {
         await _setUnifiedPushEndpoint(endpoint);
       }

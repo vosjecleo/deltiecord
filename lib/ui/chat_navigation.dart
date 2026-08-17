@@ -1140,7 +1140,10 @@ class _CurrentUserPanel extends StatelessWidget {
         child: Material(
           key: const Key('current-user-island'),
           color: context.deltiecord.island,
-          borderRadius: DeltiecordCorners.borderRadius,
+          shape: RoundedRectangleBorder(
+            borderRadius: DeltiecordCorners.borderRadius,
+            side: const BorderSide(color: Colors.black, width: 1),
+          ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () => showOwnProfile(context, backend),

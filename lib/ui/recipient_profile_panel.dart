@@ -279,6 +279,7 @@ class _RecipientProfileContents extends StatelessWidget {
                       foregroundColor: Theme.of(context).colorScheme.onSurface,
                       shape: RoundedRectangleBorder(
                         borderRadius: DeltiecordCorners.borderRadius,
+                        side: const BorderSide(color: Colors.black, width: 1),
                       ),
                     ),
                     onPressed: () =>

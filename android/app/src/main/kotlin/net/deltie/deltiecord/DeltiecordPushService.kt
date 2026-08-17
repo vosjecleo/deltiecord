@@ -19,7 +19,7 @@ import org.unifiedpush.android.connector.data.PushMessage
 class DeltiecordPushService : PushService() {
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
         preferences(this).edit()
-            .putString(endpointKey(instance), endpoint.url)
+            .putString(endpointKey(instance), endpoint.url.trim())
             .remove(errorKey(instance))
             .apply()
     }
@@ -55,10 +55,6 @@ class DeltiecordPushService : PushService() {
             "endpoint" to preferences(context).getString(endpointKey(instance), null),
             "error" to preferences(context).getString(errorKey(instance), null),
         )
-
-        fun clearError(context: Context, instance: String) {
-            preferences(context).edit().remove(errorKey(instance)).apply()
-        }
 
         fun clear(context: Context, instance: String) {
             preferences(context).edit()

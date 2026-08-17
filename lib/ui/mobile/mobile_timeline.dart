@@ -325,7 +325,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                               older.senderId == message.senderId &&
                               message.timestamp.difference(older.timestamp) <
                                   const Duration(minutes: 7) &&
-                              message.reply == null;
+                              message.reply == null &&
+                              !message.edited &&
+                              message.readBy.isEmpty;
                           return _MobileMessageRow(
                             key: ValueKey(message.id),
                             backend: backend,
@@ -662,6 +664,7 @@ class _MobileMessageRow extends StatelessWidget {
     return Dismissible(
       key: ValueKey('swipe-${message.id}'),
       direction: DismissDirection.endToStart,
+      dismissThresholds: const {DismissDirection.endToStart: 0.15},
       confirmDismiss: (_) async {
         onReply();
         return false;
@@ -717,8 +720,38 @@ class _MobileMessageRow extends StatelessWidget {
                                 alwaysUse24HourFormat:
                                     backend.preferences.use24HourTime,
                               ),
-                              style: Theme.of(context).textTheme.bodySmall,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.deltiecord.muted,
+                              ),
                             ),
+                            if (message.edited) ...[
+                              const SizedBox(width: 5),
+                              Text(
+                                '(edited)',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: context.deltiecord.muted,
+                                ),
+                              ),
+                            ],
+                            if (message.own &&
+                                !message.failed &&
+                                !message.pending) ...[
+                              const SizedBox(width: 5),
+                              GestureDetector(
+                                onTap: message.readBy.isEmpty
+                                    ? null
+                                    : () => _showReaders(context),
+                                child: Icon(
+                                  message.readBy.isEmpty
+                                      ? Icons.check
+                                      : Icons.done_all,
+                                  size: 12,
+                                  color: context.deltiecord.muted,
+                                ),
+                              ),
+                            ],
                             if (message.pending) ...[
                               const SizedBox(width: 5),
                               const SizedBox.square(
@@ -755,8 +788,12 @@ class _MobileMessageRow extends StatelessWidget {
                           ? MatrixHtmlText(
                               html: message.formattedBody!,
                               fallback: message.body,
+                              selectable: false,
                             )
-                          : MatrixPlainText(text: message.body)
+                          : MatrixPlainText(
+                              text: message.body,
+                              selectable: false,
+                            )
                     else
                       const Text(
                         'Message deleted',
@@ -869,6 +906,25 @@ class _MobileMessageRow extends StatelessWidget {
         if (emoji != null) await backend.toggleReaction(message.id, emoji);
     }
   }
+
+  Future<void> _showReaders(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(title: Text('Read by')),
+          for (final reader in message.readBy)
+            ListTile(
+              leading: const Icon(Icons.done_all, size: 18),
+              title: Text(reader.displayName),
+              subtitle: Text(reader.userId),
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _MobileComposer extends StatefulWidget {
@@ -1032,7 +1088,8 @@ class _MobileComposerState extends State<_MobileComposer> {
           margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
           decoration: BoxDecoration(
             color: context.deltiecord.elevated,
-            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.black, width: 1),
+            borderRadius: DeltiecordCorners.borderRadius,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,

@@ -45,10 +45,16 @@ List<InlineSpan> _emojiAwareTextSpans(
 }
 
 class MatrixPlainText extends StatefulWidget {
-  const MatrixPlainText({required this.text, this.style, super.key});
+  const MatrixPlainText({
+    required this.text,
+    this.style,
+    this.selectable = true,
+    super.key,
+  });
 
   final String text;
   final TextStyle? style;
+  final bool selectable;
 
   @override
   State<MatrixPlainText> createState() => _MatrixPlainTextState();
@@ -122,10 +128,10 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
         ),
       );
     }
-    return SelectableText.rich(
-      TextSpan(style: widget.style, children: spans),
-      contextMenuBuilder: _noContextMenu,
-    );
+    final span = TextSpan(style: widget.style, children: spans);
+    return widget.selectable
+        ? SelectableText.rich(span, contextMenuBuilder: _noContextMenu)
+        : Text.rich(span);
   }
 }
 
@@ -133,10 +139,16 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
 /// Unsupported elements degrade to their text children instead of creating
 /// arbitrary widgets or executing external content.
 class MatrixHtmlText extends StatefulWidget {
-  const MatrixHtmlText({required this.html, required this.fallback, super.key});
+  const MatrixHtmlText({
+    required this.html,
+    required this.fallback,
+    this.selectable = true,
+    super.key,
+  });
 
   final String html;
   final String fallback;
+  final bool selectable;
 
   @override
   State<MatrixHtmlText> createState() => _MatrixHtmlTextState();
@@ -171,21 +183,21 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       if (lastSpan is TextSpan && lastSpan.text == '\n') spans.removeLast();
     }
     if (spans.isEmpty) {
-      return SelectableText.rich(
-        TextSpan(
-          children: _emojiAwareTextSpans(
-            context,
-            widget.fallback,
-            const TextStyle(),
-          ),
+      final span = TextSpan(
+        children: _emojiAwareTextSpans(
+          context,
+          widget.fallback,
+          const TextStyle(),
         ),
-        contextMenuBuilder: _noContextMenu,
       );
+      return widget.selectable
+          ? SelectableText.rich(span, contextMenuBuilder: _noContextMenu)
+          : Text.rich(span);
     }
-    return SelectableText.rich(
-      TextSpan(children: spans),
-      contextMenuBuilder: _noContextMenu,
-    );
+    final span = TextSpan(children: spans);
+    return widget.selectable
+        ? SelectableText.rich(span, contextMenuBuilder: _noContextMenu)
+        : Text.rich(span);
   }
 
   List<InlineSpan> _nodes(Iterable<dom.Node> nodes, TextStyle style) =>

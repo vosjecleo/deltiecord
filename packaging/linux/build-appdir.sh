@@ -9,7 +9,7 @@ test -x "$bundle/deltiecord" || { echo "Run flutter build linux --release first.
 rm -rf "$appdir"
 install -d "$appdir/usr/lib/deltiecord" "$appdir/usr/bin" \
   "$appdir/usr/share/applications" "$appdir/usr/share/metainfo" \
-  "$appdir/usr/share/icons/hicolor/scalable/apps" \
+  "$appdir/usr/share/icons/hicolor/256x256/apps" \
   "$appdir/usr/share/doc/deltiecord"
 cp -a "$bundle/." "$appdir/usr/lib/deltiecord/"
 ln -s ../lib/deltiecord/deltiecord "$appdir/usr/bin/deltiecord"
@@ -17,11 +17,11 @@ install -m 0644 "$repo_root/packaging/linux/net.deltie.deltiecord.desktop" \
   "$appdir/usr/share/applications/net.deltie.deltiecord.desktop"
 install -m 0644 "$repo_root/packaging/linux/net.deltie.deltiecord.metainfo.xml" \
   "$appdir/usr/share/metainfo/net.deltie.deltiecord.appdata.xml"
-install -m 0644 "$repo_root/packaging/linux/net.deltie.deltiecord.svg" \
-  "$appdir/usr/share/icons/hicolor/scalable/apps/net.deltie.deltiecord.svg"
+install -m 0644 "$repo_root/packaging/linux/net.deltie.deltiecord.png" \
+  "$appdir/usr/share/icons/hicolor/256x256/apps/net.deltie.deltiecord.png"
 ln -s usr/share/applications/net.deltie.deltiecord.desktop "$appdir/net.deltie.deltiecord.desktop"
-ln -s usr/share/icons/hicolor/scalable/apps/net.deltie.deltiecord.svg "$appdir/net.deltie.deltiecord.svg"
-ln -s net.deltie.deltiecord.svg "$appdir/.DirIcon"
+ln -s usr/share/icons/hicolor/256x256/apps/net.deltie.deltiecord.png "$appdir/net.deltie.deltiecord.png"
+ln -s net.deltie.deltiecord.png "$appdir/.DirIcon"
 install -m 0644 "$repo_root/LICENSE" "$appdir/usr/share/doc/deltiecord/LICENSE"
 install -m 0644 "$repo_root/CREDITS.md" "$appdir/usr/share/doc/deltiecord/CREDITS.md"
 install -m 0644 "$repo_root/THIRD-PARTY-NOTICES.md" \

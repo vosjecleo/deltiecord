@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/temporary_attachment_store.dart';
+import '../deltiecord_theme.dart';
 
 class MobileAttachmentView extends StatefulWidget {
   const MobileAttachmentView({
@@ -282,7 +283,15 @@ Widget _fullscreenCloseButton(BuildContext context) => Positioned(
         foregroundColor: Colors.white,
       ),
       onPressed: () => Navigator.pop(context),
-      icon: const Icon(Icons.close, color: Colors.white, size: 26),
+      icon: const Text(
+        '×',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 30,
+          height: 0.82,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
     ),
   ),
 );
@@ -374,11 +383,31 @@ class _MobilePlayerState extends State<_MobilePlayer> {
       child: AspectRatio(
         aspectRatio: _aspectRatio(widget.message.attachment),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Video(
-            controller: _video!,
-            controls: AdaptiveVideoControls,
-            fit: BoxFit.contain,
+          borderRadius: DeltiecordCorners.borderRadius,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Video(
+                controller: _video!,
+                controls: AdaptiveVideoControls,
+                fit: BoxFit.contain,
+              ),
+              StreamBuilder<bool>(
+                stream: player.stream.playing,
+                initialData: player.state.playing,
+                builder: (context, snapshot) {
+                  if (snapshot.data ?? false) return const SizedBox.shrink();
+                  return Center(
+                    child: IconButton.filled(
+                      key: const ValueKey('mobile-media-play'),
+                      tooltip: 'Play video',
+                      onPressed: player.play,
+                      icon: const _PlayGlyph(),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
         ),
       ),
@@ -573,7 +602,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
                       : IconButton.filled(
                           tooltip: 'Play embedded video',
                           onPressed: _play,
-                          icon: const Icon(Icons.play_arrow),
+                          icon: const _PlayGlyph(),
                         ),
                 ),
                 if (_error case final error?)
@@ -591,4 +620,32 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
             ),
     );
   }
+}
+
+class _PlayGlyph extends StatelessWidget {
+  const _PlayGlyph();
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.square(
+    dimension: 22,
+    child: CustomPaint(painter: _PlayGlyphPainter()),
+  );
+}
+
+class _PlayGlyphPainter extends CustomPainter {
+  const _PlayGlyphPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white;
+    final path = Path()
+      ..moveTo(size.width * 0.28, size.height * 0.14)
+      ..lineTo(size.width * 0.82, size.height * 0.5)
+      ..lineTo(size.width * 0.28, size.height * 0.86)
+      ..close();
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

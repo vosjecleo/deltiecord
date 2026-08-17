@@ -136,6 +136,10 @@ class DeltiecordApp extends StatelessWidget {
             brightness: brightness,
             colorScheme: colorScheme,
             iconTheme: IconThemeData(color: colorScheme.primary),
+            badgeTheme: BadgeThemeData(
+              backgroundColor: colorScheme.primary,
+              textColor: deltiecordContrastingForeground(colorScheme.primary),
+            ),
             scaffoldBackgroundColor: palette.background,
             canvasColor: palette.surface,
             cardColor: palette.elevated,
@@ -207,6 +211,8 @@ class DeltiecordApp extends StatelessWidget {
             appBarTheme: AppBarTheme(
               backgroundColor: palette.surface,
               foregroundColor: palette.text,
+              iconTheme: IconThemeData(color: colorScheme.primary),
+              actionsIconTheme: IconThemeData(color: colorScheme.primary),
               surfaceTintColor: Colors.transparent,
             ),
             inputDecorationTheme: InputDecorationTheme(

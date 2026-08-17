@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -44,6 +45,7 @@ abstract interface class ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    Uint8List? senderAvatar,
     bool sound = true,
   });
 
@@ -112,6 +114,7 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    Uint8List? senderAvatar,
     bool sound = true,
   }) => _plugin.show(
     id: _nextId++,
@@ -129,6 +132,9 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
         priority: Priority.high,
         category: AndroidNotificationCategory.message,
         playSound: sound,
+        largeIcon: senderAvatar == null
+            ? null
+            : ByteArrayAndroidBitmap(senderAvatar),
       ),
       linux: LinuxNotificationDetails(
         category: LinuxNotificationCategory.imReceived,
@@ -160,6 +166,7 @@ class SilentChatNotificationSink implements ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    Uint8List? senderAvatar,
     bool sound = true,
   }) async {}
 

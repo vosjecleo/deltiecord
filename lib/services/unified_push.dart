@@ -55,4 +55,38 @@ final class UnifiedPushPlatform {
 
   Future<void> unregister(String instance) =>
       _channel.invokeMethod<void>('unregister', {'instance': instance});
+
+  /// Selects the first installed distributor on a fresh installation.
+  ///
+  /// An existing choice is never replaced. Distributor ordering is owned by
+  /// Android, so the first entry is the platform's preferred/default choice.
+  Future<bool> ensureDefaultDistributor(String instance) async {
+    if (!supported) return false;
+    final current = await state(instance);
+    if (current.distributor?.isNotEmpty == true) return false;
+    final available = await distributors();
+    if (available.isEmpty) return false;
+    await selectDistributor(available.first, instance);
+    return true;
+  }
+}
+
+/// Validates and normalizes the private capability URL returned by ntfy.
+///
+/// The opaque path and query are deliberately not inspected or logged. The
+/// server enforces its high-entropy `up*` topic ACL; the client only needs to
+/// ensure the bearer capability cannot be redirected to another origin.
+String? normalizeUnifiedPushEndpoint(String value) {
+  final normalized = value.trim();
+  final uri = Uri.tryParse(normalized);
+  if (uri == null ||
+      uri.scheme.toLowerCase() != 'https' ||
+      uri.host.toLowerCase() != 'push.deltie.net' ||
+      (uri.hasPort && uri.port != 443) ||
+      uri.userInfo.isNotEmpty ||
+      uri.fragment.isNotEmpty ||
+      uri.pathSegments.where((part) => part.isNotEmpty).isEmpty) {
+    return null;
+  }
+  return uri.toString();
 }

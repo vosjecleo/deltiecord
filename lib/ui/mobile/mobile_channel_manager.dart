@@ -28,7 +28,9 @@ class _MobileChannelManager extends StatefulWidget {
 class _MobileChannelManagerState extends State<_MobileChannelManager> {
   late List<RoomSummary> _rooms;
   late List<ChannelCategorySummary> _categories;
+  late Map<String, String?> _roomCategories;
   bool _saving = false;
+  bool _dirty = false;
 
   ChatBackend get backend => widget.backend;
 
@@ -37,80 +39,75 @@ class _MobileChannelManagerState extends State<_MobileChannelManager> {
     super.initState();
     _rooms = List.of(backend.rooms);
     _categories = List.of(backend.selectedSpaceCategories);
+    _roomCategories = {
+      for (final room in _rooms) room.id: _initialCategoryFor(room.id),
+    };
   }
 
-  String? _categoryFor(String roomId) {
+  String? _initialCategoryFor(String roomId) {
     for (final category in _categories) {
       if (category.roomIds.contains(roomId)) return category.id;
     }
     return null;
   }
 
-  Future<void> _reorderRoom(int oldIndex, int newIndex) async {
+  String? _categoryFor(String roomId) {
+    return _roomCategories[roomId];
+  }
+
+  void _reorderRoom(int oldIndex, int newIndex) {
     if (_saving) return;
     final next = List<RoomSummary>.of(_rooms);
     final room = next.removeAt(oldIndex);
     next.insert(newIndex, room);
     setState(() {
       _rooms = next;
-      _saving = true;
+      _dirty = true;
     });
-    try {
-      final before = newIndex + 1 < next.length ? next[newIndex + 1].id : null;
-      await backend.moveRoomInSpace(
-        room.id,
-        categoryId: _categoryFor(room.id),
-        beforeRoomId: before,
-      );
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 
-  Future<void> _reorderCategory(int oldIndex, int newIndex) async {
+  void _reorderCategory(int oldIndex, int newIndex) {
     if (_saving) return;
     final next = List<ChannelCategorySummary>.of(_categories);
     final category = next.removeAt(oldIndex);
     next.insert(newIndex, category);
     setState(() {
       _categories = next;
-      _saving = true;
+      _dirty = true;
     });
-    try {
-      await backend.reorderChannelCategory(category.id, newIndex);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
   }
 
-  Future<void> _moveToCategory(RoomSummary room, String? categoryId) async {
+  void _moveToCategory(RoomSummary room, String? categoryId) {
+    if (_saving) return;
+    setState(() {
+      _roomCategories[room.id] = categoryId;
+      _dirty = true;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_saving || !_dirty) return;
     setState(() => _saving = true);
     try {
-      final index = _rooms.indexWhere((entry) => entry.id == room.id);
-      final before = index >= 0 && index + 1 < _rooms.length
-          ? _rooms[index + 1].id
-          : null;
-      await backend.moveRoomInSpace(
-        room.id,
-        categoryId: categoryId,
-        beforeRoomId: before,
-      );
+      for (var index = 0; index < _categories.length; index++) {
+        await backend.reorderChannelCategory(_categories[index].id, index);
+      }
+      // Work backwards so each room can be placed immediately before an
+      // already-positioned successor without transiently disturbing it.
+      for (var index = _rooms.length - 1; index >= 0; index--) {
+        await backend.moveRoomInSpace(
+          _rooms[index].id,
+          categoryId: _categoryFor(_rooms[index].id),
+          beforeRoomId: index + 1 < _rooms.length ? _rooms[index + 1].id : null,
+        );
+      }
       if (!mounted) return;
-      setState(() {
-        _categories = [
-          for (final category in _categories)
-            ChannelCategorySummary(
-              id: category.id,
-              name: category.name,
-              collapsed: category.collapsed,
-              roomIds: [
-                for (final id in category.roomIds)
-                  if (id != room.id) id,
-                if (category.id == categoryId) room.id,
-              ],
-            ),
-        ];
-      });
+      Navigator.pop(context);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save channel order: $error')),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -132,6 +129,13 @@ class _MobileChannelManagerState extends State<_MobileChannelManager> {
                 dimension: 18,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
+            )
+          else
+            IconButton(
+              key: const ValueKey('confirm-mobile-channel-order'),
+              tooltip: _dirty ? 'Save channel order' : 'No changes to save',
+              onPressed: _dirty ? _save : null,
+              icon: const Icon(Icons.check),
             ),
         ],
       ),
@@ -157,14 +161,17 @@ class _MobileChannelManagerState extends State<_MobileChannelManager> {
                   key: const ValueKey('mobile-category-order'),
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: true,
+                  buildDefaultDragHandles: false,
                   itemCount: _categories.length,
                   onReorderItem: _reorderCategory,
                   itemBuilder: (context, index) {
                     final category = _categories[index];
                     return ListTile(
                       key: ValueKey('category-${category.id}'),
-                      leading: const Icon(Icons.folder_outlined),
+                      leading: ReorderableDragStartListener(
+                        index: index,
+                        child: const Icon(Icons.drag_indicator),
+                      ),
                       title: Text(category.name),
                       subtitle: Text('${category.roomIds.length} rooms'),
                     );
@@ -173,24 +180,35 @@ class _MobileChannelManagerState extends State<_MobileChannelManager> {
                 const Divider(height: 28),
                 Text('Rooms', style: Theme.of(context).textTheme.titleMedium),
                 const Text(
-                  'Hold the handle to reorder. Assign a category below.',
+                  'Drag the handles to reorder, then tap the checkmark to '
+                  'save. Assign a category below.',
                 ),
                 const SizedBox(height: 6),
                 ReorderableListView.builder(
                   key: const ValueKey('mobile-room-order'),
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  buildDefaultDragHandles: true,
+                  buildDefaultDragHandles: false,
                   itemCount: _rooms.length,
                   onReorderItem: _reorderRoom,
                   itemBuilder: (context, index) {
                     final room = _rooms[index];
                     return ListTile(
                       key: ValueKey('room-${room.id}'),
-                      leading: Icon(
-                        room.isVoice ? Icons.volume_up_outlined : Icons.tag,
+                      leading: ReorderableDragStartListener(
+                        index: index,
+                        child: const Icon(Icons.drag_indicator),
                       ),
-                      title: Text(room.name),
+                      title: Row(
+                        children: [
+                          Icon(
+                            room.isVoice ? Icons.volume_up_outlined : Icons.tag,
+                            size: 19,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(child: Text(room.name)),
+                        ],
+                      ),
                       subtitle: DropdownButton<String?>(
                         value: _categoryFor(room.id),
                         isExpanded: true,

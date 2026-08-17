@@ -200,16 +200,18 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             padding: const EdgeInsets.all(10),
             children: [
               for (final page in _SettingsPage.values)
-                ListTile(
-                  selected: !mobile && _page == page,
-                  leading: Icon(_iconFor(page), size: 21),
-                  title: Text(_labelFor(page)),
-                  trailing: mobile ? const Icon(Icons.chevron_right) : null,
-                  onTap: () => setState(() {
-                    _page = page;
-                    if (mobile) _mobilePageOpen = true;
-                  }),
-                ),
+                if (!(defaultTargetPlatform == TargetPlatform.android &&
+                    page == _SettingsPage.shortcuts))
+                  ListTile(
+                    selected: !mobile && _page == page,
+                    leading: Icon(_iconFor(page), size: 21),
+                    title: Text(_labelFor(page)),
+                    trailing: mobile ? const Icon(Icons.chevron_right) : null,
+                    onTap: () => setState(() {
+                      _page = page;
+                      if (mobile) _mobilePageOpen = true;
+                    }),
+                  ),
             ],
           ),
         ),

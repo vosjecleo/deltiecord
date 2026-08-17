@@ -22,7 +22,7 @@ EmojiCompletion? findEmojiCompletion(String text, int cursorOffset) {
   if (_insideCode(before)) return null;
 
   final match = RegExp(
-    r'(?:^|\s):([a-zA-Z0-9_+-]{1,32})(:?)$',
+    r'(?:^|\s):([a-zA-Z0-9_+-]{3,32})(:?)$',
   ).firstMatch(before);
   if (match == null) return null;
   final start = before.lastIndexOf(

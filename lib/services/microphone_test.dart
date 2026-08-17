@@ -146,9 +146,35 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
   }
 
   Future<void> _initialize(MicrophoneTestConfiguration config) async {
+    _localStream = await webrtc.navigator.mediaDevices.getUserMedia({
+      'audio': {
+        'echoCancellation': config.echoCancellation,
+        'noiseSuppression': config.noiseSuppression,
+        'autoGainControl': config.autoGainControl,
+        if (config.deviceId != null) 'deviceId': {'exact': config.deviceId},
+      },
+      'video': false,
+    });
     _sender = await webrtc.createPeerConnection({
       'sdpSemantics': 'unified-plan',
     });
+    for (final track in _localStream!.getAudioTracks()) {
+      await _sender!.addTrack(track, _localStream!);
+    }
+
+    // Android's WebRTC backend has crashed in the native loopback/volume path
+    // on several devices. A sender-only peer connection still exposes the
+    // media-source audio level and is sufficient for a safe microphone test.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      final offer = await _sender!.createOffer();
+      await _sender!.setLocalDescription(offer);
+      _meterTimer = Timer.periodic(
+        const Duration(milliseconds: 140),
+        (_) => unawaited(_sampleLevel()),
+      );
+      return;
+    }
+
     _receiver = await webrtc.createPeerConnection({
       'sdpSemantics': 'unified-plan',
     });
@@ -165,18 +191,6 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
       unawaited(webrtc.Helper.setVolume(0, event.track));
     };
 
-    _localStream = await webrtc.navigator.mediaDevices.getUserMedia({
-      'audio': {
-        'echoCancellation': config.echoCancellation,
-        'noiseSuppression': config.noiseSuppression,
-        'autoGainControl': config.autoGainControl,
-        if (config.deviceId != null) 'deviceId': {'exact': config.deviceId},
-      },
-      'video': false,
-    });
-    for (final track in _localStream!.getAudioTracks()) {
-      await _sender!.addTrack(track, _localStream!);
-    }
     final offer = await _sender!.createOffer();
     await _sender!.setLocalDescription(offer);
     await _receiver!.setRemoteDescription(offer);
@@ -213,6 +227,12 @@ final class _WebRtcMicrophoneTestSession implements MicrophoneTestSession {
 
   @override
   Future<void> setListening(bool enabled) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      throw UnsupportedError(
+        'Local microphone monitoring is unavailable on Android. The live '
+        'level meter remains active.',
+      );
+    }
     final track = _monitorTrack;
     if (track == null) {
       throw StateError('Microphone monitor track is not ready.');

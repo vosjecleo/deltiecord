@@ -16,6 +16,7 @@ env:
   RUSTUP_INIT_SHA256: 4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
   RUST_TOOLCHAIN: 1.97.1
   RUSTFLAGS: -C link-dead-code
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
 
 jobs:
   android:

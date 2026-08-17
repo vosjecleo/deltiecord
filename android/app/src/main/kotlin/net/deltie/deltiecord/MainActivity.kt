@@ -24,7 +24,9 @@ class MainActivity : FlutterActivity() {
                             result.error("invalid_distributor", "Choose a UnifiedPush distributor.", null)
                         } else {
                             UnifiedPush.saveDistributor(this, distributor)
-                            DeltiecordPushService.clearError(this, instance)
+                            // An endpoint belongs to the selected distributor.
+                            // Never reuse a stale capability after switching.
+                            DeltiecordPushService.clear(this, instance)
                             UnifiedPush.register(
                                 this,
                                 instance,

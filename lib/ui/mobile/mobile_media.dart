@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -13,6 +14,32 @@ import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/temporary_attachment_store.dart';
 import '../deltiecord_theme.dart';
+
+/// Fits media inside a bounded frame without changing its aspect ratio.
+///
+/// Matrix attachment metadata is available before encrypted bytes finish
+/// downloading, so the same size can be used for the placeholder and decoded
+/// image. Unknown media reserves a portrait 3:4 frame and keeps that frame
+/// after loading instead of shifting the surrounding timeline.
+Size mobileMediaFrameSize({
+  required double maxWidth,
+  required double maxHeight,
+  int? width,
+  int? height,
+  double fallbackAspectRatio = 3 / 4,
+}) {
+  final metadataRatio =
+      width != null && height != null && width > 0 && height > 0
+      ? width / height
+      : fallbackAspectRatio;
+  final aspectRatio = metadataRatio.isFinite
+      ? metadataRatio.clamp(0.25, 4.0).toDouble()
+      : fallbackAspectRatio;
+  if (maxWidth / maxHeight > aspectRatio) {
+    return Size(maxHeight * aspectRatio, maxHeight);
+  }
+  return Size(maxWidth, maxWidth / aspectRatio);
+}
 
 class MobileAttachmentView extends StatefulWidget {
   const MobileAttachmentView({
@@ -224,30 +251,51 @@ class _MobileImageState extends State<_MobileImage> {
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<Uint8List>(
-    future: _bytes,
-    builder: (context, snapshot) {
-      if (snapshot.hasError) return const Text('Could not load image');
-      final bytes = snapshot.data;
-      if (bytes == null) {
-        return const SizedBox.square(
-          dimension: 44,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        );
-      }
-      return ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.memory(
-            bytes,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final attachment = widget.message.attachment!;
+    final frame = mobileMediaFrameSize(
+      maxWidth: min(420, max(120, screen.width - 76)),
+      maxHeight: min(520, max(180, screen.height * 0.48)),
+      width: attachment.width,
+      height: attachment.height,
+    );
+    return SizedBox(
+      key: ValueKey('mobile-image-frame-${widget.message.id}'),
+      width: frame.width,
+      height: frame.height,
+      child: ClipRRect(
+        borderRadius: DeltiecordCorners.borderRadius,
+        child: ColoredBox(
+          color: context.deltiecord.elevated,
+          child: FutureBuilder<Uint8List>(
+            future: _bytes,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const Center(child: Text('Could not load image'));
+              }
+              final bytes = snapshot.data;
+              if (bytes == null) {
+                return const Center(
+                  child: SizedBox.square(
+                    dimension: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                );
+              }
+              return Image.memory(
+                bytes,
+                width: frame.width,
+                height: frame.height,
+                fit: BoxFit.contain,
+                gaplessPlayback: true,
+              );
+            },
           ),
         ),
-      );
-    },
-  );
+      ),
+    );
+  }
 }
 
 void _showImageFullscreen(BuildContext context, Uint8List bytes) {
@@ -505,69 +553,78 @@ class MobileLinkPreviewCard extends StatelessWidget {
       );
 
   @override
-  Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: ConstrainedBox(
-      // Media uses the same 420x520 envelope as normal attachments. Metadata
-      // is allowed to add its natural height rather than overflowing a fixed
-      // whole-card limit on devices with large accessibility text.
-      constraints: const BoxConstraints(maxWidth: 420),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (preview.videoUrl case final video?)
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _showVideoFullscreen(context, video),
-              child: MobileLinkPreviewVideo(
-                uri: video,
-                thumbnail: preview.imageBytes,
-                width: preview.width,
-                height: preview.height,
-                onPlayRequested: () => _showVideoFullscreen(context, video),
+  Widget build(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context);
+    final mediaFrame = mobileMediaFrameSize(
+      maxWidth: min(420, max(120, screen.width - 76)),
+      maxHeight: min(520, max(180, screen.height * 0.52)),
+      width: preview.width,
+      height: preview.height,
+      fallbackAspectRatio: preview.videoUrl == null ? 3 / 4 : 16 / 9,
+    );
+    return SizedBox(
+      width: mediaFrame.width,
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (preview.videoUrl case final video?)
+              SizedBox(
+                width: mediaFrame.width,
+                height: mediaFrame.height,
+                child: MobileLinkPreviewVideo(
+                  uri: video,
+                  thumbnail: preview.imageBytes,
+                  width: preview.width,
+                  height: preview.height,
+                  onDoubleTap: () => _showVideoFullscreen(context, video),
+                ),
+              )
+            else if (preview.imageBytes case final image?)
+              GestureDetector(
+                onTap: () => _showImageFullscreen(context, image),
+                child: SizedBox(
+                  width: mediaFrame.width,
+                  height: mediaFrame.height,
+                  child: Image.memory(
+                    image,
+                    width: mediaFrame.width,
+                    height: mediaFrame.height,
+                    fit: BoxFit.contain,
+                  ),
+                ),
               ),
-            )
-          else if (preview.imageBytes case final image?)
-            GestureDetector(
-              onTap: () => _showImageFullscreen(context, image),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 520),
-                child: Image.memory(
-                  image,
-                  width: double.infinity,
-                  fit: BoxFit.contain,
+            InkWell(
+              onTap: () =>
+                  launchUrl(preview.url, mode: LaunchMode.externalApplication),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(preview.siteName ?? preview.url.host),
+                    if (preview.title case final title?)
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    if (preview.description case final description?)
+                      Text(
+                        description,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
               ),
             ),
-          InkWell(
-            onTap: () =>
-                launchUrl(preview.url, mode: LaunchMode.externalApplication),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(preview.siteName ?? preview.url.host),
-                  if (preview.title case final title?)
-                    Text(
-                      title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                  if (preview.description case final description?)
-                    Text(
-                      description,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class MobileLinkPreviewVideo extends StatefulWidget {
@@ -577,7 +634,7 @@ class MobileLinkPreviewVideo extends StatefulWidget {
     this.width,
     this.height,
     this.autoplay = false,
-    this.onPlayRequested,
+    this.onDoubleTap,
     super.key,
   });
 
@@ -586,7 +643,7 @@ class MobileLinkPreviewVideo extends StatefulWidget {
   final int? width;
   final int? height;
   final bool autoplay;
-  final VoidCallback? onPlayRequested;
+  final VoidCallback? onDoubleTap;
 
   @override
   State<MobileLinkPreviewVideo> createState() => _MobileLinkPreviewVideoState();
@@ -649,12 +706,12 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
     final width = widget.width?.toDouble() ?? 16;
     final height = widget.height?.toDouble() ?? 9;
     final ratio = width > 0 && height > 0
-        ? (width / height).clamp(0.5, 2.0)
+        ? (width / height).clamp(0.25, 4.0)
         : 16 / 9;
     final player = _player;
     final controller = _controller;
-    return AspectRatio(
-      aspectRatio: ratio,
+    final surface = AspectRatio(
+      aspectRatio: ratio.toDouble(),
       child: player != null && controller != null
           ? Video(
               controller: controller,
@@ -675,7 +732,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
                       ? const CircularProgressIndicator()
                       : IconButton.filled(
                           tooltip: 'Play embedded video',
-                          onPressed: widget.onPlayRequested ?? _play,
+                          onPressed: _play,
                           icon: const _PlayGlyph(),
                         ),
                 ),
@@ -692,6 +749,12 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
                   ),
               ],
             ),
+    );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: player == null ? _play : null,
+      onDoubleTap: widget.onDoubleTap,
+      child: surface,
     );
   }
 }

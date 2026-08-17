@@ -47,6 +47,42 @@ class _LinkPreviewCard extends StatelessWidget {
 
   final LinkPreview preview;
 
+  Future<void> _showVideoFullscreen(BuildContext context, Uri video) =>
+      showDialog<void>(
+        context: context,
+        barrierColor: Colors.black,
+        builder: (dialogContext) => Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: Stack(
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(dialogContext).width,
+                    maxHeight: MediaQuery.sizeOf(dialogContext).height,
+                  ),
+                  child: _LinkVideoPlayer(
+                    uri: video,
+                    thumbnail: preview.imageBytes,
+                    aspectRatio: (preview.width ?? 16) / (preview.height ?? 9),
+                    autoplay: true,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 18,
+                top: 18,
+                child: IconButton.filled(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(dialogContext),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final video = preview.videoUrl;
@@ -66,37 +102,38 @@ class _LinkPreviewCard extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: SizedBox(
         width: mediaWidth,
-        child: InkWell(
-          onTap: () => launchUrl(preview.url),
-          borderRadius: DeltiecordCorners.borderRadius,
-          child: Container(
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: context.deltiecord.elevated,
-              border: Border.all(color: context.deltiecord.divider),
-              borderRadius: DeltiecordCorners.borderRadius,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (video != null)
-                  SizedBox(
-                    width: mediaWidth,
-                    height: mediaHeight,
-                    child: _LinkVideoPlayer(
-                      uri: video,
-                      thumbnail: preview.imageBytes,
-                    ),
-                  )
-                else if (preview.imageBytes case final image?)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxWidth: maxWidth,
-                      maxHeight: maxHeight,
-                    ),
-                    child: Image.memory(image, fit: BoxFit.contain),
+        child: Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: context.deltiecord.elevated,
+            border: Border.all(color: context.deltiecord.divider),
+            borderRadius: DeltiecordCorners.borderRadius,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (video != null)
+                SizedBox(
+                  width: mediaWidth,
+                  height: mediaHeight,
+                  child: _LinkVideoPlayer(
+                    uri: video,
+                    thumbnail: preview.imageBytes,
+                    aspectRatio: aspectRatio,
+                    onDoubleTap: () => _showVideoFullscreen(context, video),
                   ),
-                Padding(
+                )
+              else if (preview.imageBytes case final image?)
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: maxWidth,
+                    maxHeight: maxHeight,
+                  ),
+                  child: Image.memory(image, fit: BoxFit.contain),
+                ),
+              InkWell(
+                onTap: () => launchUrl(preview.url),
+                child: Padding(
                   padding: const EdgeInsets.fromLTRB(12, 9, 12, 11),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -135,8 +172,8 @@ class _LinkPreviewCard extends StatelessWidget {
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -145,10 +182,19 @@ class _LinkPreviewCard extends StatelessWidget {
 }
 
 class _LinkVideoPlayer extends StatefulWidget {
-  const _LinkVideoPlayer({required this.uri, this.thumbnail});
+  const _LinkVideoPlayer({
+    required this.uri,
+    this.thumbnail,
+    this.aspectRatio = 16 / 9,
+    this.autoplay = false,
+    this.onDoubleTap,
+  });
 
   final Uri uri;
   final Uint8List? thumbnail;
+  final double aspectRatio;
+  final bool autoplay;
+  final VoidCallback? onDoubleTap;
 
   @override
   State<_LinkVideoPlayer> createState() => _LinkVideoPlayerState();
@@ -160,6 +206,12 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
   bool _opened = false;
   bool _opening = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoplay) unawaited(_toggle());
+  }
 
   Future<void> _toggle() async {
     final existing = _player;
@@ -204,8 +256,8 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
   Widget build(BuildContext context) {
     final player = _player;
     final controller = _controller;
-    return AspectRatio(
-      aspectRatio: 16 / 9,
+    final surface = AspectRatio(
+      aspectRatio: widget.aspectRatio.clamp(0.25, 4.0).toDouble(),
       child: player == null || controller == null
           ? _VideoPoster(
               onPlay: _toggle,
@@ -226,6 +278,12 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
                   : Image.memory(widget.thumbnail!, fit: BoxFit.cover),
               playTooltip: 'Play embedded video',
             ),
+    );
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: player == null ? _toggle : null,
+      onDoubleTap: widget.onDoubleTap,
+      child: surface,
     );
   }
 }

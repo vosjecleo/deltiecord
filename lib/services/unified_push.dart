@@ -59,21 +59,19 @@ final class UnifiedPushPlatform {
     final result = await _channel.invokeMapMethod<String, Object?>('getState', {
       'instance': instance,
     });
-    return UnifiedPushState(
-      distributor: result?['distributor'] as String?,
-      endpoint: result?['endpoint'] as String?,
-      error: result?['error'] as String?,
-    );
+    return _decodeState(result);
   }
 
-  Future<void> selectDistributor(String distributor, String instance) =>
-      _channel.invokeMethod<void>('selectDistributor', {
-        'distributor': distributor,
-        'instance': instance,
-      });
+  Future<UnifiedPushState> selectDistributor(
+    String distributor,
+    String instance,
+  ) => _invokeRegistration('selectDistributor', {
+    'distributor': distributor,
+    'instance': instance,
+  }, instance);
 
-  Future<void> register(String instance) =>
-      _channel.invokeMethod<void>('register', {'instance': instance});
+  Future<UnifiedPushState> register(String instance) =>
+      _invokeRegistration('register', {'instance': instance}, instance);
 
   Future<void> unregister(String instance) =>
       _channel.invokeMethod<void>('unregister', {'instance': instance});
@@ -90,6 +88,80 @@ final class UnifiedPushPlatform {
     if (available.isEmpty) return false;
     await selectDistributor(available.first, instance);
     return true;
+  }
+
+  /// Waits for the distributor's asynchronous endpoint callback.
+  ///
+  /// The periodic state read is intentional. Android can deliver the callback
+  /// while Flutter is paused, in which case the endpoint is persisted by the
+  /// native service but the method-channel notification is missed.
+  Future<UnifiedPushState> waitForEndpoint(
+    String instance, {
+    UnifiedPushState? initialState,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    var latest = initialState ?? await state(instance);
+    if (latest.registered || latest.error != null) return latest;
+
+    final completer = Completer<UnifiedPushState>();
+    Timer? poll;
+    Timer? deadline;
+    StreamSubscription<String>? subscription;
+
+    Future<void> refresh() async {
+      if (completer.isCompleted) return;
+      latest = await state(instance);
+      if (latest.registered || latest.error != null) {
+        completer.complete(latest);
+      }
+    }
+
+    subscription = stateChanges
+        .where((value) => value == instance)
+        .listen((_) => unawaited(refresh()));
+    poll = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => unawaited(refresh()),
+    );
+    deadline = Timer(timeout, () {
+      if (!completer.isCompleted) completer.complete(latest);
+    });
+    unawaited(refresh());
+    try {
+      return await completer.future;
+    } finally {
+      poll.cancel();
+      deadline.cancel();
+      await subscription.cancel();
+    }
+  }
+
+  UnifiedPushState _decodeState(Map<String, Object?>? result) =>
+      UnifiedPushState(
+        distributor: result?['distributor'] as String?,
+        endpoint: result?['endpoint'] as String?,
+        error: result?['error'] as String?,
+      );
+
+  Future<UnifiedPushState> _invokeRegistration(
+    String method,
+    Map<String, String> arguments,
+    String instance,
+  ) async {
+    try {
+      final result = await _channel.invokeMapMethod<String, Object?>(
+        method,
+        arguments,
+      );
+      return _decodeState(result);
+    } on PlatformException {
+      // A distributor callback can race the native registration timeout. The
+      // callback-owned preference is authoritative, so recover it before
+      // reporting a failure that would otherwise disappear after restart.
+      final recovered = await state(instance);
+      if (recovered.registered) return recovered;
+      rethrow;
+    }
   }
 }
 

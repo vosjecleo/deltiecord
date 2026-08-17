@@ -397,7 +397,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           Expanded(
             child: backend.timelineLoading && messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
-                : messages.isEmpty
+                : messages.isEmpty &&
+                      !backend.canLoadMoreHistory &&
+                      !backend.historyLoading
                 ? const Center(child: Text('No messages yet'))
                 : Stack(
                     children: [
@@ -586,13 +588,19 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _autoFillingInitialChunk = true;
     try {
       var previousCount = backend.messages.length;
+      var emptyPasses = 0;
       while (mounted &&
           backend.selectedRoom?.id == widget.room.id &&
           previousCount < backend.preferences.timelineChunkSize &&
-          backend.canLoadMoreHistory) {
+          backend.canLoadMoreHistory &&
+          emptyPasses < 4) {
         await backend.loadMoreHistory();
         final currentCount = backend.messages.length;
-        if (currentCount <= previousCount) break;
+        if (currentCount <= previousCount) {
+          emptyPasses++;
+          continue;
+        }
+        emptyPasses = 0;
         previousCount = currentCount;
       }
     } finally {

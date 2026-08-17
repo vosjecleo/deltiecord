@@ -87,22 +87,36 @@ extension _MatrixMessages on MatrixBackend {
 
   Future<void> _loadMoreHistory() async {
     final timeline = _timeline;
-    if (timeline == null ||
-        _historyLoading ||
-        _timelineServerExhausted ||
-        !timeline.canRequestHistory) {
+    if (timeline == null || _historyLoading || !canLoadMoreHistory) {
       return;
     }
     _historyLoading = true;
     _notifyBackendListeners();
     try {
       final pageSize = _preferences.timelineChunkSize;
+      final visibleBefore = _mappedMessages.length;
       var loaded = 0;
-      if (!_timelineDatabaseExhausted) {
-        loaded = await _appendStoredHistory(timeline, pageSize);
-      }
-      if (loaded == 0 && _timelineDatabaseExhausted) {
-        loaded = await _appendServerHistory(timeline, pageSize);
+      // Relations, edits, and malformed events do not become visible rows. A
+      // single raw 30-event page can therefore yield far fewer than 30 chat
+      // rows. Continue through a bounded number of raw pages so opening a room
+      // does not immediately strand the user behind another pagination click.
+      for (
+        var pass = 0;
+        pass < 8 &&
+            _mappedMessages.length - visibleBefore < pageSize &&
+            canLoadMoreHistory;
+        pass++
+      ) {
+        var pageLoaded = 0;
+        if (!_timelineDatabaseExhausted) {
+          pageLoaded = await _appendStoredHistory(timeline, pageSize);
+        }
+        if (pageLoaded == 0 && _timelineDatabaseExhausted) {
+          pageLoaded = await _appendServerHistory(timeline, pageSize);
+        }
+        loaded += pageLoaded;
+        if (!identical(timeline, _timeline)) return;
+        if (pageLoaded == 0 && !canLoadMoreHistory) break;
       }
       if (!identical(timeline, _timeline)) return;
       if (loaded == 0) return;
@@ -178,8 +192,7 @@ extension _MatrixMessages on MatrixBackend {
     final loaded = timeline.events
         .where((event) => !beforeIds.contains(event.eventId))
         .length;
-    if (loaded == 0 ||
-        timeline.chunk.prevBatch.isEmpty ||
+    if (timeline.chunk.prevBatch.isEmpty ||
         timeline.chunk.prevBatch == previousToken) {
       _timelineServerExhausted = true;
     }

@@ -79,12 +79,21 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun registerUnifiedPush(instance: String, result: MethodChannel.Result) {
+        val existingState = DeltiecordPushService.state(this, instance)
+        val existingEndpoint = existingState["endpoint"]
         pendingRegistrations.remove(instance)?.error(
             "registration_replaced",
             "A newer UnifiedPush registration replaced this request.",
             null,
         )
-        pendingRegistrations[instance] = result
+        if (existingEndpoint.isNullOrBlank()) {
+            pendingRegistrations[instance] = result
+        } else {
+            // A persisted endpoint is already usable. Return it before asking
+            // the distributor to refresh so a missing/slow callback cannot
+            // leave Settings stale until the next application launch.
+            result.success(existingState)
+        }
         try {
             UnifiedPush.register(
                 this,
@@ -95,7 +104,15 @@ class MainActivity : FlutterActivity() {
             )
         } catch (exception: Exception) {
             pendingRegistrations.remove(instance)
-            result.error("registration_failed", exception.message, null)
+            if (existingEndpoint.isNullOrBlank()) {
+                result.error("registration_failed", exception.message, null)
+            }
+            return
+        }
+        // Refreshing an existing registration must not wait for an endpoint
+        // rotation that a distributor is not required to emit. Reconcile the
+        // persisted capability immediately; a later callback still updates it.
+        if (!existingEndpoint.isNullOrBlank()) {
             return
         }
         mainHandler.postDelayed(

@@ -198,8 +198,18 @@ class MatrixBackend extends ChatBackend {
   @override
   bool get historyLoading => _historyLoading;
   @override
-  bool get canLoadMoreHistory =>
-      !_timelineServerExhausted && (_timeline?.canRequestHistory ?? false);
+  bool get canLoadMoreHistory {
+    final timeline = _timeline;
+    if (timeline == null || _timelineServerExhausted) return false;
+    // The SDK's canRequestHistory flag only describes its own database cursor.
+    // Deltiecord owns a separate bounded-window cursor, which may still have
+    // local events even after the SDK considers its initial page exhausted.
+    return !_timelineDatabaseExhausted ||
+        timeline.canRequestHistory ||
+        timeline.chunk.prevBatch.isNotEmpty ||
+        (timeline.room.prev_batch?.isNotEmpty ?? false);
+  }
+
   @override
   bool get canLoadMoreFuture =>
       _timelineHasPrunedNewerEvents || (_timeline?.canRequestFuture ?? false);

@@ -1,12 +1,12 @@
-Deltiecord v0.9.20 build 66 beta test bundle
+Deltiecord v0.9.20 build 67 beta test bundle
 ================================
 
 Linux AppImage:
-  chmod +x deltiecord-0.9.20+66-linux-appimage-x86_64.AppImage
-  ./deltiecord-0.9.20+66-linux-appimage-x86_64.AppImage
+  chmod +x deltiecord-0.9.20+67-linux-appimage-x86_64.AppImage
+  ./deltiecord-0.9.20+67-linux-appimage-x86_64.AppImage
 
 Debian/Ubuntu package:
-  sudo apt install ./deltiecord-0.9.20+66-linux-debian-amd64.deb
+  sudo apt install ./deltiecord-0.9.20+67-linux-debian-amd64.deb
 
 Verify files:
   sha256sum -c SHA256SUMS

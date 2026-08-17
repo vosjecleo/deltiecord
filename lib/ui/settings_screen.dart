@@ -1113,8 +1113,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         ),
       );
       if (selected == null) return;
-      await platform.selectDistributor(selected, userId);
-      await _waitForUnifiedPushEndpoint(userId);
+      final state = await platform.selectDistributor(selected, userId);
+      await _waitForUnifiedPushEndpoint(userId, initialState: state);
     } catch (exception) {
       if (mounted) _showSettingMessage('UnifiedPush setup failed: $exception');
     }
@@ -1124,8 +1124,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     final userId = backend.userId;
     if (userId == null) return;
     try {
-      await UnifiedPushPlatform.instance.register(userId);
-      await _waitForUnifiedPushEndpoint(userId);
+      final platform = UnifiedPushPlatform.instance;
+      final state = await platform.register(userId);
+      await _waitForUnifiedPushEndpoint(userId, initialState: state);
     } catch (exception) {
       if (mounted) {
         _showSettingMessage('UnifiedPush refresh failed: $exception');
@@ -1133,26 +1134,30 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     }
   }
 
-  Future<void> _waitForUnifiedPushEndpoint(String userId) async {
+  Future<void> _waitForUnifiedPushEndpoint(
+    String userId, {
+    UnifiedPushState? initialState,
+  }) async {
     final platform = UnifiedPushPlatform.instance;
-    for (var attempt = 0; attempt < 20; attempt++) {
-      final state = await platform.state(userId);
-      if (state.endpoint case final endpoint?) {
-        await backend.setUnifiedPushEndpoint(endpoint);
-        if (mounted) {
-          _reloadUnifiedPush();
-          _showSettingMessage('UnifiedPush registered.');
-        }
-        return;
+    final state = await platform.waitForEndpoint(
+      userId,
+      initialState: initialState,
+    );
+    if (state.endpoint case final endpoint?) {
+      await backend.setUnifiedPushEndpoint(endpoint);
+      if (mounted) {
+        _reloadUnifiedPush();
+        _showSettingMessage('UnifiedPush registered.');
       }
-      if (state.error != null) break;
-      await Future<void>.delayed(const Duration(milliseconds: 250));
+      return;
     }
     if (mounted) {
       _reloadUnifiedPush();
       _showSettingMessage(
-        'The distributor has not returned an endpoint yet. Check its account '
-        'and connection, then refresh registration.',
+        state.error == null
+            ? 'The distributor has not returned an endpoint yet. Check its '
+                  'account and connection, then refresh registration.'
+            : 'The distributor rejected registration (${state.error}).',
       );
     }
   }

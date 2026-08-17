@@ -124,6 +124,29 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
             left: 0,
             right: 0,
             bottom: 0,
+            child: IgnorePointer(
+              child: Container(
+                key: const ValueKey('mobile-navigation-bottom-scrim'),
+                height: 128,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      context.deltiecord.panel.withValues(alpha: 0),
+                      context.deltiecord.rail.withValues(alpha: 0.82),
+                      context.deltiecord.rail,
+                    ],
+                    stops: const [0, 0.48, 1],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
             child: _MobileUserIsland(
               backend: backend,
               onOpenSettings: widget.onOpenSettings,

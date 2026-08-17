@@ -2299,6 +2299,37 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byKey(const ValueKey('mobile-user-island')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('mobile-navigation-bottom-scrim')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Android exposes older history even before a row is mapped', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..moreHistory = true
+      ..roomList = const [
+        RoomSummary(
+          id: '!empty-page:test',
+          name: 'Sparse history',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Sparse history'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Load older messages'), findsOneWidget);
+    expect(find.text('No messages yet'), findsNothing);
+    final before = backend.historyRequests;
+    await tester.tap(find.text('Load older messages'));
+    await tester.pump();
+    expect(backend.historyRequests, before + 1);
   });
 
   testWidgets('Android composer completes local colon emoji aliases', (

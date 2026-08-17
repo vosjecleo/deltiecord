@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: version 0.9.20 build 66 beta release**
+> **Current release: version 0.9.20 build 67 beta release**
 >
 > Deltiecord is a desktop and Android beta. It is usable for everyday testing,
 > but bugs and rough edges should still be expected while the project approaches
@@ -236,4 +236,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.20 build 66, beta release**
+**Current release: v0.9.20 build 67, beta release**

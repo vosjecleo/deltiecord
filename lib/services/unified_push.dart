@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -18,10 +20,30 @@ final class UnifiedPushState {
 /// distributor app, which returns a private capability endpoint through the
 /// Android connector protocol.
 final class UnifiedPushPlatform {
-  UnifiedPushPlatform._();
+  UnifiedPushPlatform._() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method != 'onStateChanged') return;
+      final arguments = call.arguments;
+      if (arguments is! Map) return;
+      final instance = arguments['instance'];
+      if (instance is String && instance.isNotEmpty) {
+        _stateChanges.add(instance);
+      }
+    });
+  }
 
   static final instance = UnifiedPushPlatform._();
   static const _channel = MethodChannel('net.deltie.deltiecord/unified_push');
+  final StreamController<String> _stateChanges =
+      StreamController<String>.broadcast();
+
+  /// Account instances whose distributor endpoint changed asynchronously.
+  ///
+  /// UnifiedPush distributors may rotate an endpoint without a Settings
+  /// action. The Matrix layer listens here and reconciles the corresponding
+  /// pusher while the app is alive; cold-start reconciliation covers changes
+  /// received while Flutter was stopped.
+  Stream<String> get stateChanges => _stateChanges.stream;
 
   bool get supported =>
       defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
@@ -77,14 +99,37 @@ final class UnifiedPushPlatform {
 /// server enforces its high-entropy `up*` topic ACL; the client only needs to
 /// ensure the bearer capability cannot be redirected to another origin.
 String? normalizeUnifiedPushEndpoint(String value) {
-  final normalized = value.trim();
-  final uri = Uri.tryParse(normalized);
+  var normalized = value
+      .replaceAll(RegExp(r'[\u0000-\u001f\u007f\u200b\ufeff]'), '')
+      .trim();
+  if (normalized.toLowerCase().startsWith('push.deltie.net/')) {
+    normalized = 'https://$normalized';
+  }
+  var uri = Uri.tryParse(normalized);
+  // Older ntfy Android configurations may report this custom origin as HTTP.
+  // Upgrade only Deltiecord's fixed, TLS-backed push host; arbitrary origins
+  // are never rewritten or accepted.
+  if (uri != null &&
+      uri.scheme.toLowerCase() == 'http' &&
+      uri.host.toLowerCase() == 'push.deltie.net' &&
+      (!uri.hasPort || uri.port == 80) &&
+      uri.userInfo.isEmpty) {
+    uri = Uri.parse(
+      'https://push.deltie.net${uri.path}'
+      '${uri.hasQuery ? '?${uri.query}' : ''}',
+    );
+  }
+  // URI fragments are local-only and are never sent to ntfy. Some distributor
+  // versions append connector metadata there; strip it instead of rejecting an
+  // otherwise valid private push capability.
+  if (uri != null && uri.fragment.isNotEmpty) {
+    uri = Uri.tryParse(uri.toString().split('#').first);
+  }
   if (uri == null ||
       uri.scheme.toLowerCase() != 'https' ||
       uri.host.toLowerCase() != 'push.deltie.net' ||
       (uri.hasPort && uri.port != 443) ||
       uri.userInfo.isNotEmpty ||
-      uri.fragment.isNotEmpty ||
       uri.pathSegments.where((part) => part.isNotEmpty).isEmpty) {
     return null;
   }

@@ -422,6 +422,10 @@ extension _MatrixRoomOperations on MatrixBackend {
         timeline.cancelSubscriptions();
         return;
       }
+      TimelineWindowPolicy.deduplicateBy(
+        timeline.events,
+        (event) => event.eventId,
+      );
       _timeline = timeline;
       _timelineDatabaseOffset = timeline.events.length;
       _captureFirstUnread(room, timeline);
@@ -486,6 +490,10 @@ extension _MatrixRoomOperations on MatrixBackend {
         timeline.cancelSubscriptions();
         return;
       }
+      TimelineWindowPolicy.deduplicateBy(
+        timeline.events,
+        (event) => event.eventId,
+      );
       _timeline = timeline;
       _timelineDatabaseOffset = timeline.events.length;
       _timelineDatabaseExhausted = true;

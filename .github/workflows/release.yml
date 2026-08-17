@@ -81,6 +81,8 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.release.outputs.version }}"
+          build="${{ steps.release.outputs.build }}"
+          release_id="${version}+${build}"
           mkdir -p release-assets
 
           copy_unique() {
@@ -94,12 +96,12 @@ jobs:
             cp -- "${matches[0]}" "release-assets/$filename"
           }
 
-          copy_unique "Deltiecord-${version}-windows-x64-portable.zip"
-          copy_unique "Deltiecord-${version}-windows-x64-setup.exe"
-          copy_unique "Deltiecord-${version}-x86_64.AppImage"
-          copy_unique "deltiecord-${version}-1-x86_64.pkg.tar.zst"
-          copy_unique "deltiecord_${version}_amd64.deb"
-          copy_unique "Deltiecord-${version}-android.apk"
+          copy_unique "deltiecord-${release_id}-windows-x64-portable.zip"
+          copy_unique "deltiecord-${release_id}-windows-x64-setup.exe"
+          copy_unique "deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
+          copy_unique "deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
+          copy_unique "deltiecord-${release_id}-linux-debian-amd64.deb"
+          copy_unique "deltiecord-${release_id}-android.apk"
 
           (cd release-assets && sha256sum -- * >SHA256SUMS)
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 7

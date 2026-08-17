@@ -1,9 +1,9 @@
 # Installing Deltiecord
 
-Deltiecord 0.9.19 build 64 is a beta release for Android, x86-64 Windows, and
+Deltiecord 0.9.20 build 66 is a beta release for Android, x86-64 Windows, and
 Linux.
 Download official builds from the [Deltiecord releases page](https://deltie.net/cord)
-or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.19-b64).
+or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.20-b66).
 
 Before installing a downloaded build, verify it against the included
 `SHA256SUMS` file:
@@ -14,10 +14,10 @@ sha256sum -c SHA256SUMS
 
 ## Android
 
-Download `Deltiecord-0.9.19-android.apk` directly on the Android device. Verify
+Download `deltiecord-0.9.20+66-android.apk` directly on the Android device. Verify
 its checksum, allow installation from the browser or file manager when Android
 asks, then open the APK. The prerelease APK uses a development signing identity;
-v0.9.19 is the first build signed by Deltiecord's persistent prerelease identity.
+v0.9.19 was the first build signed by Deltiecord's persistent prerelease identity.
 The private keystore and passwords are stored outside the repository. APKs from
 builds 62 and 63 used ephemeral identities and require one uninstall before this
 first persistently signed build can be installed; later upgrades retain the same
@@ -38,7 +38,7 @@ still require broader real-device testing.
 
 ### Installer
 
-Download `Deltiecord-0.9.19-windows-x64-setup.exe`, run it, and follow the
+Download `deltiecord-0.9.20+66-windows-x64-setup.exe`, run it, and follow the
 installer. A normal per-user installation does not require administrator
 privileges. The installer creates a Start Menu entry and can optionally create
 a desktop shortcut.
@@ -52,7 +52,7 @@ per-user application data.
 
 ### Portable build
 
-Download `Deltiecord-0.9.19-windows-x64-portable.zip`, extract the entire
+Download `deltiecord-0.9.20+66-windows-x64-portable.zip`, extract the entire
 archive, and run `deltiecord.exe` from the extracted directory. Do not move only
 the executable: its accompanying DLLs, plugins, data, and assets are required.
 
@@ -63,11 +63,11 @@ issues.
 
 ## Debian, Ubuntu, and Linux Mint
 
-Download `deltiecord_0.9.19_amd64.deb`, open a terminal in its directory, and
+Download `deltiecord-0.9.20+66-linux-debian-amd64.deb`, open a terminal in its directory, and
 install it with APT:
 
 ```sh
-sudo apt install ./deltiecord_0.9.19_amd64.deb
+sudo apt install ./deltiecord-0.9.20+66-linux-debian-amd64.deb
 ```
 
 APT installs the package and its declared runtime dependencies. Launch it from
@@ -88,10 +88,10 @@ data.
 
 ## Arch Linux
 
-Download `deltiecord-0.9.19-1-x86_64.pkg.tar.zst` and install it with pacman:
+Download `deltiecord-0.9.20+66-linux-arch-x86_64.pkg.tar.zst` and install it with pacman:
 
 ```sh
-sudo pacman -U ./deltiecord-0.9.19-1-x86_64.pkg.tar.zst
+sudo pacman -U ./deltiecord-0.9.20+66-linux-arch-x86_64.pkg.tar.zst
 ```
 
 Launch Deltiecord from the application menu or run `deltiecord`. Remove the
@@ -100,11 +100,11 @@ package with `sudo pacman -R deltiecord`; user data remains untouched.
 ## AppImage
 
 The AppImage is useful on other current x86-64 Linux distributions. Download
-`Deltiecord-0.9.19-x86_64.AppImage`, make it executable, and launch it:
+`deltiecord-0.9.20+66-linux-appimage-x86_64.AppImage`, make it executable, and launch it:
 
 ```sh
-chmod +x Deltiecord-0.9.19-x86_64.AppImage
-./Deltiecord-0.9.19-x86_64.AppImage
+chmod +x deltiecord-0.9.20+66-linux-appimage-x86_64.AppImage
+./deltiecord-0.9.20+66-linux-appimage-x86_64.AppImage
 ```
 
 The AppImage contains the Flutter application but deliberately relies on some

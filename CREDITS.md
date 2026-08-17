@@ -1,10 +1,10 @@
 # Credits and acknowledgements
 
 Deltiecord is original application code built on open-source libraries and
-public services. No third-party client repository has been cloned or vendored
-into this repository, and no source from the reference clients below has been
-copied or adapted. Where Deltiecord directly uses a package, that package stays
-an external dependency under its own license.
+public services. No third-party client repository has been vendored into this
+repository. Where an upstream workflow has been adapted, it is called out
+below; where Deltiecord directly uses a package, that package stays an external
+dependency under its own license.
 
 ## Matrix foundations and client references
 
@@ -18,8 +18,11 @@ an external dependency under its own license.
   [Element X](https://github.com/element-hq/element-x-android) were consulted
   as behavioral/interoperability references for Matrix rooms, recovery,
   replies, media, and calls. No Element code or assets are included.
-- The compact three-column layout was inspired by Discord UX. Deltiecord does not use Discord branding, artwork, source,
-  or proprietary assets.
+- Deltiecord's UnifiedPush lifecycle adapts the architecture demonstrated by
+  [Element X's UnifiedPush provider](https://github.com/element-hq/element-x-android/tree/develop/libraries/pushproviders/unifiedpush): correlate asynchronous distributor callbacks with a stable per-account instance, persist rotated endpoints, and reconcile the Matrix pusher only after a valid endpoint arrives. Element X is AGPL-3.0-only or covered by its commercial license; Deltiecord's implementation is independently written for Flutter's platform boundary.
+- [FluffyChat's background push implementation](https://github.com/krille-chan/fluffychat/blob/main/lib/utils/background_push.dart) informed Deltiecord's launch-time pusher reconciliation, custom Matrix-gateway discovery behavior, and privacy-preserving `event_id_only` pusher format. FluffyChat is AGPL-3.0-or-later.
+- The compact three-column layout was inspired by Discord UX. Deltiecord does
+  not use Discord branding, artwork, source, or proprietary assets.
 
 ## Feature libraries and services
 

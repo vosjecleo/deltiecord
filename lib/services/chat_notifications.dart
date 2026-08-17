@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 
 import 'desktop_window_service.dart';
 
@@ -49,6 +49,13 @@ abstract interface class ChatNotificationSink {
     bool sound = true,
   });
 
+  /// Warms the native background-notification avatar cache for [roomId].
+  ///
+  /// UnifiedPush can wake Android while Flutter is not running, so the native
+  /// receiver cannot decrypt Matrix media or query the homeserver itself. The
+  /// cache contains only already-renderable avatar bytes, never credentials.
+  Future<void> cacheRoomAvatar(String roomId, Uint8List avatar);
+
   Future<void> dispose();
 }
 
@@ -57,6 +64,10 @@ abstract interface class ChatNotificationSink {
 /// Activation first emits a Matrix-independent target, then asks the platform
 /// window service to foreground the existing process.
 class PlatformChatNotificationSink implements ChatNotificationSink {
+  static const _nativeAssets = MethodChannel(
+    'net.deltie.deltiecord/notification_assets',
+  );
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final _activations = StreamController<NotificationTarget>.broadcast();
@@ -148,6 +159,22 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
   );
 
   @override
+  Future<void> cacheRoomAvatar(String roomId, Uint8List avatar) async {
+    if (roomId.isEmpty || avatar.isEmpty) return;
+    try {
+      await _nativeAssets.invokeMethod<void>('cacheRoomAvatar', {
+        'roomId': roomId,
+        'avatar': avatar,
+      });
+    } on MissingPluginException {
+      // Desktop platforms and older Android builds have no native push cache.
+    } on PlatformException {
+      // Avatar enrichment is optional. A stale native cache must never make
+      // room/profile hydration fail or interrupt message synchronization.
+    }
+  }
+
+  @override
   Future<void> dispose() => _activations.close();
 }
 
@@ -169,6 +196,9 @@ class SilentChatNotificationSink implements ChatNotificationSink {
     Uint8List? senderAvatar,
     bool sound = true,
   }) async {}
+
+  @override
+  Future<void> cacheRoomAvatar(String roomId, Uint8List avatar) async {}
 
   @override
   Future<void> dispose() async {}

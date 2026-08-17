@@ -821,6 +821,7 @@ void main() {
 
     await _revealMessageActions(tester, find.text('Original').last);
     expect(find.byTooltip('Reply'), findsOneWidget);
+    expect(find.byTooltip('Copy text'), findsOneWidget);
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pump();
     expect(find.byTooltip('Reply'), findsNothing);
@@ -2472,6 +2473,22 @@ void main() {
   testWidgets('Android message swipe replies and long press exposes actions', (
     tester,
   ) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copiedText = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..roomList = const [
@@ -2509,6 +2526,60 @@ void main() {
     expect(find.text('Reply'), findsWidgets);
     expect(find.text('React'), findsOneWidget);
     expect(find.text('Copy text'), findsOneWidget);
+    await tester.tap(find.text('Copy text'));
+    await tester.pumpAndSettle();
+    expect(copiedText, 'swipe this');
+  });
+
+  testWidgets('Android timeline groups messages and labels calendar days', (
+    tester,
+  ) async {
+    final now = DateTime.now();
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!dates:test',
+          name: 'Dates',
+          lastMessage: 'Today two',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$today-two',
+          sender: 'Alice',
+          senderId: '@alice:test',
+          body: 'Today two',
+          timestamp: now,
+          pending: false,
+        ),
+        ChatMessage(
+          id: r'$today-one',
+          sender: 'Alice',
+          senderId: '@alice:test',
+          body: 'Today one',
+          timestamp: now.subtract(const Duration(minutes: 1)),
+          pending: false,
+        ),
+        ChatMessage(
+          id: r'$yesterday',
+          sender: 'Bob',
+          senderId: '@bob:test',
+          body: 'Yesterday message',
+          timestamp: now.subtract(const Duration(days: 1)),
+          pending: false,
+        ),
+      ];
+
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Dates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Yesterday'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
   });
 
   testWidgets('Android drafts survive room navigation', (tester) async {

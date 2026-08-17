@@ -61,6 +61,12 @@ extension _MatrixSession on MatrixBackend {
       _notificationSubscription ??= _notifications.activations.listen(
         (target) => unawaited(_openNotificationTarget(target)),
       );
+      _unifiedPushSubscription ??= UnifiedPushPlatform.instance.stateChanges
+          .listen((instance) {
+            if (instance == _matrix.userID) {
+              unawaited(_reconcileUnifiedPushState(instance));
+            }
+          });
       try {
         await _notifications.initialize();
       } catch (_) {
@@ -453,14 +459,61 @@ extension _MatrixSession on MatrixBackend {
               plaintextBody: true,
             )
           : 'New room activity';
+      final notificationAvatar = await _notificationAvatarFor(room, event);
+      if (notificationAvatar != null) {
+        unawaited(_notifications.cacheRoomAvatar(room.id, notificationAvatar));
+      }
       await _notifications.show(
         title: '$sender in ${room.getLocalizedDisplayname()}',
         body: notificationBody,
         roomId: room.id,
         eventId: event.eventId,
-        senderAvatar: _senderAvatarBytes[event.senderId],
+        senderAvatar: notificationAvatar,
         sound: _preferences.notificationSound,
       );
+    }
+  }
+
+  Future<Uint8List?> _notificationAvatarFor(Room room, Event event) async {
+    // Discord-style server notifications are visually grouped by their Space;
+    // DMs and standalone group chats use the sender instead.
+    final parentSpace = _joinedRooms
+        .where((candidate) => candidate.isSpace)
+        .cast<Room?>()
+        .firstWhere(
+          (space) =>
+              space!.spaceChildren.any((child) => child.roomId == room.id),
+          orElse: () => null,
+        );
+    if (parentSpace != null) {
+      if (_avatarBytes[parentSpace.id] == null) {
+        try {
+          await _refreshAvatar(parentSpace);
+        } catch (_) {
+          // Native notifications fall back to the app icon when media fails.
+        }
+      }
+      return _avatarBytes[parentSpace.id];
+    }
+
+    final cached = _senderAvatarBytes[event.senderId];
+    if (cached != null) return cached;
+    final avatar = event.senderFromMemoryOrFallback.avatarUrl;
+    if (avatar == null || !avatar.isScheme('mxc')) return null;
+    try {
+      final response = await _matrix.getContentThumbnail(
+        avatar.host,
+        avatar.pathSegments.join('/'),
+        96,
+        96,
+        method: Method.crop,
+        animated: false,
+      );
+      _senderAvatarUris[event.senderId] = avatar;
+      _senderAvatarBytes[event.senderId] = response.data;
+      return response.data;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -738,6 +791,24 @@ extension _MatrixSession on MatrixBackend {
     if (_matrix.userID == null || normalized == null) {
       throw ArgumentError('UnifiedPush returned an invalid endpoint.');
     }
+    final profileTag = 'mobile_${_matrix.deviceID ?? 'android'}';
+    // Endpoint rotation should not leave duplicate pushers for this device.
+    // Other devices use a distinct profile tag and remain untouched.
+    try {
+      final pushers = await _matrix.getPushers();
+      for (final pusher in pushers ?? const <Pusher>[]) {
+        if (pusher.appId == 'net.deltie.deltiecord' &&
+            pusher.profileTag == profileTag &&
+            pusher.pushkey != normalized) {
+          await _matrix.deletePusher(
+            PusherId(appId: pusher.appId, pushkey: pusher.pushkey),
+          );
+        }
+      }
+    } catch (_) {
+      // A pusher refresh remains safe if listing or stale-entry cleanup is not
+      // supported by a homeserver. Failed endpoints expire independently.
+    }
     await _matrix.postPusher(
       Pusher(
         appId: 'net.deltie.deltiecord',
@@ -748,10 +819,25 @@ extension _MatrixSession on MatrixBackend {
             : 'Deltiecord',
         kind: 'http',
         lang: 'en',
-        data: PusherData(url: _unifiedPushGateway),
+        profileTag: profileTag,
+        data: PusherData(
+          url: _unifiedPushGateway,
+          // FluffyChat likewise uses the privacy-preserving Matrix format: the
+          // distributor receives IDs/counts and the client resolves content.
+          format: 'event_id_only',
+          additionalProperties: {'client_name': _matrix.clientName},
+        ),
       ),
       append: true,
     );
+  }
+
+  Future<void> _reconcileUnifiedPushState(String instance) async {
+    if (_matrix.userID != instance || !_matrix.isLogged()) return;
+    final state = await UnifiedPushPlatform.instance.state(instance);
+    if (state.endpoint case final endpoint?) {
+      await _setUnifiedPushEndpoint(endpoint);
+    }
   }
 
   Future<void> _restoreUnifiedPushPusher() async {
@@ -767,9 +853,7 @@ extension _MatrixSession on MatrixBackend {
         state = await platform.state(userId);
         if (state.error != null) break;
       }
-      if (state.endpoint case final endpoint?) {
-        await _setUnifiedPushEndpoint(endpoint);
-      }
+      await _reconcileUnifiedPushState(userId);
     } catch (_) {
       // Push is an optional background optimization. Distributor absence or a
       // stale endpoint must never prevent an otherwise healthy Matrix login.

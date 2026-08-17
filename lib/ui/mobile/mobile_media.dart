@@ -50,7 +50,9 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
       ),
     };
     return GestureDetector(
-      onTap: hidden ? () => setState(() => _revealed = true) : null,
+      onTap: hidden
+          ? () => setState(() => _revealed = true)
+          : _showMediaActions,
       onLongPress: hidden ? null : _showMediaActions,
       child: Stack(
         alignment: Alignment.center,
@@ -233,17 +235,14 @@ class _MobileImageState extends State<_MobileImage> {
           child: CircularProgressIndicator(strokeWidth: 2),
         );
       }
-      return GestureDetector(
-        onTap: () => _showImageFullscreen(context, bytes),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.memory(
-              bytes,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-            ),
+      return ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
           ),
         ),
       );
@@ -283,18 +282,39 @@ Widget _fullscreenCloseButton(BuildContext context) => Positioned(
         foregroundColor: Colors.white,
       ),
       onPressed: () => Navigator.pop(context),
-      icon: const Text(
-        '×',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 30,
-          height: 0.82,
-          fontWeight: FontWeight.w500,
-        ),
+      icon: const SizedBox.square(
+        dimension: 22,
+        child: CustomPaint(painter: _MediaClosePainter()),
       ),
     ),
   ),
 );
+
+class _MediaClosePainter extends CustomPainter {
+  const _MediaClosePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white
+      ..strokeWidth = 2.4
+      ..strokeCap = StrokeCap.round;
+    canvas
+      ..drawLine(
+        Offset(size.width * 0.25, size.height * 0.25),
+        Offset(size.width * 0.75, size.height * 0.75),
+        paint,
+      )
+      ..drawLine(
+        Offset(size.width * 0.75, size.height * 0.25),
+        Offset(size.width * 0.25, size.height * 0.75),
+        paint,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
 
 class _MobilePlayer extends StatefulWidget {
   const _MobilePlayer({
@@ -455,33 +475,75 @@ class MobileLinkPreviewCard extends StatelessWidget {
   const MobileLinkPreviewCard({required this.preview, super.key});
   final LinkPreview preview;
 
+  Future<void> _showVideoFullscreen(BuildContext context, Uri video) =>
+      showDialog<void>(
+        context: context,
+        barrierColor: Colors.black,
+        builder: (context) => Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: Stack(
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.sizeOf(context).width,
+                    maxHeight: MediaQuery.sizeOf(context).height,
+                  ),
+                  child: MobileLinkPreviewVideo(
+                    uri: video,
+                    thumbnail: preview.imageBytes,
+                    width: preview.width,
+                    height: preview.height,
+                    autoplay: true,
+                  ),
+                ),
+              ),
+              _fullscreenCloseButton(context),
+            ],
+          ),
+        ),
+      );
+
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: () => launchUrl(preview.url, mode: LaunchMode.externalApplication),
-    child: Card(
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (preview.videoUrl case final video?)
-              MobileLinkPreviewVideo(
+  Widget build(BuildContext context) => Card(
+    clipBehavior: Clip.antiAlias,
+    child: ConstrainedBox(
+      // Media uses the same 420x520 envelope as normal attachments. Metadata
+      // is allowed to add its natural height rather than overflowing a fixed
+      // whole-card limit on devices with large accessibility text.
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (preview.videoUrl case final video?)
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showVideoFullscreen(context, video),
+              child: MobileLinkPreviewVideo(
                 uri: video,
                 thumbnail: preview.imageBytes,
                 width: preview.width,
                 height: preview.height,
-              )
-            else if (preview.imageBytes case final image?)
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 220),
+                onPlayRequested: () => _showVideoFullscreen(context, video),
+              ),
+            )
+          else if (preview.imageBytes case final image?)
+            GestureDetector(
+              onTap: () => _showImageFullscreen(context, image),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 520),
                 child: Image.memory(
                   image,
                   width: double.infinity,
-                  fit: BoxFit.cover,
+                  fit: BoxFit.contain,
                 ),
               ),
-            Padding(
+            ),
+          InkWell(
+            onTap: () =>
+                launchUrl(preview.url, mode: LaunchMode.externalApplication),
+            child: Padding(
               padding: const EdgeInsets.all(12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -501,8 +563,8 @@ class MobileLinkPreviewCard extends StatelessWidget {
                 ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
@@ -514,6 +576,8 @@ class MobileLinkPreviewVideo extends StatefulWidget {
     this.thumbnail,
     this.width,
     this.height,
+    this.autoplay = false,
+    this.onPlayRequested,
     super.key,
   });
 
@@ -521,6 +585,8 @@ class MobileLinkPreviewVideo extends StatefulWidget {
   final Uint8List? thumbnail;
   final int? width;
   final int? height;
+  final bool autoplay;
+  final VoidCallback? onPlayRequested;
 
   @override
   State<MobileLinkPreviewVideo> createState() => _MobileLinkPreviewVideoState();
@@ -531,6 +597,12 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
   VideoController? _controller;
   bool _opening = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoplay) unawaited(_play());
+  }
 
   Future<void> _play() async {
     final current = _player;
@@ -576,7 +648,9 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
   Widget build(BuildContext context) {
     final width = widget.width?.toDouble() ?? 16;
     final height = widget.height?.toDouble() ?? 9;
-    final ratio = width > 0 && height > 0 ? width / height : 16 / 9;
+    final ratio = width > 0 && height > 0
+        ? (width / height).clamp(0.5, 2.0)
+        : 16 / 9;
     final player = _player;
     final controller = _controller;
     return AspectRatio(
@@ -601,7 +675,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
                       ? const CircularProgressIndicator()
                       : IconButton.filled(
                           tooltip: 'Play embedded video',
-                          onPressed: _play,
+                          onPressed: widget.onPlayRequested ?? _play,
                           icon: const _PlayGlyph(),
                         ),
                 ),

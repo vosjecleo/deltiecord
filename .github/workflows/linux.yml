@@ -60,8 +60,11 @@ jobs:
           packaging/linux/build-deb.sh
           packaging/linux/build-appimage.sh
           version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
+          mv "dist/deltiecord_${version}_amd64.deb" "dist/deltiecord-${release_id}-linux-debian-amd64.deb"
+          mv "dist/Deltiecord-${version}-x86_64.AppImage" "dist/deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
           cp packaging/README.md dist/README.txt
-          printf 'Deltiecord %s\nGit commit: %s\n' "$version" "$GITHUB_SHA" >dist/BUILD-INFO.txt
+          printf 'Deltiecord %s\nGit commit: %s\n' "$release_id" "$GITHUB_SHA" >dist/BUILD-INFO.txt
           (cd dist && sha256sum -- *.deb *.AppImage >SHA256SUMS)
       - name: Test Debian installation, launch, and removal
         run: |
@@ -116,6 +119,9 @@ jobs:
       - name: Build native Arch package
         run: |
           runuser -u builder -- env PATH="/opt/flutter/bin:$PATH" HOME=/home/builder bash -lc "cd '$GITHUB_WORKSPACE' && git config --global --add safe.directory /opt/flutter && git config --global --add safe.directory '$GITHUB_WORKSPACE' && flutter pub get && dart format --output=none --set-exit-if-changed . && flutter analyze && flutter test --concurrency=1 && packaging/arch/build-package.sh"
+          release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
+          package="$(find dist -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
+          mv "$package" "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
           cd dist
           sha256sum -- *.pkg.tar.zst >SHA256SUMS
       - name: Test Arch installation, launch, and removal

@@ -13,6 +13,7 @@ import 'ui/deltiecord_theme.dart';
 import 'ui/login_screen.dart';
 import 'ui/mobile/mobile_chat_shell.dart';
 import 'ui/security_center.dart';
+import 'ui/startup_update_gate.dart';
 
 class DeltiecordApp extends StatelessWidget {
   const DeltiecordApp({
@@ -282,25 +283,27 @@ class DeltiecordApp extends StatelessWidget {
               ),
             );
           },
-          home: switch (backend.status) {
-            SessionStatus.starting => const _StartupScreen(),
-            SessionStatus.failed => _StartupFailure(
-              message: backend.error ?? 'Deltiecord could not start.',
-              onRetry: backend.initialize,
-            ),
-            SessionStatus.signedIn =>
-              mobile
-                  ? _EncryptionRecoveryPrompt(
-                      backend: backend,
-                      child: MobileChatShell(backend: backend),
-                    )
-                  : _EncryptionRecoveryPrompt(
-                      backend: backend,
-                      child: ChatShell(backend: backend),
-                    ),
-            SessionStatus.signedOut ||
-            SessionStatus.signingIn => LoginScreen(backend: backend),
-          },
+          home: StartupUpdateGate(
+            child: switch (backend.status) {
+              SessionStatus.starting => const _StartupScreen(),
+              SessionStatus.failed => _StartupFailure(
+                message: backend.error ?? 'Deltiecord could not start.',
+                onRetry: backend.initialize,
+              ),
+              SessionStatus.signedIn =>
+                mobile
+                    ? _EncryptionRecoveryPrompt(
+                        backend: backend,
+                        child: MobileChatShell(backend: backend),
+                      )
+                    : _EncryptionRecoveryPrompt(
+                        backend: backend,
+                        child: ChatShell(backend: backend),
+                      ),
+              SessionStatus.signedOut ||
+              SessionStatus.signingIn => LoginScreen(backend: backend),
+            },
+          ),
         );
       },
     );

@@ -66,6 +66,12 @@ void main() {
     );
   });
 
+  test('overlapping pages keep the newest occurrence of each event', () {
+    final events = ['newest', 'middle', 'boundary', 'boundary', 'oldest'];
+    expect(TimelineWindowPolicy.deduplicateBy(events, (event) => event), 1);
+    expect(events, ['newest', 'middle', 'boundary', 'oldest']);
+  });
+
   test('repeated older and newer churn never duplicates event identities', () {
     var window = List.generate(90, (index) => 'event-$index');
     for (var cycle = 0; cycle < 8; cycle++) {

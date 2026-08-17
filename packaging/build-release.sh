@@ -19,9 +19,20 @@ else
   echo 'Skipping Arch package: makepkg is unavailable on this host.' >&2
 fi
 version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
+if [[ -f "dist/deltiecord_${version}_amd64.deb" ]]; then
+  mv "dist/deltiecord_${version}_amd64.deb" "dist/deltiecord-${release_id}-linux-debian-amd64.deb"
+fi
+if [[ -f "dist/Deltiecord-${version}-x86_64.AppImage" ]]; then
+  mv "dist/Deltiecord-${version}-x86_64.AppImage" "dist/deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
+fi
+package="$(find dist -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
+if [[ -n "$package" ]]; then
+  mv "$package" "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
+fi
 commit="$(git rev-parse HEAD)"
 {
-  echo "Deltiecord $version"
+  echo "Deltiecord $release_id"
   echo "Git commit: $commit"
   echo "Built: $(date --iso-8601=seconds)"
   echo "Architecture: x86_64"

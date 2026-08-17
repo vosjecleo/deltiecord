@@ -185,6 +185,12 @@ class _MessageRowState extends State<_MessageRow> {
               ),
               child: _MessageActions(
                 onReply: () => _performAction(widget.onReply),
+                onCopy: () {
+                  unawaited(
+                    Clipboard.setData(ClipboardData(text: message.body)),
+                  );
+                  _hideActions();
+                },
                 onEdit: widget.onEdit == null
                     ? null
                     : () => _performAction(widget.onEdit),
@@ -538,6 +544,7 @@ class _UnreadDivider extends StatelessWidget {
 class _MessageActions extends StatelessWidget {
   const _MessageActions({
     required this.onReply,
+    required this.onCopy,
     required this.onEdit,
     required this.onDelete,
     required this.onReact,
@@ -546,6 +553,7 @@ class _MessageActions extends StatelessWidget {
   });
 
   final VoidCallback onReply;
+  final VoidCallback onCopy;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onReact;
@@ -562,6 +570,13 @@ class _MessageActions extends StatelessWidget {
         tooltip: 'Reply',
         onPressed: onReply,
         icon: const Icon(Icons.reply, size: 16),
+      ),
+      IconButton(
+        key: const Key('message-action-copy'),
+        visualDensity: VisualDensity.compact,
+        tooltip: 'Copy text',
+        onPressed: onCopy,
+        icon: const Icon(Icons.copy_outlined, size: 16),
       ),
       if (onReact != null)
         IconButton(

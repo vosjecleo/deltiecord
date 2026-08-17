@@ -7,6 +7,9 @@
 #ifndef OutputDir
   #define OutputDir "."
 #endif
+#ifndef OutputBaseName
+  #define OutputBaseName "Deltiecord-" + MyAppVersion + "-windows-x64-setup"
+#endif
 
 [Setup]
 AppId={{2E5E8DB4-F62B-4E91-B4C4-2CA41EDCC91F}
@@ -21,7 +24,7 @@ DefaultGroupName=Deltiecord
 DisableProgramGroupPage=yes
 LicenseFile=..\..\LICENSE
 OutputDir={#OutputDir}
-OutputBaseFilename=Deltiecord-{#MyAppVersion}-windows-x64-setup
+OutputBaseFilename={#OutputBaseName}
 SetupIconFile=..\..\windows\runner\resources\app_icon.ico
 UninstallDisplayIcon={app}\deltiecord.exe
 ArchitecturesAllowed=x64compatible

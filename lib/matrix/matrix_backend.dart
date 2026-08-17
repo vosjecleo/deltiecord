@@ -67,6 +67,7 @@ class MatrixBackend extends ChatBackend {
   StreamSubscription<Object?>? _loginSubscription;
   StreamSubscription<Object?>? _syncStatusSubscription;
   StreamSubscription<NotificationTarget>? _notificationSubscription;
+  StreamSubscription<String>? _unifiedPushSubscription;
   SessionStatus _status = SessionStatus.starting;
   ConnectionStatus _connectionStatus = ConnectionStatus.connecting;
   String? _error;
@@ -810,6 +811,7 @@ class MatrixBackend extends ChatBackend {
     _loginSubscription?.cancel();
     _syncStatusSubscription?.cancel();
     _notificationSubscription?.cancel();
+    _unifiedPushSubscription?.cancel();
     _client?.dispose();
     unawaited(_notifications.dispose());
     unawaited(_mediaRangeProxy.close());

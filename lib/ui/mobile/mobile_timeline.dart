@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:mime/mime.dart';
 
@@ -45,12 +46,20 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   late final TextEditingController _composer;
   final _focus = FocusNode();
   final _scroll = ScrollController();
+  final GlobalKey _timelineViewportKey = GlobalKey();
+  final Map<String, GlobalKey> _messageKeys = {};
+  final Map<GlobalKey, String> _messageIdsByKey = {};
   final _giphy = GiphyService();
   final List<AttachmentDraft> _attachments = [];
   ChatMessage? _reply;
   ChatMessage? _edit;
   bool _sending = false;
   bool _autoFillingInitialChunk = false;
+  bool _pageLoadInFlight = false;
+  bool _restoringScrollAnchor = false;
+  DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  int _timelineInputGeneration = 0;
   List<EmojiEntry> _emojiMatches = const [];
   int _emojiSelection = 0;
   int? _emojiStart;
@@ -78,6 +87,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _reply = null;
     _edit = null;
     _attachments.clear();
+    _messageKeys.clear();
+    _messageIdsByKey.clear();
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
@@ -162,13 +173,101 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   void _handleScroll() {
-    if (!_scroll.hasClients || backend.historyLoading) return;
-    if (_scroll.position.extentAfter < 180 && backend.canLoadMoreHistory) {
-      unawaited(backend.loadMoreHistory());
+    if (!_scroll.hasClients || _restoringScrollAnchor) return;
+    final position = _scroll.position;
+    if (backend.historyLoading || _pageLoadInFlight) return;
+    if (DateTime.now().isAfter(_timelineUserInputUntil) ||
+        DateTime.now().isBefore(_suppressPaginationUntil)) {
+      return;
     }
-    if (_scroll.position.extentBefore < 180 && backend.canLoadMoreFuture) {
-      unawaited(backend.loadMoreFuture());
+    if (position.userScrollDirection == ScrollDirection.reverse &&
+        position.pixels >= position.maxScrollExtent - 180 &&
+        backend.canLoadMoreHistory) {
+      unawaited(_loadTimelinePage(older: true));
+    } else if (position.userScrollDirection == ScrollDirection.forward &&
+        position.pixels <= 180 &&
+        backend.canLoadMoreFuture) {
+      unawaited(_loadTimelinePage(older: false));
     }
+  }
+
+  void _noteTimelineUserInput(PointerEvent _) {
+    _timelineInputGeneration++;
+    _timelineUserInputUntil = DateTime.now().add(const Duration(seconds: 1));
+  }
+
+  Future<void> _loadTimelinePage({required bool older}) async {
+    if (_pageLoadInFlight) return;
+    _pageLoadInFlight = true;
+    _suppressPaginationUntil = DateTime.now().add(
+      const Duration(milliseconds: 700),
+    );
+    final anchor = _captureScrollAnchor();
+    final inputGeneration = _timelineInputGeneration;
+    try {
+      if (older) {
+        await backend.loadMoreHistory();
+      } else {
+        await backend.loadMoreFuture();
+      }
+      // Adjacent avatars, previews, and decrypted media can settle over more
+      // than one frame. Keep the same Matrix event fixed until layout settles,
+      // but stop immediately if the user starts a new gesture.
+      for (var pass = 0; pass < 4; pass++) {
+        await WidgetsBinding.instance.endOfFrame;
+        if (!mounted || inputGeneration != _timelineInputGeneration) return;
+        final before = _scroll.hasClients ? _scroll.position.pixels : 0.0;
+        _restoreScrollAnchor(anchor);
+        if (!_scroll.hasClients ||
+            (_scroll.position.pixels - before).abs() < 0.5) {
+          break;
+        }
+      }
+    } finally {
+      _pageLoadInFlight = false;
+    }
+  }
+
+  _TimelineScrollAnchor? _captureScrollAnchor() {
+    final viewport = _timelineViewportKey.currentContext?.findRenderObject();
+    if (viewport is! RenderBox || !viewport.hasSize) return null;
+    final viewportTop = viewport.localToGlobal(Offset.zero).dy;
+    final viewportBottom = viewportTop + viewport.size.height;
+    _TimelineScrollAnchor? best;
+    var bestDistance = double.infinity;
+    for (final entry in _messageKeys.entries) {
+      final box = entry.value.currentContext?.findRenderObject();
+      if (box is! RenderBox || !box.hasSize) continue;
+      final top = box.localToGlobal(Offset.zero).dy;
+      final bottom = top + box.size.height;
+      if (bottom <= viewportTop || top >= viewportBottom) continue;
+      final distance = (top - viewportTop).abs();
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = _TimelineScrollAnchor(entry.key, top);
+      }
+    }
+    return best;
+  }
+
+  void _restoreScrollAnchor(_TimelineScrollAnchor? anchor) {
+    if (anchor == null || !mounted || !_scroll.hasClients) return;
+    final box = _messageKeys[anchor.eventId]?.currentContext
+        ?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final displacement = box.localToGlobal(Offset.zero).dy - anchor.screenTop;
+    if (displacement.abs() < 0.5) return;
+    _restoringScrollAnchor = true;
+    final position = _scroll.position;
+    // This is a reversed list: compensate retained-row displacement in the
+    // inverse direction, matching the desktop timeline's stable anchoring.
+    _scroll.jumpTo(
+      (position.pixels - displacement).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+    _restoringScrollAnchor = false;
   }
 
   @override
@@ -185,6 +284,18 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    final currentMessageIds = messages.map((message) => message.id).toSet();
+    final staleMessageIds = _messageKeys.keys
+        .where((messageId) => !currentMessageIds.contains(messageId))
+        .toList(growable: false);
+    for (final messageId in staleMessageIds) {
+      final key = _messageKeys.remove(messageId);
+      if (key != null) _messageIdsByKey.remove(key);
+    }
+    final messageIndexes = <String, int>{
+      for (var index = 0; index < messages.length; index++)
+        messages[index].id: index,
+    };
     if (!_autoFillingInitialChunk &&
         !backend.timelineLoading &&
         !backend.historyLoading &&
@@ -290,76 +401,127 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                 ? const Center(child: Text('No messages yet'))
                 : Stack(
                     children: [
-                      ListView.builder(
-                        key: const ValueKey('mobile-message-timeline'),
-                        controller: _scroll,
-                        reverse: true,
-                        padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
-                        itemCount:
-                            messages.length +
-                            ((backend.canLoadMoreHistory ||
-                                    backend.historyLoading)
-                                ? 1
-                                : 0),
-                        itemBuilder: (context, index) {
-                          if (index == messages.length) {
-                            return Center(
-                              child: backend.historyLoading
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(16),
-                                      child: CircularProgressIndicator(),
-                                    )
-                                  : TextButton.icon(
-                                      onPressed: backend.loadMoreHistory,
-                                      icon: const Icon(Icons.history),
-                                      label: const Text('Load older messages'),
+                      KeyedSubtree(
+                        key: _timelineViewportKey,
+                        child: Listener(
+                          onPointerDown: _noteTimelineUserInput,
+                          onPointerMove: _noteTimelineUserInput,
+                          onPointerSignal: _noteTimelineUserInput,
+                          child: ListView.builder(
+                            key: const ValueKey('mobile-message-timeline'),
+                            controller: _scroll,
+                            reverse: true,
+                            physics: const ClampingScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                            itemCount:
+                                messages.length +
+                                ((backend.canLoadMoreHistory ||
+                                        backend.historyLoading)
+                                    ? 1
+                                    : 0),
+                            findChildIndexCallback: (key) {
+                              final messageId = key is GlobalKey
+                                  ? _messageIdsByKey[key]
+                                  : null;
+                              return messageId == null
+                                  ? null
+                                  : messageIndexes[messageId];
+                            },
+                            itemBuilder: (context, index) {
+                              if (index == messages.length) {
+                                return Center(
+                                  child: backend.historyLoading
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(16),
+                                          child: CircularProgressIndicator(),
+                                        )
+                                      : TextButton.icon(
+                                          onPressed: () =>
+                                              _loadTimelinePage(older: true),
+                                          icon: const Icon(Icons.history),
+                                          label: const Text(
+                                            'Load older messages',
+                                          ),
+                                        ),
+                                );
+                              }
+                              final message = messages[index];
+                              final older = index + 1 < messages.length
+                                  ? messages[index + 1]
+                                  : null;
+                              final grouped =
+                                  older != null &&
+                                  older.senderId == message.senderId &&
+                                  message.timestamp.difference(
+                                        older.timestamp,
+                                      ) <
+                                      const Duration(minutes: 7) &&
+                                  message.reply == null &&
+                                  DateUtils.isSameDay(
+                                    older.timestamp.toLocal(),
+                                    message.timestamp.toLocal(),
+                                  );
+                              final showDaySeparator =
+                                  older == null ||
+                                  !DateUtils.isSameDay(
+                                    older.timestamp.toLocal(),
+                                    message.timestamp.toLocal(),
+                                  );
+                              final rowKey = _messageKeys.putIfAbsent(
+                                message.id,
+                                () {
+                                  final key = GlobalKey();
+                                  _messageIdsByKey[key] = message.id;
+                                  return key;
+                                },
+                              );
+                              return KeyedSubtree(
+                                key: rowKey,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (showDaySeparator)
+                                      _MobileDaySeparator(
+                                        date: message.timestamp.toLocal(),
+                                      ),
+                                    _MobileMessageRow(
+                                      backend: backend,
+                                      message: message,
+                                      grouped: grouped,
+                                      onReply: () => setState(() {
+                                        _reply = message;
+                                        _edit = null;
+                                        _focus.requestFocus();
+                                      }),
+                                      onEdit: message.own && !message.redacted
+                                          ? () => setState(() {
+                                              _edit = message;
+                                              _reply = null;
+                                              _composer.text = message.body;
+                                              _composer.selection =
+                                                  TextSelection.collapsed(
+                                                    offset:
+                                                        _composer.text.length,
+                                                  );
+                                              _focus.requestFocus();
+                                            })
+                                          : null,
+                                      onProfile: message.senderId == null
+                                          ? null
+                                          : () => showMobileProfileSheet(
+                                              context,
+                                              backend,
+                                              message.senderId!,
+                                              onEditOwnProfile:
+                                                  widget.onOpenSettings,
+                                            ),
                                     ),
-                            );
-                          }
-                          final message = messages[index];
-                          final older = index + 1 < messages.length
-                              ? messages[index + 1]
-                              : null;
-                          final grouped =
-                              older != null &&
-                              older.senderId == message.senderId &&
-                              message.timestamp.difference(older.timestamp) <
-                                  const Duration(minutes: 7) &&
-                              message.reply == null &&
-                              !message.edited &&
-                              message.readBy.isEmpty;
-                          return _MobileMessageRow(
-                            key: ValueKey(message.id),
-                            backend: backend,
-                            message: message,
-                            grouped: grouped,
-                            onReply: () => setState(() {
-                              _reply = message;
-                              _edit = null;
-                              _focus.requestFocus();
-                            }),
-                            onEdit: message.own && !message.redacted
-                                ? () => setState(() {
-                                    _edit = message;
-                                    _reply = null;
-                                    _composer.text = message.body;
-                                    _composer.selection =
-                                        TextSelection.collapsed(
-                                          offset: _composer.text.length,
-                                        );
-                                    _focus.requestFocus();
-                                  })
-                                : null,
-                            onProfile: message.senderId == null
-                                ? null
-                                : () => showMobileProfileSheet(
-                                    context,
-                                    backend,
-                                    message.senderId!,
-                                    onEditOwnProfile: widget.onOpenSettings,
-                                  ),
-                          );
-                        },
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                       ),
                       if (!backend.atTimelinePresent)
                         Positioned(
@@ -390,6 +552,19 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             }),
             onRemoveAttachment: (attachment) =>
                 setState(() => _attachments.remove(attachment)),
+            onToggleAttachmentSpoiler: (attachment) {
+              final index = _attachments.indexOf(attachment);
+              if (index < 0) return;
+              setState(() {
+                _attachments[index] = AttachmentDraft(
+                  bytes: attachment.bytes,
+                  name: attachment.name,
+                  mimeType: attachment.mimeType,
+                  spoiler: !attachment.spoiler,
+                  caption: attachment.caption,
+                );
+              });
+            },
             onAdd: _showAddMenu,
             onEmoji: _showEmojiPicker,
             onSend: _send,
@@ -627,6 +802,50 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 }
 
+final class _TimelineScrollAnchor {
+  const _TimelineScrollAnchor(this.eventId, this.screenTop);
+
+  final String eventId;
+  final double screenTop;
+}
+
+class _MobileDaySeparator extends StatelessWidget {
+  const _MobileDaySeparator({required this.date});
+
+  final DateTime date;
+
+  @override
+  Widget build(BuildContext context) {
+    final localDate = DateUtils.dateOnly(date);
+    final today = DateUtils.dateOnly(DateTime.now());
+    final label = localDate == today
+        ? 'Today'
+        : localDate == today.subtract(const Duration(days: 1))
+        ? 'Yesterday'
+        : MaterialLocalizations.of(context).formatFullDate(localDate);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: context.deltiecord.divider)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: context.deltiecord.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: context.deltiecord.divider)),
+        ],
+      ),
+    );
+  }
+}
+
 class _MobileMessageRow extends StatelessWidget {
   const _MobileMessageRow({
     required this.backend,
@@ -635,7 +854,6 @@ class _MobileMessageRow extends StatelessWidget {
     required this.onReply,
     required this.onEdit,
     required this.onProfile,
-    super.key,
   });
   final ChatBackend backend;
   final ChatMessage message;
@@ -715,9 +933,10 @@ class _MobileMessageRow extends StatelessWidget {
                             ),
                             const SizedBox(width: 7),
                             Text(
-                              MaterialLocalizations.of(context).formatTimeOfDay(
-                                TimeOfDay.fromDateTime(message.timestamp),
-                                alwaysUse24HourFormat:
+                              _mobileMessageTimestamp(
+                                context,
+                                message.timestamp,
+                                use24HourTime:
                                     backend.preferences.use24HourTime,
                               ),
                               style: TextStyle(
@@ -927,6 +1146,22 @@ class _MobileMessageRow extends StatelessWidget {
   );
 }
 
+String _mobileMessageTimestamp(
+  BuildContext context,
+  DateTime timestamp, {
+  required bool use24HourTime,
+}) {
+  final local = timestamp.toLocal();
+  final material = MaterialLocalizations.of(context);
+  final time = material.formatTimeOfDay(
+    TimeOfDay.fromDateTime(local),
+    alwaysUse24HourFormat: use24HourTime,
+  );
+  return DateUtils.isSameDay(local, DateTime.now())
+      ? time
+      : '${material.formatShortDate(local)} $time';
+}
+
 class _MobileComposer extends StatefulWidget {
   const _MobileComposer({
     required this.controller,
@@ -937,6 +1172,7 @@ class _MobileComposer extends StatefulWidget {
     required this.editing,
     required this.onClearContext,
     required this.onRemoveAttachment,
+    required this.onToggleAttachmentSpoiler,
     required this.onAdd,
     required this.onEmoji,
     required this.onSend,
@@ -955,6 +1191,7 @@ class _MobileComposer extends StatefulWidget {
   final bool editing;
   final VoidCallback onClearContext;
   final ValueChanged<AttachmentDraft> onRemoveAttachment;
+  final ValueChanged<AttachmentDraft> onToggleAttachmentSpoiler;
   final VoidCallback onAdd;
   final VoidCallback onEmoji;
   final VoidCallback onSend;
@@ -1125,6 +1362,8 @@ class _MobileComposerState extends State<_MobileComposer> {
                       return _PendingAttachmentPreview(
                         attachment: attachment,
                         onRemove: () => widget.onRemoveAttachment(attachment),
+                        onToggleSpoiler: () =>
+                            widget.onToggleAttachmentSpoiler(attachment),
                       );
                     },
                   ),
@@ -1188,64 +1427,148 @@ class _PendingAttachmentPreview extends StatelessWidget {
   const _PendingAttachmentPreview({
     required this.attachment,
     required this.onRemove,
+    required this.onToggleSpoiler,
   });
 
   final AttachmentDraft attachment;
   final VoidCallback onRemove;
+  final VoidCallback onToggleSpoiler;
+
+  Future<void> _showActions(BuildContext context) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(
+                attachment.spoiler
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+              ),
+              title: Text(
+                attachment.spoiler ? 'Remove spoiler' : 'Mark as spoiler',
+              ),
+              onTap: () => Navigator.pop(context, 'spoiler'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Remove attachment'),
+              onTap: () => Navigator.pop(context, 'remove'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'spoiler') onToggleSpoiler();
+    if (action == 'remove') onRemove();
+  }
 
   @override
   Widget build(BuildContext context) {
     final isImage = attachment.mimeType.startsWith('image/');
     final isVideo = attachment.mimeType.startsWith('video/');
-    return SizedBox(
-      width: 116,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: isImage
-                ? Image.memory(
-                    attachment.bytes,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                  )
-                : ColoredBox(
-                    color: context.deltiecord.input,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          isVideo
-                              ? Icons.movie_outlined
-                              : Icons.insert_drive_file_outlined,
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 6),
-                          child: Text(
-                            attachment.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showActions(context),
+      onLongPress: () => _showActions(context),
+      child: SizedBox(
+        width: 116,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: isImage
+                  ? Image.memory(
+                      attachment.bytes,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                    )
+                  : ColoredBox(
+                      color: context.deltiecord.input,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            isVideo
+                                ? Icons.movie_outlined
+                                : Icons.insert_drive_file_outlined,
                           ),
-                        ),
-                      ],
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                            child: Text(
+                              attachment.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-          ),
-          Positioned(
-            right: 2,
-            top: 2,
-            child: IconButton.filled(
-              tooltip: 'Remove attachment',
-              visualDensity: VisualDensity.compact,
-              onPressed: onRemove,
-              icon: const Icon(Icons.close, size: 16),
             ),
-          ),
-        ],
+            Positioned(
+              right: 2,
+              top: 2,
+              child: IconButton.filled(
+                tooltip: 'Remove attachment',
+                visualDensity: VisualDensity.compact,
+                onPressed: onRemove,
+                icon: const _CloseGlyph(size: 14),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+class _CloseGlyph extends StatelessWidget {
+  const _CloseGlyph({this.size = 18});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: size,
+    child: CustomPaint(
+      painter: _CloseGlyphPainter(
+        color: IconTheme.of(context).color ?? Colors.white,
+      ),
+    ),
+  );
+}
+
+class _CloseGlyphPainter extends CustomPainter {
+  const _CloseGlyphPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = max(1.8, size.shortestSide * 0.14)
+      ..strokeCap = StrokeCap.round;
+    final inset = size.shortestSide * 0.18;
+    canvas
+      ..drawLine(
+        Offset(inset, inset),
+        Offset(size.width - inset, size.height - inset),
+        paint,
+      )
+      ..drawLine(
+        Offset(size.width - inset, inset),
+        Offset(inset, size.height - inset),
+        paint,
+      );
+  }
+
+  @override
+  bool shouldRepaint(covariant _CloseGlyphPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _MobileEmojiPicker extends StatefulWidget {

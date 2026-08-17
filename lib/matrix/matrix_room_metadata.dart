@@ -116,6 +116,27 @@ extension _MatrixRoomMetadata on MatrixBackend {
           }
         }
       } while (_roomMetadataRefreshRequested && _matrix.isLogged());
+      // Native UnifiedPush notifications may arrive while Flutter is stopped.
+      // Warm their private room-keyed avatar cache while Matrix media is
+      // already available here; Space children deliberately inherit the
+      // parent Space avatar for server-style notification grouping.
+      for (final room in _joinedRooms.where((room) => !room.isSpace)) {
+        Uint8List? notificationAvatar;
+        for (final space in _joinedRooms.where(
+          (candidate) => candidate.isSpace,
+        )) {
+          if (space.spaceChildren.any((child) => child.roomId == room.id)) {
+            notificationAvatar = _avatarBytes[space.id];
+            break;
+          }
+        }
+        notificationAvatar ??= _avatarBytes[room.id];
+        if (notificationAvatar != null) {
+          unawaited(
+            _notifications.cacheRoomAvatar(room.id, notificationAvatar),
+          );
+        }
+      }
     } finally {
       _refreshingRoomMetadata = false;
       if (changed) _notifyBackendListeners();

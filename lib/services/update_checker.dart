@@ -6,11 +6,11 @@ import 'bounded_http.dart';
 const deltiecordReleasesPage = 'https://deltie.net/cord/';
 const _releaseManifestUrl = 'https://deltie.net/cord/releases.json';
 
-/// A bounded, user-triggered check against Deltiecord's release manifest.
+/// A bounded check against Deltiecord's release manifest.
 ///
-/// This intentionally does not run during startup. Apart from avoiding another
-/// background request, a manual check makes the release-site contact visible to
-/// the user and keeps normal Matrix startup independent of deltie.net.
+/// Startup invokes it only after the signed-in UI is usable, and Settings also
+/// exposes an explicit retry. In either case release-site failure is isolated
+/// from Matrix session startup.
 class UpdateChecker {
   UpdateChecker({HttpClient? client}) : _client = client ?? HttpClient();
 

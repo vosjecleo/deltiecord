@@ -165,11 +165,22 @@ extension _MatrixMessages on MatrixBackend {
     // The SDK's normal database offset is based on events.length; that offset
     // repeats pages after Deltiecord trims the list to its bounded hard cap.
     timeline.isFragmentedTimeline = true;
-    final loaded = await timeline.getRoomEvents(
+    final beforeIds = timeline.events.map((event) => event.eventId).toSet();
+    final previousToken = timeline.chunk.prevBatch;
+    await timeline.getRoomEvents(
       historyCount: pageSize,
       direction: Direction.b,
     );
-    if (loaded == 0 || timeline.chunk.prevBatch.isEmpty) {
+    TimelineWindowPolicy.deduplicateBy(
+      timeline.events,
+      (event) => event.eventId,
+    );
+    final loaded = timeline.events
+        .where((event) => !beforeIds.contains(event.eventId))
+        .length;
+    if (loaded == 0 ||
+        timeline.chunk.prevBatch.isEmpty ||
+        timeline.chunk.prevBatch == previousToken) {
       _timelineServerExhausted = true;
     }
     return loaded;
@@ -206,6 +217,10 @@ extension _MatrixMessages on MatrixBackend {
           replacement.cancelSubscriptions();
           return;
         }
+        TimelineWindowPolicy.deduplicateBy(
+          replacement.events,
+          (event) => event.eventId,
+        );
         timeline.cancelSubscriptions();
         _timeline = replacement;
         _timelineDatabaseOffset = replacement.events.length;
@@ -220,6 +235,10 @@ extension _MatrixMessages on MatrixBackend {
         );
       }
       if (!identical(activeTimeline, _timeline)) return;
+      TimelineWindowPolicy.deduplicateBy(
+        activeTimeline.events,
+        (event) => event.eventId,
+      );
       final hardCap = TimelineWindowPolicy.hardCap(
         chunkSize: _preferences.timelineChunkSize,
         chunkCap: _preferences.timelineChunkCap,

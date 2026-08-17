@@ -16,6 +16,18 @@ abstract final class TimelineWindowPolicy {
   static int advanceDatabaseOffset(int currentOffset, int fetchedCount) =>
       currentOffset + max(0, fetchedCount);
 
+  /// Removes repeated identities while preserving newest-first order.
+  ///
+  /// Fragmented Matrix history pages may overlap at their boundary. Removing
+  /// that overlap before trimming prevents a boundary event from becoming a
+  /// visibly repeated "first" message.
+  static int deduplicateBy<T, K>(List<T> events, K Function(T event) keyOf) {
+    final seen = <K>{};
+    final originalLength = events.length;
+    events.removeWhere((event) => !seen.add(keyOf(event)));
+    return originalLength - events.length;
+  }
+
   /// Trims the window and returns how many events were evicted.
   ///
   /// Callers use the result to distinguish an SDK timeline that is genuinely

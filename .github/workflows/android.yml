@@ -92,16 +92,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/Deltiecord-${version}-android.apk"
-          cp build/app/outputs/bundle/release/app-release.aab "dist/Deltiecord-${version}-android.aab"
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/deltiecord-${release_id}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/deltiecord-${release_id}-android.aab"
           (cd dist && sha256sum -- * >SHA256SUMS-android)
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: Deltiecord-android
+          name: deltiecord-android
           path: dist/*
           if-no-files-found: error
           retention-days: 30

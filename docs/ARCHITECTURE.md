@@ -99,6 +99,14 @@ simply suppresses their text timeline.
 
 Avatar, decrypted preview, reply, and link-preview caches are pruned with room
 or timeline lifetimes. Flutter's decoded image cache is bounded at startup.
+
+User profiles use a field-aware LRU pool. Presence is overlaid from Matrix
+`/sync` continuously, status has a one-minute fallback refresh, and extensible
+text fields refresh every five minutes while a profile remains active. Avatar,
+profile-banner, and voice-background bytes are shared by every profile surface
+and are downloaded again only for an explicit full-profile refresh or a local
+profile edit. Matrix currently provides no general sync event for remote
+extensible-profile text changes, hence the slower metadata fallback poll.
 Media players and playback sources are reference counted by message ID.
 Temporary files, local proxy capabilities, timers, stream subscriptions,
 editors, and WebRTC resources all have explicit shutdown paths.

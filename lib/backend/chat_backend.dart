@@ -19,6 +19,12 @@ abstract class ChatBackend extends ChangeNotifier {
   String? get profileStatusMessage;
   int? get profileColor;
   bool get profileLoading;
+
+  /// Changes whenever shared cached profile data is refreshed.
+  ///
+  /// Profile surfaces use this to replace their resolved Future without
+  /// coupling widgets to Matrix streams or polling independently.
+  int get profileRevision => 0;
   AppPreferences get preferences;
   EncryptionSetupState get encryptionSetup;
   List<SpaceSummary> get spaces;
@@ -116,8 +122,12 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> leaveRoom(String roomId);
   Future<void> setMemberPowerLevel(String userId, int powerLevel);
 
-  /// Returns a cached profile unless [refresh] explicitly requests fresh
-  /// homeserver profile, presence, avatar, and banner data.
+  /// Returns a field-aware cached profile.
+  ///
+  /// Presence follows Matrix sync continuously, status and textual profile
+  /// fields refresh periodically, and large profile media remains pooled.
+  /// Setting [refresh] explicitly refreshes every field and re-downloads the
+  /// avatar, profile banner, and voice background.
   Future<UserProfileSummary> getUserProfile(
     String userId, {
     bool refresh = false,

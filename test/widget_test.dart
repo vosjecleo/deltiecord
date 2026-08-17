@@ -2055,6 +2055,17 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('view-full-profile-island'))).dy,
       tester.getTopLeft(find.byKey(const Key('message-composer-island'))).dy,
     );
+
+    backend.testProfile = const UserProfileSummary(
+      userId: '@alice:example.org',
+      displayName: 'Alice',
+      presence: UserPresence.away,
+      statusMessage: 'Freshly hydrated',
+    );
+    backend.testProfileRevision++;
+    backend.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text('Freshly hydrated'), findsOneWidget);
   });
 
   testWidgets('in-chat sender opens a popover without replacing recipient', (
@@ -2675,6 +2686,7 @@ class FakeBackend extends ChatBackend {
   String? startedDirectMessageWith;
   String? leftRoomId;
   UserProfileSummary? testProfile;
+  int testProfileRevision = 0;
   Completer<UserProfileSummary>? profileCompleter;
   EncryptionSetupState security = const EncryptionSetupState(
     status: EncryptionSetupStatus.ready,
@@ -2701,6 +2713,8 @@ class FakeBackend extends ChatBackend {
   int? get profileColor => testProfile?.profileColor;
   @override
   bool get profileLoading => false;
+  @override
+  int get profileRevision => testProfileRevision;
   @override
   AppPreferences get preferences => currentPreferences;
   @override

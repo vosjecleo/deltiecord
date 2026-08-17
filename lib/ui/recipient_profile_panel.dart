@@ -16,9 +16,23 @@ class _RecipientProfilePanel extends StatefulWidget {
 
 class _RecipientProfilePanelState extends State<_RecipientProfilePanel> {
   late Future<UserProfileSummary> _profile = _load();
+  late int _profileRevision = widget.backend.profileRevision;
 
   Future<UserProfileSummary> _load() =>
       widget.backend.getUserProfile(widget.member.userId);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.backend.addListener(_backendChanged);
+  }
+
+  void _backendChanged() {
+    final revision = widget.backend.profileRevision;
+    if (!mounted || revision == _profileRevision) return;
+    _profileRevision = revision;
+    setState(() => _profile = _load());
+  }
 
   @override
   void didUpdateWidget(covariant _RecipientProfilePanel oldWidget) {
@@ -26,6 +40,18 @@ class _RecipientProfilePanelState extends State<_RecipientProfilePanel> {
     if (oldWidget.member.userId != widget.member.userId) {
       _profile = _load();
     }
+    if (oldWidget.backend != widget.backend) {
+      oldWidget.backend.removeListener(_backendChanged);
+      widget.backend.addListener(_backendChanged);
+      _profileRevision = widget.backend.profileRevision;
+      _profile = _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.backend.removeListener(_backendChanged);
+    super.dispose();
   }
 
   @override

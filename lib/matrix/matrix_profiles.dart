@@ -8,6 +8,20 @@ const _profileColorSecondaryField = 'net.deltiecord.profile_color_secondary';
 const _profileVoiceColorField = 'net.deltiecord.voice_color';
 const _profileVoiceBackgroundField = 'net.deltiecord.voice_background';
 
+class _ProfileCacheEntry {
+  _ProfileCacheEntry({
+    required this.profile,
+    required this.metadataFetchedAt,
+    required this.statusFetchedAt,
+    required this.lastAccessedAt,
+  });
+
+  UserProfileSummary profile;
+  DateTime metadataFetchedAt;
+  DateTime statusFetchedAt;
+  DateTime lastAccessedAt;
+}
+
 /// Reads and writes standard and namespaced extensible Matrix profile fields.
 ///
 /// Custom fields are written only when advertised by `m.profile_fields`; a
@@ -17,98 +31,355 @@ extension _MatrixProfiles on MatrixBackend {
     String userId, {
     bool refresh = false,
   }) {
+    final now = DateTime.now();
     final cached = _profileCache[userId];
-    if (!refresh &&
-        cached != null &&
-        DateTime.now().difference(cached.$2) <
-            MatrixBackend._profileCacheLifetime) {
+    if (!refresh && cached != null) {
+      cached.lastAccessedAt = now;
+      cached.profile = _profileWithSyncedPresence(cached.profile);
       // Reinsert to maintain least-recently-used order.
       _profileCache.remove(userId);
       _profileCache[userId] = cached;
-      return Future.value(cached.$1);
+
+      final refreshMetadata = ProfileRefreshPolicy.metadataIsStale(
+        cached.metadataFetchedAt,
+        now,
+      );
+      final refreshStatus = ProfileRefreshPolicy.statusIsStale(
+        cached.statusFetchedAt,
+        now,
+      );
+      if (refreshMetadata || refreshStatus) {
+        // Cached content is returned immediately. Optional metadata hydrates
+        // behind it and is available to every subsequent profile reference.
+        unawaited(
+          _refreshProfileCache(
+            userId,
+            refreshMetadata: refreshMetadata,
+            refreshStatus: refreshStatus,
+            refreshMedia: false,
+          ).then((_) => _notifyBackendListeners()),
+        );
+      }
+      return Future.value(cached.profile);
     }
+
+    return _refreshProfileCache(
+      userId,
+      refreshMetadata: true,
+      refreshStatus: true,
+      refreshMedia: refresh || cached == null,
+    );
+  }
+
+  Future<UserProfileSummary> _refreshProfileCache(
+    String userId, {
+    required bool refreshMetadata,
+    required bool refreshStatus,
+    required bool refreshMedia,
+  }) async {
+    final cached = _profileCache[userId];
     final pending = _profileRequests[userId];
-    if (pending != null) return pending;
-    final request = _fetchUserProfile(userId).onError((error, stackTrace) {
-      if (cached != null) return cached.$1;
-      if (error != null) Error.throwWithStackTrace(error, stackTrace);
-      throw StateError('Profile loading failed without an error.');
-    });
+    if (pending != null) {
+      final pendingResult = await pending;
+      final updated = _profileCache[userId];
+      final now = DateTime.now();
+      final stillNeedsMetadata =
+          refreshMetadata &&
+          (updated == null ||
+              ProfileRefreshPolicy.metadataIsStale(
+                updated.metadataFetchedAt,
+                now,
+              ));
+      final stillNeedsStatus =
+          refreshStatus &&
+          (updated == null ||
+              ProfileRefreshPolicy.statusIsStale(updated.statusFetchedAt, now));
+      if (!refreshMedia && !stillNeedsMetadata && !stillNeedsStatus) {
+        return pendingResult;
+      }
+      // An explicit full-profile refresh must not be satisfied by an older
+      // metadata-only request which deliberately retained pooled media.
+    }
+    final request =
+        _fetchUserProfile(
+          userId,
+          refreshMetadata: refreshMetadata,
+          refreshStatus: refreshStatus,
+          refreshMedia: refreshMedia,
+        ).onError((error, stackTrace) {
+          if (cached != null) {
+            final attemptedAt = DateTime.now();
+            if (refreshMetadata) cached.metadataFetchedAt = attemptedAt;
+            if (refreshStatus) cached.statusFetchedAt = attemptedAt;
+            return _profileWithSyncedPresence(cached.profile);
+          }
+          if (error != null) Error.throwWithStackTrace(error, stackTrace);
+          throw StateError('Profile loading failed without an error.');
+        });
     _profileRequests[userId] = request;
     return request.whenComplete(() => _profileRequests.remove(userId));
   }
 
-  Future<UserProfileSummary> _fetchUserProfile(String userId) async {
-    final profile = await _matrix.getUserProfile(
-      userId,
-      maxCacheAge: Duration.zero,
-    );
-    final avatarBytes = await _profileMedia(profile.avatarUrl, 512, 512);
+  Future<UserProfileSummary> _fetchUserProfile(
+    String userId, {
+    required bool refreshMetadata,
+    required bool refreshStatus,
+    required bool refreshMedia,
+  }) async {
+    final previous = _profileCache[userId];
+    final needsProfileResponse =
+        previous == null || refreshMetadata || refreshMedia;
+    final remoteProfile = needsProfileResponse
+        ? await _matrix.getUserProfile(userId, maxCacheAge: Duration.zero)
+        : null;
+
+    CachedPresence? presence;
+    if (previous == null || refreshStatus) {
+      try {
+        presence = await _matrix.fetchCurrentPresence(userId);
+      } catch (_) {
+        // Profiles remain useful on homeservers with presence disabled.
+      }
+    }
+
+    final old = previous?.profile;
+    final avatarUri = remoteProfile?.avatarUrl;
     final bannerUri = Uri.tryParse(
-      profile.additionalProperties[_profileBannerField] as String? ?? '',
+      remoteProfile?.additionalProperties[_profileBannerField] as String? ?? '',
     );
-    final bannerBytes = await _profileOriginalMedia(bannerUri);
     final voiceBackgroundUri = Uri.tryParse(
-      profile.additionalProperties[_profileVoiceBackgroundField] as String? ??
+      remoteProfile?.additionalProperties[_profileVoiceBackgroundField]
+              as String? ??
           '',
     );
-    final voiceBackgroundBytes = await _profileOriginalMedia(
-      voiceBackgroundUri,
-    );
-    final capability = await _profileCapability();
-    CachedPresence? presence;
-    try {
-      presence = await _matrix.fetchCurrentPresence(userId);
-    } catch (_) {
-      // Profiles remain useful on homeservers with presence disabled.
-    }
-    final colorValue = profile.additionalProperties[_profileColorField];
+    final avatarBytes = refreshMedia || old == null
+        ? avatarUri == null
+              ? null
+              : await _profileMedia(avatarUri, 512, 512) ?? old?.avatarBytes
+        : old.avatarBytes;
+    final bannerBytes = refreshMedia || old == null
+        ? bannerUri == null
+              ? null
+              : await _profileOriginalMedia(bannerUri) ?? old?.bannerBytes
+        : old.bannerBytes;
+    final voiceBackgroundBytes = refreshMedia || old == null
+        ? voiceBackgroundUri == null
+              ? null
+              : await _profileOriginalMedia(voiceBackgroundUri) ??
+                    old?.voiceBackgroundBytes
+        : old.voiceBackgroundBytes;
+    final capability = needsProfileResponse ? await _profileCapability() : null;
+    final properties = remoteProfile?.additionalProperties;
+    final colorValue = properties?[_profileColorField];
+    final now = DateTime.now();
     final result = UserProfileSummary(
       userId: userId,
       displayName:
-          profile.displayname ?? userId.split(':').first.replaceFirst('@', ''),
+          remoteProfile?.displayname ??
+          old?.displayName ??
+          userId.split(':').first.replaceFirst('@', ''),
       avatarBytes: avatarBytes,
       bannerBytes: bannerBytes,
       presence: switch (presence?.presence) {
         PresenceType.online => UserPresence.online,
         PresenceType.unavailable => UserPresence.away,
-        _ => UserPresence.offline,
+        PresenceType.offline => UserPresence.offline,
+        _ => old?.presence ?? UserPresence.offline,
       },
-      bio: profile.additionalProperties[_profileBioField] as String?,
-      pronouns: profile.additionalProperties[_profilePronounsField] as String?,
-      timezone: profile.mTz,
-      statusMessage: presence?.statusMsg,
-      profileColor: _parseProfileColor(colorValue),
-      profileColorSecondary: _parseProfileColor(
-        profile.additionalProperties[_profileColorSecondaryField],
-      ),
-      voiceColor: _parseProfileColor(
-        profile.additionalProperties[_profileVoiceColorField],
-      ),
+      bio: properties?[_profileBioField] as String? ?? old?.bio,
+      pronouns: properties?[_profilePronounsField] as String? ?? old?.pronouns,
+      timezone: remoteProfile?.mTz ?? old?.timezone,
+      statusMessage: presence == null
+          ? old?.statusMessage
+          : _normalizedProfileStatus(presence.statusMsg),
+      profileColor: remoteProfile == null
+          ? old?.profileColor
+          : _parseProfileColor(colorValue),
+      profileColorSecondary: remoteProfile == null
+          ? old?.profileColorSecondary
+          : _parseProfileColor(properties?[_profileColorSecondaryField]),
+      voiceColor: remoteProfile == null
+          ? old?.voiceColor
+          : _parseProfileColor(properties?[_profileVoiceColorField]),
       voiceBackgroundBytes: voiceBackgroundBytes,
-      extensibleFieldsSupported: capability?.enabled == true,
+      extensibleFieldsSupported: remoteProfile == null
+          ? old?.extensibleFieldsSupported ?? false
+          : capability?.enabled == true,
       blocked: _matrix.ignoredUsers.contains(userId),
     );
+    final withSyncedPresence = _profileWithSyncedPresence(result);
     _profileCache.remove(userId);
-    _profileCache[userId] = (result, DateTime.now());
+    _profileCache[userId] = _ProfileCacheEntry(
+      profile: withSyncedPresence,
+      metadataFetchedAt: needsProfileResponse
+          ? now
+          : previous.metadataFetchedAt,
+      statusFetchedAt: presence != null
+          ? now
+          : refreshStatus
+          ? now
+          : previous?.statusFetchedAt ?? now,
+      lastAccessedAt: now,
+    );
+    _profileRevision++;
     var mediaBytes = _profileCache.values.fold<int>(
       0,
       (total, entry) =>
           total +
-          (entry.$1.avatarBytes?.length ?? 0) +
-          (entry.$1.bannerBytes?.length ?? 0) +
-          (entry.$1.voiceBackgroundBytes?.length ?? 0),
+          (entry.profile.avatarBytes?.length ?? 0) +
+          (entry.profile.bannerBytes?.length ?? 0) +
+          (entry.profile.voiceBackgroundBytes?.length ?? 0),
     );
     while (_profileCache.length > MatrixBackend._maximumCachedProfiles ||
         (mediaBytes > MatrixBackend._maximumCachedProfileMediaBytes &&
             _profileCache.length > 1)) {
       final removed = _profileCache.remove(_profileCache.keys.first);
       mediaBytes -=
-          (removed?.$1.avatarBytes?.length ?? 0) +
-          (removed?.$1.bannerBytes?.length ?? 0) +
-          (removed?.$1.voiceBackgroundBytes?.length ?? 0);
+          (removed?.profile.avatarBytes?.length ?? 0) +
+          (removed?.profile.bannerBytes?.length ?? 0) +
+          (removed?.profile.voiceBackgroundBytes?.length ?? 0);
     }
-    return result;
+    return withSyncedPresence;
+  }
+
+  String? _normalizedProfileStatus(String? status) =>
+      status?.trim().isEmpty == true ? null : status?.trim();
+
+  UserPresence _matrixPresenceFor(String userId, UserPresence fallback) {
+    // ignore: deprecated_member_use
+    return switch (_matrix.presences[userId]?.presence) {
+      PresenceType.online => UserPresence.online,
+      PresenceType.unavailable => UserPresence.away,
+      PresenceType.offline => UserPresence.offline,
+      _ => fallback,
+    };
+  }
+
+  UserProfileSummary _profileWithSyncedPresence(UserProfileSummary profile) {
+    // Presence events arrive in `/sync` and update this SDK cache. That makes
+    // online state live without polling or re-downloading the whole profile.
+    // ignore: deprecated_member_use
+    final synced = _matrix.presences[profile.userId];
+    if (synced == null) return profile;
+    return _copyProfile(
+      profile,
+      presence: _matrixPresenceFor(profile.userId, profile.presence),
+      statusMessage: _normalizedProfileStatus(synced.statusMsg),
+    );
+  }
+
+  UserProfileSummary _copyProfile(
+    UserProfileSummary profile, {
+    UserPresence? presence,
+    String? statusMessage,
+  }) => UserProfileSummary(
+    userId: profile.userId,
+    displayName: profile.displayName,
+    avatarBytes: profile.avatarBytes,
+    bannerBytes: profile.bannerBytes,
+    presence: presence ?? profile.presence,
+    bio: profile.bio,
+    pronouns: profile.pronouns,
+    timezone: profile.timezone,
+    statusMessage: statusMessage,
+    profileColor: profile.profileColor,
+    profileColorSecondary: profile.profileColorSecondary,
+    voiceColor: profile.voiceColor,
+    voiceBackgroundBytes: profile.voiceBackgroundBytes,
+    extensibleFieldsSupported: profile.extensibleFieldsSupported,
+    blocked: profile.blocked,
+  );
+
+  void _startProfileRefreshTimer() {
+    _profileRefreshTimer?.cancel();
+    _profileRefreshTimer = Timer.periodic(
+      ProfileRefreshPolicy.statusInterval,
+      (_) => unawaited(_refreshActiveProfileCache()),
+    );
+  }
+
+  void _stopProfileRefreshTimer() {
+    _profileRefreshTimer?.cancel();
+    _profileRefreshTimer = null;
+  }
+
+  Future<void> _refreshActiveProfileCache() async {
+    if (_profileRefreshRunning ||
+        !_matrix.isLogged() ||
+        _connectionStatus != ConnectionStatus.online) {
+      return;
+    }
+    _profileRefreshRunning = true;
+    try {
+      final now = DateTime.now();
+      final ownUserId = _matrix.userID;
+      final activeUserIds = _profileCache.entries
+          .where(
+            (entry) =>
+                entry.key == ownUserId ||
+                ProfileRefreshPolicy.wasRecentlyAccessed(
+                  entry.value.lastAccessedAt,
+                  now,
+                ),
+          )
+          .map((entry) => entry.key)
+          .toList(growable: false);
+      var refreshed = false;
+      for (final userId in activeUserIds) {
+        final cached = _profileCache[userId];
+        if (cached == null) continue;
+        final refreshMetadata = ProfileRefreshPolicy.metadataIsStale(
+          cached.metadataFetchedAt,
+          now,
+        );
+        final refreshStatus = ProfileRefreshPolicy.statusIsStale(
+          cached.statusFetchedAt,
+          now,
+        );
+        if (!refreshMetadata && !refreshStatus) continue;
+        final profile = await _refreshProfileCache(
+          userId,
+          refreshMetadata: refreshMetadata,
+          refreshStatus: refreshStatus,
+          refreshMedia: false,
+        );
+        if (userId == ownUserId) _applyOwnProfileSummary(profile);
+        refreshed = true;
+      }
+      if (refreshed) _notifyBackendListeners();
+    } finally {
+      _profileRefreshRunning = false;
+    }
+  }
+
+  void _applySyncedProfilePresence() {
+    final now = DateTime.now();
+    var changed = false;
+    for (final entry in _profileCache.values) {
+      final old = entry.profile;
+      final updated = _profileWithSyncedPresence(old);
+      if (updated.presence == old.presence &&
+          updated.statusMessage == old.statusMessage) {
+        continue;
+      }
+      entry.profile = updated;
+      changed = true;
+      // A status carried by Matrix sync is authoritative and replaces the
+      // one-minute fallback poll immediately.
+      if (updated.statusMessage != old.statusMessage) {
+        entry.statusFetchedAt = now;
+      }
+      if (updated.userId == _matrix.userID) _applyOwnProfileSummary(updated);
+    }
+    if (changed) _profileRevision++;
+  }
+
+  void _applyOwnProfileSummary(UserProfileSummary profile) {
+    _profileDisplayName = profile.displayName;
+    _profileAvatarBytes = profile.avatarBytes;
+    _profilePresence = profile.presence;
+    _profileStatusMessage = profile.statusMessage;
+    _profileColor = profile.profileColor;
   }
 
   Future<Uint8List?> _profileMedia(Uri? mxc, int width, int height) async {

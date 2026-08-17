@@ -49,17 +49,35 @@ class _MobileProfileCard extends StatefulWidget {
 
 class _MobileProfileCardState extends State<_MobileProfileCard> {
   late Future<UserProfileSummary> _profile;
+  late int _profileRevision;
   final Map<int, Offset> _pointerStarts = {};
 
   @override
   void initState() {
     super.initState();
+    _profileRevision = widget.backend.profileRevision;
     _profile = widget.backend.getUserProfile(widget.userId);
+    widget.backend.addListener(_backendChanged);
+  }
+
+  void _backendChanged() {
+    final revision = widget.backend.profileRevision;
+    if (!mounted || revision == _profileRevision) return;
+    _profileRevision = revision;
+    setState(() {
+      _profile = widget.backend.getUserProfile(widget.userId);
+    });
   }
 
   void _refresh() => setState(() {
     _profile = widget.backend.getUserProfile(widget.userId, refresh: true);
   });
+
+  @override
+  void dispose() {
+    widget.backend.removeListener(_backendChanged);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Listener(

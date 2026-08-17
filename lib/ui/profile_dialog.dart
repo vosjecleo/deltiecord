@@ -222,6 +222,28 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
   late Future<UserProfileSummary> _profile = widget.backend.getUserProfile(
     widget.member.userId,
   );
+  late int _profileRevision = widget.backend.profileRevision;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.backend.addListener(_backendChanged);
+  }
+
+  void _backendChanged() {
+    final revision = widget.backend.profileRevision;
+    if (!mounted || revision == _profileRevision) return;
+    _profileRevision = revision;
+    setState(() {
+      _profile = widget.backend.getUserProfile(widget.member.userId);
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.backend.removeListener(_backendChanged);
+    super.dispose();
+  }
 
   Future<void> _edit(UserProfileSummary profile) async {
     final changed = await showProfileEditor(context, widget.backend, profile);
@@ -486,9 +508,31 @@ class _ProfileDialog extends StatefulWidget {
 class _ProfileDialogState extends State<_ProfileDialog> {
   bool _saving = false;
   late Future<UserProfileSummary> _profile = _loadProfile();
+  late int _profileRevision = widget.backend.profileRevision;
 
   Future<UserProfileSummary> _loadProfile() =>
       widget.backend.getUserProfile(widget.member.userId, refresh: true);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.backend.addListener(_backendChanged);
+  }
+
+  void _backendChanged() {
+    final revision = widget.backend.profileRevision;
+    if (!mounted || revision == _profileRevision) return;
+    _profileRevision = revision;
+    setState(() {
+      _profile = widget.backend.getUserProfile(widget.member.userId);
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.backend.removeListener(_backendChanged);
+    super.dispose();
+  }
 
   Future<void> _edit(UserProfileSummary profile) async {
     final changed = await showProfileEditor(context, widget.backend, profile);

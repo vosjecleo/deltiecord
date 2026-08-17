@@ -15,6 +15,7 @@ extension _MatrixSession on MatrixBackend {
       await _syncSubscription?.cancel();
       await _loginSubscription?.cancel();
       await _syncStatusSubscription?.cancel();
+      _stopProfileRefreshTimer();
       await _disposeVoice();
       _client?.dispose();
       _client = await createMatrixClient();
@@ -25,6 +26,7 @@ extension _MatrixSession on MatrixBackend {
         // sync makes the SDK's room-state cache current.
         _spaceChannelLayoutOverrides.clear();
         _spaceRoomOrderOverrides.clear();
+        _applySyncedProfilePresence();
         _loadSettings();
         _notifyBackendListeners();
         unawaited(_refreshRoomMetadata());
@@ -70,6 +72,7 @@ extension _MatrixSession on MatrixBackend {
           : SessionStatus.signedOut;
       _error = null;
       if (_matrix.isLogged()) {
+        _startProfileRefreshTimer();
         unawaited(refreshEncryptionSetup());
         unawaited(_refreshProfile());
         unawaited(_refreshRoomMetadata());
@@ -105,6 +108,7 @@ extension _MatrixSession on MatrixBackend {
       _initializeVoice();
       _status = SessionStatus.signedIn;
       _connectionStatus = ConnectionStatus.online;
+      _startProfileRefreshTimer();
       // Login does not recreate the Matrix client, so it does not pass through
       // the session-restoration hydration path above. Hydrate the same profile
       // and room metadata here before the first sync-dependent UI settles.
@@ -124,6 +128,7 @@ extension _MatrixSession on MatrixBackend {
   Future<void> _logoutSession() async {
     _error = null;
     try {
+      _stopProfileRefreshTimer();
       await _disposeVoice();
       await _closeTimeline();
       await _matrix.logout();
@@ -280,44 +285,8 @@ extension _MatrixSession on MatrixBackend {
     _profileLoading = true;
     _notifyBackendListeners();
     try {
-      final profile = await _matrix.getUserProfile(
-        userId,
-        maxCacheAge: Duration.zero,
-      );
-      _profileDisplayName = profile.displayname ?? userId;
-      _profileColor = _parseProfileColor(
-        profile.additionalProperties[_profileColorField],
-      );
-      try {
-        final presence = await _matrix.fetchCurrentPresence(userId);
-        _profilePresence = switch (presence.presence) {
-          PresenceType.online => UserPresence.online,
-          PresenceType.unavailable => UserPresence.away,
-          _ => UserPresence.offline,
-        };
-        _profileStatusMessage = presence.statusMsg?.trim().isEmpty == true
-            ? null
-            : presence.statusMsg;
-      } catch (_) {
-        _profilePresence = UserPresence.offline;
-        _profileStatusMessage = null;
-      }
-      final avatar = profile.avatarUrl;
-      if (avatar == null || !avatar.isScheme('mxc')) {
-        _profileAvatarBytes = null;
-      } else {
-        final mediaId = avatar.pathSegments.join('/');
-        final response = await _matrix.getContentThumbnail(
-          avatar.host,
-          mediaId,
-          192,
-          192,
-          method: Method.crop,
-          animated: false,
-        );
-        _profileAvatarBytes = response.data;
-      }
-      _profileCache.remove(userId);
+      final profile = await _getUserProfile(userId, refresh: true);
+      _applyOwnProfileSummary(profile);
     } catch (exception) {
       _error = _friendlyError(exception);
     } finally {

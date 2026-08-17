@@ -16,6 +16,7 @@ import '../services/font_preferences.dart';
 import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
 import '../services/link_preview_service.dart';
+import '../services/profile_refresh_policy.dart';
 import '../services/secret_redaction.dart';
 import '../services/timeline_window_policy.dart';
 import '../services/unified_push.dart';
@@ -42,7 +43,6 @@ class MatrixBackend extends ChatBackend {
   static const _maximumCachedProfileMediaBytes = 32 * 1024 * 1024;
   static const _maximumCachedAttachmentBytes = 64 * 1024 * 1024;
   static const _maximumCachedAttachments = 64;
-  static const _profileCacheLifetime = Duration(minutes: 15);
   static const _settingsAccountDataType = 'net.deltiecord.settings';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
   static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
@@ -93,7 +93,9 @@ class MatrixBackend extends ChatBackend {
   final Map<String, DateTime> _linkPreviewRetryAfter = {};
   final Map<String, int> _linkPreviewAttempts = {};
   Timer? _linkPreviewRetryTimer;
-  final LinkedHashMap<String, (UserProfileSummary, DateTime)> _profileCache =
+  Timer? _profileRefreshTimer;
+  bool _profileRefreshRunning = false;
+  final LinkedHashMap<String, _ProfileCacheEntry> _profileCache =
       LinkedHashMap();
   final Map<String, Future<UserProfileSummary>> _profileRequests = {};
   final Set<String> _outboundSessionsReset = {};
@@ -123,6 +125,7 @@ class MatrixBackend extends ChatBackend {
   String? _profileStatusMessage;
   int? _profileColor;
   bool _profileLoading = false;
+  int _profileRevision = 0;
   ProfileFieldsCapability? _profileFieldsCapability;
   bool _profileFieldsCapabilityLoaded = false;
   int _storageUsageBytes = 0;
@@ -165,6 +168,8 @@ class MatrixBackend extends ChatBackend {
   int? get profileColor => _profileColor;
   @override
   bool get profileLoading => _profileLoading;
+  @override
+  int get profileRevision => _profileRevision;
   @override
   AppPreferences get preferences => _preferences;
   @override
@@ -789,6 +794,7 @@ class MatrixBackend extends ChatBackend {
     _typingStopTimer?.cancel();
     _settingsSaveTimer?.cancel();
     _linkPreviewRetryTimer?.cancel();
+    _stopProfileRefreshTimer();
     _profileCache.clear();
     _profileRequests.clear();
     _attachmentBytesCache.clear();

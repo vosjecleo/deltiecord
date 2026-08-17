@@ -63,11 +63,23 @@ jobs:
           KEY_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
-            echo "Stable Android signing secrets are required for upgradeable APKs." >&2
+          missing=()
+          [[ -n "$KEYSTORE_BASE64" ]] || missing+=(DELTIECORD_ANDROID_KEYSTORE_BASE64)
+          [[ -n "$STORE_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_STORE_PASSWORD)
+          [[ -n "$KEY_ALIAS" ]] || missing+=(DELTIECORD_ANDROID_KEY_ALIAS)
+          [[ -n "$KEY_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_KEY_PASSWORD)
+          if ((${#missing[@]})); then
+            printf 'Missing required Android signing secret: %s\n' "${missing[@]}" >&2
             exit 1
           fi
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode >"$RUNNER_TEMP/deltiecord-release.jks"
+          if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode >"$RUNNER_TEMP/deltiecord-release.jks"; then
+            echo 'DELTIECORD_ANDROID_KEYSTORE_BASE64 is not valid base64.' >&2
+            exit 1
+          fi
+          if [[ ! -s "$RUNNER_TEMP/deltiecord-release.jks" ]]; then
+            echo 'DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.' >&2
+            exit 1
+          fi
           chmod 0600 "$RUNNER_TEMP/deltiecord-release.jks"
           echo "DELTIECORD_ANDROID_KEYSTORE=$RUNNER_TEMP/deltiecord-release.jks" >>"$GITHUB_ENV"
           echo "DELTIECORD_ANDROID_STORE_PASSWORD=$STORE_PASSWORD" >>"$GITHUB_ENV"

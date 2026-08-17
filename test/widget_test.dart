@@ -1498,7 +1498,8 @@ void main() {
       tester.getSize(composerIsland).height,
     );
     final composerSurface = tester.widget<Container>(composerIsland);
-    final composerBorder = (composerSurface.decoration! as BoxDecoration).border;
+    final composerBorder =
+        (composerSurface.decoration! as BoxDecoration).border;
     expect(composerBorder, isNotNull);
     expect(composerBorder!.top.color, Colors.black);
     final composerTop = tester.getTopLeft(composerPanel).dy;

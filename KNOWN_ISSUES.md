@@ -2,31 +2,31 @@
 
 ### Bugs
 Universal:
-- After first login, the user panel (bottom left) does not appear to load status, avatar and others.
-- The app logo should be shifted up somewhat
-- Rich/video embeds still have issues
-- Settings show other OS specific settings, like GTK border decor setting showing on Windows and Android.
+- Fixed in v0.9.19: After first login, the user panel now hydrates status, avatar, and profile metadata.
+- Fixed in v0.9.19: The app logo artwork was repositioned for desktop launchers.
+- Fixed in v0.9.19: Rich image/text previews recover from failed server previews; opt-in embedded video candidates are validated before playback.
+- Fixed in v0.9.19: Settings hide operating-system-specific controls on other platforms.
   
 Desktop Specific:
-- Edited messages show as their unedited counterpart in replies.
-- Drag and drop grip pads are mismatched.
+- Fixed in v0.9.19: Edited messages use their current replacement content in replies.
+- Fixed in v0.9.19: Room and category drag grips share the same geometry.
 ![grip-pad-bug.png](./bugs/grip-pad-bug.png)
-- Drag drop accidents are easy, please hide drag-drop behind a settings toggle.
+- Fixed in v0.9.19: Channel drag/drop is disabled by default behind an Appearance toggle.
   
 Mobile Specific:
-- Mic Test option crashes the app.
-- The app logo has a thick white border
-- Profile refresh button touches the edit button (spacing with those three buttons need to be unified)
-- No UnifiedPush settings
-- Clicking on a settings page causes text to overlap weirdly, animations are botched.
-- Too much padding on the bottom of the screen in the Rooms menu
-- Edited messages show as their unedited counterpart only.
-- Server avatars are circular in their squarcle frames, unlike desktop, where they fill the whole frame.
-- In-timeline avatars are verticall squashed/horizontally stretched into an oval shape.
-- Padding between message and avatar and avatar and left- hand screen border is unequal.
-- Updating the app results in "App not installed" on Android
-- Server/Space editing is currently not possible. Long-click on the server should reveal the desktop right-click menu
+- Fixed in v0.9.19: Microphone Test owns and releases its native WebRTC session safely.
+- Fixed in v0.9.19: Android adaptive and notification icons no longer add the old white plate.
+- Fixed in v0.9.19: Profile action spacing is unified.
+- Fixed in v0.9.19: Notification settings expose the UnifiedPush distributor/registration controls.
+- Fixed in v0.9.19: Mobile settings pages transition as separate clipped panels.
+- Fixed in v0.9.19: Rooms navigation no longer retains the oversized bottom safe-area padding.
+- Fixed in v0.9.19: Edited messages render their current replacement content.
+- Fixed in v0.9.19: Space avatars fill their squircle frame.
+- Fixed in v0.9.19: Timeline avatars keep a square constraint and circular crop.
+- Fixed in v0.9.19: Timeline avatar and message gutters use equal spacing.
+- Addressed in v0.9.19: Release CI requires one persistent signing identity. Builds signed by an older ephemeral key still require one uninstall before the first stable-signed upgrade.
+- Fixed in v0.9.19: Long-pressing a Space opens its management actions.
 
 ### Features queued
-- Checking for client updates.
-- Adding drag-drop channel management to Android via a drag-drop channel management button in server settings.
+- Implemented in v0.9.19: Manual release/update checking from About.
+- Implemented in v0.9.19: Android Space settings include channel/category management and ordering.

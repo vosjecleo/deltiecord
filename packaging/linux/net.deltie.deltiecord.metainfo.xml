@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.19" date="2026-08-17" type="development">
+      <description>
+        <p>Fixes the v0.9.19 issue list, adds UnifiedPush and update checks, separates profile-cache refresh policies, and restores hardened image/video link previews.</p>
+      </description>
+    </release>
     <release version="0.9.18" date="2026-08-17" type="development">
       <description>
         <p>Hardens timeline navigation, profiles, audio, categories, documentation, and desktop release packaging.</p>

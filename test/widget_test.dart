@@ -251,6 +251,67 @@ void main() {
     expect(backend.mutedRooms, [('!space:example.org', true)]);
   });
 
+  testWidgets('Space settings expose identity, notifications, and layout', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..spaceList = const [
+        SpaceSummary(
+          id: '!space:example.org',
+          name: 'Deltie',
+          topic: 'A test Space',
+        ),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!text:example.org',
+          name: 'General',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+        RoomSummary(
+          id: '!voice:example.org',
+          name: 'Voice',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+          presentation: RoomPresentation.voice,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(id: 'general', name: 'General', roomIds: []),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    await tester.tap(
+      find.byKey(const ValueKey('space-button-Deltie')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Space settings'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('space-settings-avatar-preview')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('space-settings-name')), findsOneWidget);
+    expect(find.byKey(const Key('space-settings-topic')), findsOneWidget);
+    expect(find.byKey(const Key('space-settings-muted')), findsOneWidget);
+    expect(
+      find.byKey(const Key('space-settings-layout-slider')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('1 text rooms  •  1 voice rooms  •  1 categories'),
+      findsOneWidget,
+    );
+    expect(find.text('Copy Space link'), findsOneWidget);
+  });
+
   testWidgets('Space categories collapse and expose accessible ordering', (
     tester,
   ) async {
@@ -369,6 +430,15 @@ void main() {
     final looseGrip = find.byKey(
       const ValueKey('room-drag-grip-!loose:example.org'),
     );
+    final roomGripTransform = tester.widget<Transform>(
+      find.descendant(of: looseGrip, matching: find.byType(Transform)).first,
+    );
+    expect(roomGripTransform.transform.getTranslation().y, 1);
+    final categoryGrip = find.byKey(const ValueKey('category-drag-grip-work'));
+    final categoryGripTransform = tester.widget<Transform>(
+      find.descendant(of: categoryGrip, matching: find.byType(Transform)).first,
+    );
+    expect(categoryGripTransform.transform.getTranslation().y, 1);
     await tester.dragFrom(
       tester.getCenter(looseGrip),
       tester.getCenter(find.text('WORK')) - tester.getCenter(looseGrip),
@@ -1876,6 +1946,7 @@ void main() {
           unreadCount: 0,
           usesChannelIcon: false,
           isDirect: true,
+          presence: UserPresence.online,
         ),
       ]
       ..memberList = const [
@@ -1905,12 +1976,26 @@ void main() {
     expect(find.text('Matrix enthusiast'), findsOneWidget);
     expect(find.text('View full profile'), findsOneWidget);
     expect(find.textContaining('UTC+02'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('conversation-presence-online')),
+      findsOneWidget,
+    );
     final recipientGradient = tester.widget<DecoratedBox>(
       find.byKey(const Key('recipient-profile-gradient')),
     );
     final recipientDecoration = recipientGradient.decoration as BoxDecoration;
     expect(recipientDecoration.gradient, isNotNull);
     expect(recipientDecoration.border, isNotNull);
+    final panelRect = tester.getRect(
+      find.byKey(const Key('recipient-profile-gradient')),
+    );
+    final aboutRect = tester.getRect(
+      find.byKey(const Key('recipient-about-island')),
+    );
+    expect(
+      aboutRect.left - panelRect.left,
+      closeTo(panelRect.right - aboutRect.right, 0.5),
+    );
     expect(
       tester.getTopLeft(find.byKey(const Key('view-full-profile-island'))).dy,
       tester.getTopLeft(find.byKey(const Key('message-composer-island'))).dy,

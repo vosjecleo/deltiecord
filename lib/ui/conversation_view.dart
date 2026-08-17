@@ -569,7 +569,9 @@ class _ConversationState extends State<_Conversation> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            if (room.topic.isNotEmpty)
+                            if (room.isDirect)
+                              _ConversationPresence(presence: room.presence)
+                            else if (room.topic.isNotEmpty)
                               Text(
                                 room.topic,
                                 maxLines: 1,
@@ -995,6 +997,43 @@ class _ConversationState extends State<_Conversation> {
       return '${names.first} and ${names.last} are typing…';
     }
     return '${names.first}, ${names[1]} and ${names.length - 2} others are typing…';
+  }
+}
+
+class _ConversationPresence extends StatelessWidget {
+  const _ConversationPresence({required this.presence});
+
+  final UserPresence presence;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (presence) {
+      UserPresence.online => ('Online', const Color(0xff43b581)),
+      UserPresence.away => ('Away', const Color(0xffffc857)),
+      UserPresence.offline => ('Offline', const Color(0xff747680)),
+    };
+    return Semantics(
+      label: 'Presence: $label',
+      child: Row(
+        key: ValueKey('conversation-presence-${presence.name}'),
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: DeltiecordTypeScale.small,
+              color: context.deltiecord.muted,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

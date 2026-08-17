@@ -66,109 +66,256 @@ class _SpaceBar extends StatelessWidget {
       space.id,
     );
     var layoutPowerLevel = originalLayoutPowerLevel;
+    var muted = space.muted;
+    final selectedSpace = backend.selectedSpaceId == space.id;
+    final textRoomCount = selectedSpace
+        ? backend.rooms.where((room) => !room.isVoice).length
+        : null;
+    final voiceRoomCount = selectedSpace
+        ? backend.rooms.where((room) => room.isVoice).length
+        : null;
+    final categoryCount = selectedSpace
+        ? backend.selectedSpaceCategories.length
+        : null;
     final save = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text('${space.name} settings'),
-          content: SizedBox(
-            width: 430,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: name,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: 'Space name'),
+        builder: (context, setDialogState) {
+          final previewAvatar = removeAvatar
+              ? null
+              : avatar ?? space.avatarBytes;
+          final canSetLayoutPower = backend.canSetSpaceChannelLayoutPowerLevel(
+            space.id,
+          );
+          return AlertDialog(
+            title: Text('${space.name} settings'),
+            content: SizedBox(
+              width: 500,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: min(MediaQuery.sizeOf(context).height * 0.72, 650),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: topic,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Topic'),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () async {
-                        final result = await FilePicker.pickFiles(
-                          type: FileType.image,
-                          withData: true,
-                        );
-                        final bytes = result?.files.single.bytes;
-                        if (bytes != null) {
-                          setDialogState(() {
-                            avatar = bytes;
-                            removeAvatar = false;
-                          });
-                        }
-                      },
-                      icon: const Icon(Icons.image_outlined),
-                      label: const Text('Choose picture'),
-                    ),
-                    if (space.avatarBytes != null || avatar != null)
-                      TextButton(
-                        onPressed: () => setDialogState(() {
-                          avatar = null;
-                          removeAvatar = true;
-                        }),
-                        child: const Text('Remove picture'),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: layoutPowerLevel,
-                  decoration: const InputDecoration(
-                    labelText: 'Manage channels and categories',
-                    helperText:
-                        'Synced in Matrix room power levels; default is Admin.',
-                  ),
-                  items:
-                      const [
-                        DropdownMenuItem(value: 0, child: Text('Members (0)')),
-                        DropdownMenuItem(
-                          value: 50,
-                          child: Text('Moderators (50)'),
-                        ),
-                        DropdownMenuItem(
-                          value: 100,
-                          child: Text('Admins (100)'),
-                        ),
-                      ] +
-                      (const [0, 50, 100].contains(originalLayoutPowerLevel)
-                          ? const []
-                          : [
-                              DropdownMenuItem(
-                                value: originalLayoutPowerLevel,
-                                child: Text(
-                                  'Custom ($originalLayoutPowerLevel)',
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            key: const Key('space-settings-avatar-preview'),
+                            radius: 34,
+                            backgroundColor: context.deltiecord.elevated,
+                            backgroundImage: previewAvatar == null
+                                ? null
+                                : MemoryImage(previewAvatar),
+                            child: previewAvatar == null
+                                ? Text(
+                                    _initials(name.text),
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final result = await FilePicker.pickFiles(
+                                      type: FileType.image,
+                                      withData: true,
+                                    );
+                                    final bytes = result?.files.single.bytes;
+                                    if (bytes != null) {
+                                      setDialogState(() {
+                                        avatar = bytes;
+                                        removeAvatar = false;
+                                      });
+                                    }
+                                  },
+                                  icon: const Icon(Icons.image_outlined),
+                                  label: const Text('Choose picture'),
                                 ),
-                              ),
-                            ]),
-                  onChanged:
-                      backend.canSetSpaceChannelLayoutPowerLevel(space.id)
-                      ? (value) => setDialogState(
-                          () => layoutPowerLevel = value ?? 100,
-                        )
-                      : null,
+                                if (previewAvatar != null)
+                                  TextButton(
+                                    onPressed: () => setDialogState(() {
+                                      avatar = null;
+                                      removeAvatar = true;
+                                    }),
+                                    child: const Text('Remove picture'),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        key: const Key('space-settings-name'),
+                        controller: name,
+                        autofocus: true,
+                        maxLength: 255,
+                        onChanged: (_) => setDialogState(() {}),
+                        decoration: const InputDecoration(
+                          labelText: 'Space name',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        key: const Key('space-settings-topic'),
+                        controller: topic,
+                        maxLines: 3,
+                        maxLength: 1000,
+                        decoration: const InputDecoration(
+                          labelText: 'Description / topic',
+                          alignLabelWithHint: true,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'SPACE INFORMATION',
+                        style: TextStyle(
+                          color: context.deltiecord.muted,
+                          fontWeight: FontWeight.w700,
+                          fontSize: DeltiecordTypeScale.small,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      SelectableText(
+                        space.id,
+                        style: TextStyle(color: context.deltiecord.muted),
+                      ),
+                      if (textRoomCount != null &&
+                          voiceRoomCount != null &&
+                          categoryCount != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          '$textRoomCount text rooms  •  '
+                          '$voiceRoomCount voice rooms  •  '
+                          '$categoryCount categories',
+                          key: const Key('space-settings-room-summary'),
+                          style: TextStyle(color: context.deltiecord.muted),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Clipboard.setData(
+                            ClipboardData(
+                              text: 'https://matrix.to/#/${space.id}',
+                            ),
+                          ),
+                          icon: const Icon(Icons.link, size: 18),
+                          label: const Text('Copy Space link'),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(),
+                      SwitchListTile(
+                        key: const Key('space-settings-muted'),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('Mute Space'),
+                        subtitle: const Text(
+                          'Suppress desktop notifications from this Space.',
+                        ),
+                        value: muted,
+                        onChanged: (value) =>
+                            setDialogState(() => muted = value),
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Channel and category management',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          Text(
+                            'Power level $layoutPowerLevel',
+                            key: const Key('space-settings-layout-level'),
+                            style: TextStyle(color: context.deltiecord.muted),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Controls who may reorder rooms and manage '
+                        'Deltiecord categories. The permission is synced '
+                        'through Matrix room power levels.',
+                        style: TextStyle(color: context.deltiecord.muted),
+                      ),
+                      Slider(
+                        key: const Key('space-settings-layout-slider'),
+                        value: layoutPowerLevel.toDouble(),
+                        min: 0,
+                        max: 100,
+                        divisions: 100,
+                        label: '$layoutPowerLevel',
+                        onChanged: canSetLayoutPower
+                            ? (value) => setDialogState(
+                                () => layoutPowerLevel = value.round(),
+                              )
+                            : null,
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Members (0)',
+                              style: TextStyle(color: context.deltiecord.muted),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Moderators (50)',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: context.deltiecord.muted),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'Admins (100)',
+                              textAlign: TextAlign.end,
+                              style: TextStyle(color: context.deltiecord.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (!canSetLayoutPower) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          'Your current power level cannot change this '
+                          'permission.',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: Navigator.of(context).pop,
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Save'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: Navigator.of(context).pop,
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: const Text('Save changes'),
+              ),
+            ],
+          );
+        },
       ),
     );
     final newName = name.text.trim();
@@ -187,6 +334,9 @@ class _SpaceBar extends StatelessWidget {
     }
     if (layoutPowerLevel != originalLayoutPowerLevel) {
       await backend.setSpaceChannelLayoutPowerLevel(space.id, layoutPowerLevel);
+    }
+    if (muted != space.muted) {
+      await backend.setRoomMuted(space.id, muted);
     }
   }
 
@@ -1412,11 +1562,18 @@ class _ChannelCategorySection extends StatelessWidget {
                       if (current != null && canArrange)
                         ReorderableDragStartListener(
                           index: dragIndex!,
-                          child: const SizedBox(
+                          child: SizedBox(
+                            key: ValueKey('category-drag-grip-${current.id}'),
                             width: 30,
                             height: 32,
                             child: Center(
-                              child: Icon(Icons.drag_indicator, size: 16),
+                              child: Transform.translate(
+                                offset: const Offset(0, 1),
+                                child: const Icon(
+                                  Icons.drag_indicator,
+                                  size: 16,
+                                ),
+                              ),
                             ),
                           ),
                         )
@@ -1805,7 +1962,12 @@ class _RoomListTile extends StatelessWidget {
         key: ValueKey('room-drag-grip-${room.id}'),
         width: 20,
         height: 32,
-        child: const Center(child: Icon(Icons.drag_indicator, size: 16)),
+        child: Center(
+          child: Transform.translate(
+            offset: const Offset(0, 1),
+            child: const Icon(Icons.drag_indicator, size: 16),
+          ),
+        ),
       );
       if (!mayArrange) return const SizedBox.shrink();
       return Draggable<RoomSummary>(

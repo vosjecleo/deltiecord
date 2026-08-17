@@ -1,2 +1,2 @@
 const deltiecordVersion = '0.9.17';
-const deltiecordBuildNumber = '60';
+const deltiecordBuildNumber = '61';

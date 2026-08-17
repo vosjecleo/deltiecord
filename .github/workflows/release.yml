@@ -16,13 +16,13 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Validate release tag and locate package runs
+      - name: Validate release tag and await matching package runs
         id: release
         shell: bash
         run: |
@@ -35,10 +35,30 @@ jobs:
             exit 1
           fi
 
-          windows_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow 'Windows release' --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          linux_run="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow 'Linux packages' --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          test -n "$windows_run" || { echo 'No successful Windows package run found.' >&2; exit 1; }
-          test -n "$linux_run" || { echo 'No successful Linux package run found.' >&2; exit 1; }
+          await_run() {
+            local workflow="$1"
+            local runs successful failed
+            for _ in $(seq 1 225); do
+              runs="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "$workflow" --commit "$GITHUB_SHA" --limit 5 --json databaseId,status,conclusion)"
+              successful="$(jq -r '.[] | select(.status == "completed" and .conclusion == "success") | .databaseId' <<<"$runs" | head -n 1)"
+              if [[ -n "$successful" ]]; then
+                printf '%s\n' "$successful"
+                return 0
+              fi
+              failed="$(jq -r '.[] | select(.status == "completed" and .conclusion != "success") | .databaseId' <<<"$runs" | head -n 1)"
+              if [[ -n "$failed" ]]; then
+                echo "$workflow failed for tagged commit $GITHUB_SHA (run $failed)." >&2
+                return 1
+              fi
+              echo "Waiting for $workflow on $GITHUB_SHA..." >&2
+              sleep 20
+            done
+            echo "Timed out waiting for $workflow on $GITHUB_SHA." >&2
+            return 1
+          }
+
+          windows_run="$(await_run 'Windows release')"
+          linux_run="$(await_run 'Linux packages')"
 
           echo "version=$package_version" >>"$GITHUB_OUTPUT"
           echo "build=$build_number" >>"$GITHUB_OUTPUT"

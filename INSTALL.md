@@ -1,8 +1,8 @@
 # Installing Deltiecord
 
-Deltiecord 0.9.17 build 60 is a beta release for x86-64 Windows and Linux.
+Deltiecord 0.9.17 build 61 is a beta release for x86-64 Windows and Linux.
 Download official builds from the [Deltiecord releases page](https://deltie.net/cord)
-or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.17-b60).
+or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.17-b61).
 
 Before installing a downloaded build, verify it against the included
 `SHA256SUMS` file:

@@ -196,27 +196,31 @@ class _RecipientProfileContents extends StatelessWidget {
                         ],
                         const SizedBox(height: 16),
                         if (profile.bio?.trim().isNotEmpty == true)
-                          DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: palette.surface,
-                              border: Border.all(color: palette.divider),
-                              borderRadius: DeltiecordCorners.borderRadius,
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'ABOUT ME',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: DeltiecordTypeScale.normal,
+                          SizedBox(
+                            key: const Key('recipient-about-island'),
+                            width: double.infinity,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: palette.surface,
+                                border: Border.all(color: palette.divider),
+                                borderRadius: DeltiecordCorners.borderRadius,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'ABOUT ME',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: DeltiecordTypeScale.normal,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(profile.bio!),
-                                ],
+                                    const SizedBox(height: 8),
+                                    Text(profile.bio!),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -9,11 +11,17 @@ import 'services/font_preferences.dart';
 import 'ui/chat_shell.dart';
 import 'ui/deltiecord_theme.dart';
 import 'ui/login_screen.dart';
+import 'ui/mobile/mobile_chat_shell.dart';
 
 class DeltiecordApp extends StatelessWidget {
-  const DeltiecordApp({required this.backend, super.key});
+  const DeltiecordApp({
+    required this.backend,
+    this.platformOverride,
+    super.key,
+  });
 
   final ChatBackend backend;
+  final TargetPlatform? platformOverride;
 
   @override
   Widget build(BuildContext context) {
@@ -24,7 +32,14 @@ class DeltiecordApp extends StatelessWidget {
         final emojiFontFamily = normalizeEmojiFontFamily(
           preferences.emojiFontFamily,
         );
-        if (backend.status == SessionStatus.signedIn) {
+        // Flutter widget tests default to an Android target platform even when
+        // executing on a desktop host. Runtime platform detection keeps the
+        // established desktop test/UI contract while [platformOverride] makes
+        // the dedicated mobile tree directly widget-testable.
+        final mobile =
+            platformOverride == TargetPlatform.android ||
+            (platformOverride == null && Platform.isAndroid);
+        if (backend.status == SessionStatus.signedIn && !mobile) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => DesktopWindowService.apply(preferences),
           );
@@ -266,7 +281,10 @@ class DeltiecordApp extends StatelessWidget {
               message: backend.error ?? 'Deltiecord could not start.',
               onRetry: backend.initialize,
             ),
-            SessionStatus.signedIn => ChatShell(backend: backend),
+            SessionStatus.signedIn =>
+              mobile
+                  ? MobileChatShell(backend: backend)
+                  : ChatShell(backend: backend),
             SessionStatus.signedOut ||
             SessionStatus.signingIn => LoginScreen(backend: backend),
           },

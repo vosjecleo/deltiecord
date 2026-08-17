@@ -26,7 +26,7 @@ Future<void> main() async {
   );
   // Matrix only constructs its E2EE engine when Vodozemac is ready first.
   await vodozemac.init();
-  final backend = MatrixBackend(notifications: DesktopChatNotificationSink());
+  final backend = MatrixBackend(notifications: PlatformChatNotificationSink());
   runApp(DeltiecordApp(backend: backend));
   await backend.initialize();
 }

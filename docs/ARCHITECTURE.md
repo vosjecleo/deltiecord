@@ -16,7 +16,7 @@ MatrixBackend and focused Matrix subsystems
 immutable chat/profile/RTC model snapshots
         |
         v
-ChatShell and focused UI widgets
+desktop ChatShell or mobile MobileChatShell
 ```
 
 This boundary keeps Matrix events, rooms, clients, timelines, encryption
@@ -30,7 +30,8 @@ services.
   room snapshots, preferences, encryption state, and subsystem lifetimes.
 - matrix-dart-sdk owns the persistent Matrix database, sync state, room state,
   encryption sessions, and active timeline objects.
-- `ChatShell` owns ephemeral navigation and popup state. Feature widgets own
+- `ChatShell` and `MobileChatShell` own platform-appropriate ephemeral
+  navigation and popup state. Feature widgets own
   only short-lived presentation state such as hover, selection, and editors.
 - `DraftStore` owns private per-room composer drafts on the local filesystem.
   Drafts are never written to Matrix room state.
@@ -70,9 +71,20 @@ expiry, logout, and shutdown. Decrypted files opened externally are written to
 a private temporary directory and removed by age, not immediately while an
 external application may still be reading them.
 
-Link previews come only from the configured homeserver. Deltiecord does not
-contact arbitrary links from messages. GIF search uses the documented
+Link previews use the configured homeserver by default. A bounded URL-level
+cache avoids duplicate preview requests. The optional direct fallback is off by
+default and uses DNS/address validation plus pinned sockets so redirects and DNS
+rebinding cannot target local services. GIF search uses the documented
 Deltiecord GIPHY proxy and downloads a selected result only after user action.
+
+## Mobile UI boundary
+
+`lib/ui/mobile` contains the Android shell, navigation rail, timeline, details
+panel, profile sheet, media views, and MatrixRTC presentation. Those widgets use
+only `ChatBackend` and SDK-independent models. Navigation, timeline, and details
+remain mounted as sliding layers so drawer gestures preserve room scroll state
+and drafts. The desktop widget tree is selected independently and is not resized
+into a phone layout.
 
 ## RTC ownership
 

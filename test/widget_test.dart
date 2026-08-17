@@ -96,6 +96,23 @@ void main() {
     expect(backend.preferences.accentColor, 0xff123456);
   });
 
+  testWidgets('direct link previews require an explicit privacy opt-in', (
+    tester,
+  ) async {
+    final backend = FakeBackend()..currentStatus = SessionStatus.signedIn;
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Privacy'));
+    await tester.pumpAndSettle();
+
+    expect(backend.preferences.fetchDirectLinkPreviews, isFalse);
+    expect(find.textContaining('may expose your IP address'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('direct-link-previews-toggle')));
+    await tester.pump();
+    expect(backend.preferences.fetchDirectLinkPreviews, isTrue);
+  });
+
   testWidgets('profile editor updates its preview before saving', (
     tester,
   ) async {
@@ -1166,7 +1183,7 @@ void main() {
     await _enterComposer(tester, '@ali');
 
     expect(find.text('Alice'), findsOneWidget);
-    await tester.tap(find.text('Alice'));
+    await tester.tap(find.text('Alice').last);
     await tester.pump();
     final editor = tester.widget<QuillEditor>(find.byType(QuillEditor));
     expect(editor.controller.document.toPlainText(), '@alice:example.org \n');
@@ -2206,6 +2223,258 @@ void main() {
       '😭\n',
     );
   });
+
+  testWidgets('Android Home shows the Space rail and DM-only navigation', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..spaceList = const [SpaceSummary(id: '!space:test', name: 'Friends')]
+      ..roomList = const [
+        RoomSummary(
+          id: '!dm:test',
+          name: 'Alice',
+          lastMessage: 'hello',
+          unreadCount: 1,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+
+    expect(find.byKey(const ValueKey('mobile-space-rail')), findsOneWidget);
+    expect(find.text('Home'), findsOneWidget);
+    expect(find.text('Alice'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mobile-user-island')), findsOneWidget);
+  });
+
+  testWidgets('Android room opening and navigation slide preserve selection', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!dm:test',
+          name: 'Alice',
+          lastMessage: 'hello',
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Alice'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-timeline')), findsOneWidget);
+    expect(backend.selectedRoom?.id, '!dm:test');
+
+    await tester.tap(find.byKey(const ValueKey('mobile-open-navigation')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-room-list')), findsOneWidget);
+    expect(backend.selectedRoom?.id, '!dm:test');
+  });
+
+  testWidgets('Android header alone opens details and Back dismisses it', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!room:test',
+          name: 'General',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('General').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('mobile-details-panel')).hitTestable(),
+      findsNothing,
+    );
+
+    await tester.tap(find.byKey(const ValueKey('mobile-open-details')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('mobile-details-panel')).hitTestable(),
+      findsOneWidget,
+    );
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey('mobile-details-panel')).hitTestable(),
+      findsNothing,
+    );
+  });
+
+  testWidgets('Android sender opens a large dismissible profile sheet', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..testProfile = const UserProfileSummary(
+        userId: '@alice:test',
+        displayName: 'Alice Profile',
+        bio: 'About Alice',
+      )
+      ..roomList = const [
+        RoomSummary(
+          id: '!dm:test',
+          name: 'Alice',
+          lastMessage: 'hello',
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$event',
+          sender: 'Alice',
+          senderId: '@alice:test',
+          body: 'hello',
+          timestamp: DateTime(2026),
+          pending: false,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Alice').first);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const ValueKey(r'swipe-$event')),
+        matching: find.text('Alice'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Alice Profile'), findsOneWidget);
+    expect(find.text('About Alice'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('About Alice'), findsNothing);
+  });
+
+  testWidgets('Android message swipe replies and long press exposes actions', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!dm:test',
+          name: 'Alice',
+          lastMessage: 'hello',
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$event',
+          sender: 'Alice',
+          senderId: '@alice:test',
+          body: 'swipe this',
+          timestamp: DateTime(2026),
+          pending: false,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Alice').first);
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey(r'swipe-$event')),
+      const Offset(-220, 0),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Replying to Alice'), findsOneWidget);
+
+    await tester.longPress(find.byKey(const ValueKey(r'swipe-$event')));
+    await tester.pumpAndSettle();
+    expect(find.text('Reply'), findsWidgets);
+    expect(find.text('React'), findsOneWidget);
+    expect(find.text('Copy text'), findsOneWidget);
+  });
+
+  testWidgets('Android drafts survive room navigation', (tester) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!a:test',
+          name: 'Alice',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+        RoomSummary(
+          id: '!b:test',
+          name: 'Bob',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Alice'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('mobile-composer-field')),
+      'room A draft',
+    );
+    await tester.tap(find.byKey(const ValueKey('mobile-open-navigation')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bob'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mobile-open-navigation')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Alice'));
+    await tester.pumpAndSettle();
+    expect(find.text('room A draft'), findsOneWidget);
+  });
+
+  testWidgets('Android keeps an RTC island while browsing another room', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentActiveVoiceId = '!voice:test'
+      ..currentVoiceStatus = VoiceConnectionStatus.connected
+      ..roomList = const [
+        RoomSummary(
+          id: '!dm:test',
+          name: 'Alice',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+        RoomSummary(
+          id: '!voice:test',
+          name: 'Voice',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+          presentation: RoomPresentation.voice,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Alice'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('mobile-call-island')), findsOneWidget);
+  });
+}
+
+Future<void> _pumpMobile(WidgetTester tester, FakeBackend backend) async {
+  await tester.binding.setSurfaceSize(const Size(430, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    DeltiecordApp(backend: backend, platformOverride: TargetPlatform.android),
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<void> _enterComposer(WidgetTester tester, String text) async {

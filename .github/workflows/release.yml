@@ -59,19 +59,22 @@ jobs:
 
           windows_run="$(await_run 'Windows release')"
           linux_run="$(await_run 'Linux packages')"
+          android_run="$(await_run 'Android release')"
 
           echo "version=$package_version" >>"$GITHUB_OUTPUT"
           echo "build=$build_number" >>"$GITHUB_OUTPUT"
           echo "windows_run=$windows_run" >>"$GITHUB_OUTPUT"
           echo "linux_run=$linux_run" >>"$GITHUB_OUTPUT"
+          echo "android_run=$android_run" >>"$GITHUB_OUTPUT"
 
-      - name: Download successful Linux and Windows packages
+      - name: Download successful platform packages
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p release-staging/windows release-staging/linux
+          mkdir -p release-staging/windows release-staging/linux release-staging/android
           gh run download "${{ steps.release.outputs.windows_run }}" --repo "$GITHUB_REPOSITORY" --dir release-staging/windows
           gh run download "${{ steps.release.outputs.linux_run }}" --repo "$GITHUB_REPOSITORY" --dir release-staging/linux
+          gh run download "${{ steps.release.outputs.android_run }}" --repo "$GITHUB_REPOSITORY" --dir release-staging/android
 
       - name: Assemble and verify release assets
         shell: bash
@@ -96,9 +99,10 @@ jobs:
           copy_unique "Deltiecord-${version}-x86_64.AppImage"
           copy_unique "deltiecord-${version}-1-x86_64.pkg.tar.zst"
           copy_unique "deltiecord_${version}_amd64.deb"
+          copy_unique "Deltiecord-${version}-android.apk"
 
           (cd release-assets && sha256sum -- * >SHA256SUMS)
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 6
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 7
 
       - name: Publish GitHub prerelease
         shell: bash
@@ -107,11 +111,11 @@ jobs:
           version="${{ steps.release.outputs.version }}"
           build="${{ steps.release.outputs.build }}"
           cat >release-notes.md <<EOF
-          Deltiecord ${version} build ${build} is a feature-complete desktop beta for Matrix.
+          Deltiecord ${version} build ${build} is a desktop and Android beta for Matrix.
 
           Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
 
-          Packages are provided for Windows x86-64, Debian/Ubuntu/Mint amd64, Arch Linux x86-64, and other current x86-64 Linux distributions through AppImage. Verify downloads with the attached SHA256SUMS file.
+          Packages are provided for Android, Windows x86-64, Debian/Ubuntu/Mint amd64, Arch Linux x86-64, and other current x86-64 Linux distributions through AppImage. Verify downloads with the attached SHA256SUMS file.
 
           This is beta software. Windows in particular still benefits from testing across more hardware and Windows 10/11 installations.
 

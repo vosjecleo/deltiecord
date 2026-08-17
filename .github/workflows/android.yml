@@ -1,0 +1,86 @@
+name: Android release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_ARCHIVE: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.44.9-stable.tar.xz
+  FLUTTER_SHA256: a9120fa4a01048bdef438ddc3a2d4b7389662ea98a95db86eeaf10382bc4efcb
+  RUSTUP_INIT: https://static.rust-lang.org/rustup/archive/1.29.0/x86_64-unknown-linux-gnu/rustup-init
+  RUSTUP_INIT_SHA256: 4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10
+  RUST_TOOLCHAIN: 1.97.1
+  RUSTFLAGS: -C link-dead-code
+
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Install verified Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$RUSTUP_INIT" -o "$RUNNER_TEMP/rustup-init"
+          echo "$RUSTUP_INIT_SHA256  $RUNNER_TEMP/rustup-init" | sha256sum --check --strict
+          chmod 0755 "$RUNNER_TEMP/rustup-init"
+          export CARGO_HOME="$RUNNER_TEMP/cargo" RUSTUP_HOME="$RUNNER_TEMP/rustup"
+          "$RUNNER_TEMP/rustup-init" -y --no-modify-path --profile minimal --default-toolchain "$RUST_TOOLCHAIN"
+          "$CARGO_HOME/bin/rustup" target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+          host="$($CARGO_HOME/bin/rustc -vV | sed -n 's/^host: //p')"
+          ln -s "$RUST_TOOLCHAIN-$host" "$RUSTUP_HOME/toolchains/stable-$host"
+          echo "CARGO_HOME=$CARGO_HOME" >>"$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUSTUP_HOME" >>"$GITHUB_ENV"
+          echo "$CARGO_HOME/bin" >>"$GITHUB_PATH"
+
+      - name: Install verified Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$FLUTTER_ARCHIVE" -o "$RUNNER_TEMP/flutter.tar.xz"
+          echo "$FLUTTER_SHA256  $RUNNER_TEMP/flutter.tar.xz" | sha256sum --check --strict
+          tar -C "$RUNNER_TEMP" -xf "$RUNNER_TEMP/flutter.tar.xz"
+          git config --global --add safe.directory "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >>"$GITHUB_PATH"
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test --concurrency=1
+
+      - name: Build Android APK and app bundle
+        run: |
+          flutter build apk --release
+          flutter build appbundle --release
+
+      - name: Package Android releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/Deltiecord-${version}-android.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/Deltiecord-${version}-android.aab"
+          (cd dist && sha256sum -- * >SHA256SUMS-android)
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: Deltiecord-android
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30

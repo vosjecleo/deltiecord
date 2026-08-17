@@ -50,11 +50,11 @@ abstract interface class ChatNotificationSink {
   Future<void> dispose();
 }
 
-/// Native Linux/Windows notification implementation.
+/// Native Linux, Windows, and Android notification implementation.
 ///
 /// Activation first emits a Matrix-independent target, then asks the platform
 /// window service to foreground the existing process.
-class DesktopChatNotificationSink implements ChatNotificationSink {
+class PlatformChatNotificationSink implements ChatNotificationSink {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
   final _activations = StreamController<NotificationTarget>.broadcast();
@@ -76,6 +76,7 @@ class DesktopChatNotificationSink implements ChatNotificationSink {
     if (_initialized) return;
     await _plugin.initialize(
       settings: const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
         linux: LinuxInitializationSettings(
           defaultActionName: 'Open Deltiecord',
         ),
@@ -89,6 +90,11 @@ class DesktopChatNotificationSink implements ChatNotificationSink {
           _activatePayload(response.payload),
     );
     _initialized = true;
+    await _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.requestNotificationsPermission();
     try {
       final launch = await _plugin.getNotificationAppLaunchDetails();
       if (launch?.didNotificationLaunchApp ?? false) {
@@ -115,6 +121,15 @@ class DesktopChatNotificationSink implements ChatNotificationSink {
       NotificationTarget(roomId: roomId, eventId: eventId),
     ),
     notificationDetails: NotificationDetails(
+      android: AndroidNotificationDetails(
+        'deltiecord_messages',
+        'Messages',
+        channelDescription: 'Encrypted Matrix message notifications',
+        importance: Importance.high,
+        priority: Priority.high,
+        category: AndroidNotificationCategory.message,
+        playSound: sound,
+      ),
       linux: LinuxNotificationDetails(
         category: LinuxNotificationCategory.imReceived,
         urgency: LinuxNotificationUrgency.normal,

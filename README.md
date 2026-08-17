@@ -1,8 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.17 build 61 beta release**
+> **Current release: version 0.9.18 build 62 beta release**
 >
-> Deltiecord is currently a feature-complete desktop beta. It is usable for everyday testing, but bugs and rough edges should still be expected while the project approaches v1.0.
+> Deltiecord is a desktop and Android beta. It is usable for everyday testing,
+> but bugs and rough edges should still be expected while the project approaches
+> v1.0.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -28,7 +30,7 @@ Please forgive my sins of vibecoding.
 
 ## What is Deltiecord?
 
-Deltiecord is an open-source, Flutter-based desktop client for Matrix.
+Deltiecord is an open-source Flutter client for Matrix on desktop and Android.
 
 The goal of the project is to bring the familiar UX of discord to the secure and open source side, to hopefully get more discord users on a secure platform.
 
@@ -91,6 +93,8 @@ Notable features include:
 - Searchable emoji picker
 - `:emoji:` autocomplete
 - Rich link previews
+- Privacy-preserving homeserver link previews, with an optional direct fallback
+  that is disabled by default
 - image and video embeds
 - image/video context menus
 - Fullscreen media viewer
@@ -109,7 +113,10 @@ Notable features include:
   font choices
 - Custom profile theming
 
-Deltiecord is desktop-first. An Android app is planned, though the newest features and updates will remain desktop-first and mobile-second.
+Deltiecord now includes a dedicated Android phone interface. It reuses the same
+Matrix, encryption, timeline, profile, media, settings, and RTC layers without
+squeezing the desktop three-column interface onto a phone. Desktop remains the
+primary development platform while Android receives device testing.
 
 ---
 
@@ -127,6 +134,8 @@ Normal network activity may include:
 - Deltiecord's GIF search proxy / GIPHY when using GIF search
 - services required for supported link-preview integrations
 - external websites when explicitly opened by the user
+- external websites for link previews only if the user explicitly enables the
+  direct-preview fallback in Privacy settings
 
 Matrix end-to-end encryption is implemented through the existing Matrix SDK and established cryptographic libraries rather than custom cryptography.
 
@@ -182,12 +191,14 @@ Deltiecord has currently been built and/or tested on:
 - Debian
 - Linux Mint
 - Windows
+- Android
 
 Linux is currently the primary development platform.
 
-Windows support uses the same Flutter/Matrix backend and is being tested separately for platform-specific behavior such as notifications, audio devices, screen capture and native window integration.
-
-Android is a possible future target because the application architecture was intentionally designed to keep Matrix/backend logic separate from desktop-specific UI and platform integrations.
+Windows and Android use the same Flutter/Matrix backend and are tested separately
+for platform-specific behavior such as notifications, secure storage, audio and
+camera devices, screen capture, media playback, and application lifecycle.
+Android uses a phone-specific navigation, timeline, profile, and call interface.
 
 ---
 
@@ -223,4 +234,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.17 build 61, beta release**
+**Current release: v0.9.18 build 62, beta release**

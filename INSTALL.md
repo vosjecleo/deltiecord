@@ -17,12 +17,17 @@ sha256sum -c SHA256SUMS
 Download `Deltiecord-0.9.19-android.apk` directly on the Android device. Verify
 its checksum, allow installation from the browser or file manager when Android
 asks, then open the APK. The prerelease APK uses a development signing identity;
-no private production signing key is stored in this repository.
+v0.9.19 is the first build signed by Deltiecord's persistent prerelease identity.
+The private keystore and passwords are stored outside the repository. APKs from
+builds 62 and 63 used ephemeral identities and require one uninstall before this
+first persistently signed build can be installed; later upgrades retain the same
+identity.
 
 Android may require microphone, camera, media, and notification permissions as
 the corresponding features are used. Deltiecord does not add Firebase or Google
-push infrastructure. Message notifications therefore depend on the Matrix sync
-process remaining alive, and some Android vendors may suspend it aggressively.
+push infrastructure. Notifications can use a separately installed UnifiedPush
+distributor with Deltiecord's ntfy Matrix gateway; without one, delivery depends
+on the Matrix sync process remaining alive and vendors may suspend it.
 
 The AAB produced by CI is intended for future repository/store distribution and
 is not directly installable. Android RTC, encrypted media, screen capture,
@@ -200,7 +205,7 @@ Further Windows notes are available in [docs/WINDOWS.md](docs/WINDOWS.md).
 ### Android source build
 
 Install the Android SDK, Android SDK command-line/build tools, Java 17, Flutter
-3.44.9, and Rust 1.97.1. Add the Android Rust targets used by the E2EE native
+3.47.0, and Rust 1.97.1. Add the Android Rust targets used by the E2EE native
 library, then run:
 
 ```sh
@@ -213,8 +218,9 @@ The APK is written below `build/app/outputs/flutter-apk/` and the AAB below
 `build/app/outputs/bundle/release/`. The exact pinned CI setup is documented in
 [the Android workflow](.github/workflows/android.yml). See
 [Android implementation and testing notes](docs/ANDROID.md) before distributing
-a build. Final releases should replace the prerelease debug signing identity
-with credentials supplied outside the repository.
+a build. Release signing credentials must be supplied outside the repository;
+an unconfigured local build falls back to Android's debug identity for developer
+testing and must not be published as an upgradeable release.
 
 ## Getting help
 

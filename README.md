@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: version 0.9.18 build 62 beta release**
+> **Current release: version 0.9.18 build 63 beta release**
 >
 > Deltiecord is a desktop and Android beta. It is usable for everyday testing,
 > but bugs and rough edges should still be expected while the project approaches
@@ -33,6 +33,8 @@ Please forgive my sins of vibecoding.
 Deltiecord is an open-source Flutter client for Matrix on desktop and Android.
 
 The goal of the project is to bring the familiar UX of discord to the secure and open source side, to hopefully get more discord users on a secure platform.
+
+![screenshot-1.png](./Screenshots/screenshot-1.png)
 
 Deltiecord is not its own chat network, and it does not require a special Deltiecord server. It connects to ordinary Matrix homeservers such as Synapse and communicates using the Matrix protocol.
 
@@ -234,4 +236,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.18 build 62, beta release**
+**Current release: v0.9.18 build 63, beta release**

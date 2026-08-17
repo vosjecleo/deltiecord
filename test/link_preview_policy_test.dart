@@ -1,9 +1,12 @@
 import 'package:deltiecord/services/link_preview_policy.dart';
+import 'package:deltiecord/models/chat_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('never permits client-side origin fallback', () {
-    expect(LinkPreviewNetworkPolicy.allowsDirectFallback, isFalse);
+  test('direct fallback requires an explicit preference', () {
+    expect(const AppPreferences().fetchDirectLinkPreviews, isFalse);
+    expect(LinkPreviewNetworkPolicy.allowsDirectFallback(false), isFalse);
+    expect(LinkPreviewNetworkPolicy.allowsDirectFallback(true), isTrue);
     expect(
       LinkPreviewNetworkPolicy.mayLoadMedia(
         Uri.parse('https://tracker.example/preview.jpg'),

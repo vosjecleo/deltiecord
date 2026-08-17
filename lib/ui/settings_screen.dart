@@ -849,6 +849,20 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           preferences.copyWith(sharePresence: value),
         ),
       ),
+      SwitchListTile(
+        key: const ValueKey('direct-link-previews-toggle'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Fetch link previews directly on this device'),
+        subtitle: const Text(
+          'Direct previews contact websites from your device and may expose '
+          'your IP address and browsing metadata to those sites. This is used '
+          'only when the Matrix homeserver cannot provide a preview.',
+        ),
+        value: preferences.fetchDirectLinkPreviews,
+        onChanged: (value) => backend.updatePreferences(
+          preferences.copyWith(fetchDirectLinkPreviews: value),
+        ),
+      ),
       const Divider(height: 28),
       Text('Blocked users', style: Theme.of(context).textTheme.titleMedium),
       if (backend.blockedUserIds.isEmpty)

@@ -93,7 +93,9 @@ extension _MatrixSession on MatrixBackend {
         LoginType.mLoginPassword,
         identifier: AuthenticationUserIdentifier(user: username),
         password: password,
-        initialDeviceDisplayName: 'Deltiecord Desktop',
+        initialDeviceDisplayName: Platform.isAndroid
+            ? 'Deltiecord Android'
+            : 'Deltiecord Desktop',
       );
       _initializeVoice();
       _status = SessionStatus.signedIn;
@@ -124,6 +126,7 @@ extension _MatrixSession on MatrixBackend {
       _decryptedPreviews.clear();
       _replyPreviews.clear();
       _linkPreviews.clear();
+      _linkPreviewUrlCache.clear();
       _linkPreviewRetryAfter.clear();
       _linkPreviewAttempts.clear();
       _linkPreviewRetryTimer?.cancel();
@@ -544,6 +547,8 @@ extension _MatrixSession on MatrixBackend {
       sendTypingNotifications:
           content?.tryGet<bool>('send_typing_notifications') ?? true,
       sharePresence: content?.tryGet<bool>('share_presence') ?? true,
+      fetchDirectLinkPreviews:
+          content?.tryGet<bool>('fetch_direct_link_previews') ?? false,
       accentColor: content?.tryGet<int>('accent_color') ?? 0xff6975d9,
       fontFamily: _supportedInterfaceFont(
         content?.tryGet<String>('font_family'),
@@ -617,6 +622,15 @@ extension _MatrixSession on MatrixBackend {
 
   Future<void> _updatePreferences(AppPreferences preferences) async {
     if (_matrix.userID == null) return;
+    if (preferences.fetchDirectLinkPreviews !=
+        _preferences.fetchDirectLinkPreviews) {
+      // A previous homeserver-only miss must not suppress a newly opted-in
+      // direct fallback (and vice versa). Event previews hydrate again lazily.
+      _linkPreviews.clear();
+      _linkPreviewUrlCache.clear();
+      _linkPreviewAttempts.clear();
+      _linkPreviewRetryAfter.clear();
+    }
     if (preferences.sharePresence != _preferences.sharePresence) {
       unawaited(
         _matrix
@@ -667,6 +681,7 @@ extension _MatrixSession on MatrixBackend {
           'send_read_receipts': preferences.sendReadReceipts,
           'send_typing_notifications': preferences.sendTypingNotifications,
           'share_presence': preferences.sharePresence,
+          'fetch_direct_link_previews': preferences.fetchDirectLinkPreviews,
           'accent_color': preferences.accentColor,
           'font_family': preferences.fontFamily,
           'emoji_font_family': preferences.emojiFontFamily,

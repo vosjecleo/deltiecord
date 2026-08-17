@@ -9,9 +9,17 @@ media, encryption backup, and homeserver URL-preview requests go to the user's
 configured homeserver. Federation is performed by homeservers and is not a
 separate client connection.
 
-Message link previews use only the Matrix homeserver preview endpoint. If the
-homeserver cannot produce a preview, Deltiecord shows the plain link. It does
-not automatically contact an arbitrary message URL from the user's IP address.
+Message link previews use the Matrix homeserver preview endpoint by default. If
+the homeserver cannot produce a preview, Deltiecord normally shows the plain
+link and does not contact that site from the user's IP address.
+
+Privacy settings contain an optional `Fetch link previews directly on this
+device` fallback. It is off on every new installation. When explicitly enabled,
+the client may fetch a public HTTP(S) page only after the homeserver preview
+fails. Every DNS result and redirect target must be public, the connection is
+pinned to a validated address, proxies and cookies are disabled, documents and
+images are bounded, and strict content-type, redirect, and timeout limits apply.
+Matrix tokens and headers are never sent to a preview site.
 
 ## MatrixRTC and WebRTC infrastructure
 
@@ -48,5 +56,5 @@ removed when playback ends, on logout, and at shutdown.
 
 ## Removed integrations
 
-Older builds included direct webpage/FxTwitter preview fallbacks. They are not
-used. Arbitrary webpages are never contacted automatically for preview data.
+The old automatic FxTwitter/direct fallback is not used. Direct webpage preview
+traffic occurs only after the user enables the privacy setting described above.

@@ -1,13 +1,13 @@
 part of 'matrix_backend.dart';
 
 extension _MatrixLinkPreviews on MatrixBackend {
-  /// Resolves previews exclusively through the configured Matrix homeserver.
+  /// Hydrates preview metadata after timeline text is already available.
   ///
-  /// A previous implementation contacted linked pages, FxTwitter, and remote
-  /// preview images directly when Synapse returned no metadata. That exposed a
-  /// reader's IP address and viewing time to arbitrary message-linked hosts.
-  /// Failed or empty homeserver previews intentionally remain plain links.
+  /// The Matrix homeserver remains the primary and privacy-preserving fetcher.
+  /// Direct origin requests are made only after explicit user opt-in and only
+  /// by [DirectLinkPreviewFetcher], which pins public DNS results to sockets.
   Future<void> _hydrateLinkPreviews(Timeline timeline) async {
+    final pending = <Event>[];
     for (final event in timeline.events) {
       final retryAfter = _linkPreviewRetryAfter[event.eventId];
       if (_linkPreviews.containsKey(event.eventId) ||
@@ -16,90 +16,128 @@ extension _MatrixLinkPreviews on MatrixBackend {
           event.hasAttachment) {
         continue;
       }
-      final match = _webUrlPattern.firstMatch(
-        event.calcUnlocalizedBody(
-          hideReply: true,
-          hideEdit: true,
-          plaintextBody: true,
-        ),
+      pending.add(event);
+    }
+
+    // Limit parallel homeserver requests. This keeps an embed-heavy room from
+    // serially delaying previews while avoiding an unbounded request burst.
+    for (var offset = 0; offset < pending.length; offset += 4) {
+      final end = min(offset + 4, pending.length);
+      await Future.wait(
+        pending
+            .sublist(offset, end)
+            .map((event) => _hydrateEventPreview(event)),
       );
-      final rawUrl = match?.group(0)?.replaceFirst(RegExp(r'[.,;:!?]+$'), '');
-      final url = rawUrl == null ? null : Uri.tryParse(rawUrl);
-      if (url == null) {
-        _linkPreviews[event.eventId] = null;
-        continue;
+      if (!identical(timeline, _timeline)) return;
+    }
+  }
+
+  Future<void> _hydrateEventPreview(Event event) async {
+    final urls = extractPreviewUrls(
+      event.calcUnlocalizedBody(
+        hideReply: true,
+        hideEdit: true,
+        plaintextBody: true,
+      ),
+    );
+    if (urls.isEmpty) {
+      _linkPreviews[event.eventId] = null;
+      return;
+    }
+    final url = urls.first;
+    final cached = _linkPreviewUrlCache.getEntry(url);
+    if (cached.$1) {
+      _linkPreviews[event.eventId] = cached.$2;
+      return;
+    }
+
+    LinkPreview? result;
+    Object? homeserverFailure;
+    try {
+      final response = await _matrix.getUrlPreview(
+        url,
+        ts: event.originServerTs.millisecondsSinceEpoch,
+      );
+      final properties = Map<String, Object?>.from(
+        response.additionalProperties,
+      );
+      Uint8List? imageBytes;
+      final image = response.ogImage;
+      final declaredImageSize = _previewPropertyInt(properties, const [
+        'matrix:image:size',
+        'og:image:size',
+      ]);
+      if (image != null &&
+          LinkPreviewNetworkPolicy.mayLoadMedia(image) &&
+          (declaredImageSize == null || declaredImageSize <= 5 * 1024 * 1024)) {
+        imageBytes = await _previewImageBytes(image);
       }
-      // The standard endpoint lets the homeserver apply its SSRF protections
-      // and cache metadata consistently with other Matrix clients.
+      result = parseHomeserverLinkPreview(
+        url: url,
+        properties: properties,
+        imageBytes: imageBytes,
+      );
+      if (!hasUsefulPreview(result)) result = null;
+    } catch (exception) {
+      homeserverFailure = exception;
+    }
+
+    if (result == null &&
+        LinkPreviewNetworkPolicy.allowsDirectFallback(
+          _preferences.fetchDirectLinkPreviews,
+        )) {
       try {
-        final preview = await _matrix.getUrlPreview(
-          url,
-          ts: event.originServerTs.millisecondsSinceEpoch,
-        );
-        final properties = preview.additionalProperties;
-        Uint8List? imageBytes;
-        final image = preview.ogImage;
-        // Synapse normally stores fetched preview images as MXC content. Never
-        // follow an arbitrary HTTP image URL returned in preview metadata.
-        if (image != null && LinkPreviewNetworkPolicy.mayLoadMedia(image)) {
-          imageBytes = await _previewImageBytes(image);
-        }
-        String? propertyString(String key) {
-          final value = properties[key];
-          return value is String && value.trim().isNotEmpty
-              ? value.trim()
-              : null;
-        }
-
-        int? propertyInt(String key) {
-          final value = properties[key];
-          return value is int ? value : int.tryParse(value?.toString() ?? '');
-        }
-
-        final result = LinkPreview(
-          url: url,
-          title: propertyString('og:title'),
-          description: propertyString('og:description'),
-          siteName: propertyString('og:site_name'),
-          imageBytes: imageBytes,
-          // A remote og:video URL would be fetched by media_kit from this
-          // device. Keep preview playback disabled unless a future homeserver
-          // API provides an authenticated MXC-backed playback source.
-          videoUrl: null,
-          width: propertyInt('og:video:width') ?? propertyInt('og:image:width'),
-          height:
-              propertyInt('og:video:height') ?? propertyInt('og:image:height'),
-        );
-        _linkPreviews[event.eventId] =
-            result.title == null &&
-                result.description == null &&
-                result.imageBytes == null &&
-                result.videoUrl == null
-            ? null
-            : result;
-        _linkPreviewRetryAfter.remove(event.eventId);
-        _linkPreviewAttempts.remove(event.eventId);
+        result = await _directPreviewFetcher.fetch(url);
       } catch (exception) {
-        // URL preview services may be temporarily unavailable during sync or
-        // homeserver startup. Do not turn that transient failure into a null
-        // result cached for the lifetime of the timeline.
-        final attempts = (_linkPreviewAttempts[event.eventId] ?? 0) + 1;
-        _linkPreviewAttempts[event.eventId] = attempts;
         developer.log(
-          'Homeserver URL preview attempt failed (${exception.runtimeType}).',
+          'Opt-in direct URL preview failed (${exception.runtimeType}).',
           name: 'deltiecord.preview',
         );
-        if (attempts >= 3) {
-          _linkPreviews[event.eventId] = null;
-          _linkPreviewRetryAfter.remove(event.eventId);
-          continue;
-        }
-        _linkPreviewRetryAfter[event.eventId] = DateTime.now().add(
-          const Duration(seconds: 30),
-        );
-        _scheduleLinkPreviewRetry(timeline);
       }
     }
+
+    if (result != null) {
+      _linkPreviews[event.eventId] = result;
+      _linkPreviewUrlCache.put(url, result);
+      _linkPreviewRetryAfter.remove(event.eventId);
+      _linkPreviewAttempts.remove(event.eventId);
+      return;
+    }
+
+    if (homeserverFailure == null) {
+      // A valid empty response is a stable plain-link result for a short TTL.
+      _linkPreviews[event.eventId] = null;
+      _linkPreviewUrlCache.put(url, null);
+      return;
+    }
+
+    final attempts = (_linkPreviewAttempts[event.eventId] ?? 0) + 1;
+    _linkPreviewAttempts[event.eventId] = attempts;
+    developer.log(
+      'Homeserver URL preview attempt failed '
+      '(${homeserverFailure.runtimeType}).',
+      name: 'deltiecord.preview',
+    );
+    if (attempts >= 3) {
+      _linkPreviews[event.eventId] = null;
+      _linkPreviewUrlCache.put(url, null);
+      _linkPreviewRetryAfter.remove(event.eventId);
+      return;
+    }
+    _linkPreviewRetryAfter[event.eventId] = DateTime.now().add(
+      const Duration(seconds: 30),
+    );
+    final timeline = _timeline;
+    if (timeline != null) _scheduleLinkPreviewRetry(timeline);
+  }
+
+  int? _previewPropertyInt(Map<String, Object?> properties, List<String> keys) {
+    for (final key in keys) {
+      final value = properties[key];
+      final parsed = value is num ? value.toInt() : int.tryParse('$value');
+      if (parsed != null && parsed >= 0) return parsed;
+    }
+    return null;
   }
 
   void _scheduleLinkPreviewRetry(Timeline timeline) {
@@ -113,17 +151,15 @@ extension _MatrixLinkPreviews on MatrixBackend {
   }
 
   Future<Uint8List?> _previewImageBytes(Uri uri) async {
-    if (uri.isScheme('mxc')) {
-      final thumbnail = await _matrix.getContentThumbnail(
-        uri.host,
-        uri.pathSegments.join('/'),
-        640,
-        360,
-        method: Method.scale,
-        animated: true,
-      );
-      return thumbnail.data;
-    }
-    return null;
+    if (!uri.isScheme('mxc')) return null;
+    final thumbnail = await _matrix.getContentThumbnail(
+      uri.host,
+      uri.pathSegments.join('/'),
+      640,
+      360,
+      method: Method.scale,
+      animated: true,
+    );
+    return thumbnail.data.length <= 5 * 1024 * 1024 ? thumbnail.data : null;
   }
 }

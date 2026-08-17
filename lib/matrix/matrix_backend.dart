@@ -15,6 +15,7 @@ import '../services/chat_notifications.dart';
 import '../services/font_preferences.dart';
 import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
+import '../services/link_preview_service.dart';
 import '../services/secret_redaction.dart';
 import '../services/timeline_window_policy.dart';
 import 'matrix_client_factory.dart';
@@ -32,8 +33,6 @@ part 'matrix_messages.dart';
 part 'matrix_media.dart';
 part 'matrix_profiles.dart';
 
-final _webUrlPattern = RegExp(r'https?://[^\s<>]+');
-
 /// Matrix integration built on matrix-dart-sdk. Element and FluffyChat were
 /// consulted as behavioral references; no source from either client is copied.
 /// See CREDITS.md for project links and license information.
@@ -45,10 +44,15 @@ class MatrixBackend extends ChatBackend {
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
   static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
 
-  MatrixBackend({ChatNotificationSink? notifications})
-    : _notifications = notifications ?? const SilentChatNotificationSink();
+  MatrixBackend({
+    ChatNotificationSink? notifications,
+    DirectLinkPreviewFetcher? directPreviewFetcher,
+  }) : _notifications = notifications ?? const SilentChatNotificationSink(),
+       _directPreviewFetcher =
+           directPreviewFetcher ?? DirectLinkPreviewFetcher();
 
   final ChatNotificationSink _notifications;
+  final DirectLinkPreviewFetcher _directPreviewFetcher;
   Client? _client;
   Timeline? _timeline;
   MatrixVoiceController? _voice;
@@ -82,6 +86,7 @@ class MatrixBackend extends ChatBackend {
   final Map<String, String> _decryptedPreviews = {};
   final Map<String, ReplyPreview> _replyPreviews = {};
   final Map<String, LinkPreview?> _linkPreviews = {};
+  final LinkPreviewCache _linkPreviewUrlCache = LinkPreviewCache();
   final Map<String, DateTime> _linkPreviewRetryAfter = {};
   final Map<String, int> _linkPreviewAttempts = {};
   Timer? _linkPreviewRetryTimer;

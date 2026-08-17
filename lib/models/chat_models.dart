@@ -59,7 +59,7 @@ class AppPreferences {
     this.fetchDirectLinkPreviews = false,
     this.accentColor = 0xff6975d9,
     this.fontFamily = 'Liberation Sans',
-    this.emojiFontFamily = bundledEmojiFontFamily,
+    this.emojiFontFamily = systemEmojiFontFamily,
     this.showNativeTitleBar = true,
     this.rememberWindowState = true,
     this.shortcutBindings = defaultShortcutBindings,
@@ -366,6 +366,8 @@ class UserProfileSummary {
     this.statusMessage,
     this.profileColor,
     this.profileColorSecondary,
+    this.voiceColor,
+    this.voiceBackgroundBytes,
     this.extensibleFieldsSupported = true,
     this.blocked = false,
   });
@@ -385,6 +387,13 @@ class UserProfileSummary {
 
   /// Bottom colour of Deltiecord's interoperable, client-namespaced gradient.
   final int? profileColorSecondary;
+
+  /// Optional Deltiecord voice-tile colour. When absent, clients derive a
+  /// colour from the avatar rather than reusing the profile banner.
+  final int? voiceColor;
+
+  /// Optional independently cropped background used only in RTC tiles.
+  final Uint8List? voiceBackgroundBytes;
   final bool extensibleFieldsSupported;
   final bool blocked;
 }

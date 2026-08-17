@@ -71,6 +71,15 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> refreshEncryptionSetup();
   Future<void> recoverEncryption(String recoveryKeyOrPassphrase);
   Future<String> createEncryptionSetup();
+
+  /// Rotates Matrix Secure Secret Storage while retaining the connected
+  /// cross-signing identity and online key backup.
+  ///
+  /// Implementations must reject this unless the current device already has
+  /// the identity secrets locally: rotation from an unverified device could
+  /// otherwise destroy the only recoverable copy.
+  Future<String> regenerateEncryptionRecoveryKey() =>
+      throw UnsupportedError('Recovery-key rotation is unavailable');
   void selectSpace(String? spaceId);
   Future<void> selectRoom(String roomId);
   Future<void> setRoomPresentation(
@@ -123,6 +132,14 @@ abstract class ChatBackend extends ChangeNotifier {
     Uint8List? bannerBytes,
     bool removeBanner,
   });
+
+  /// Updates Deltiecord's optional RTC tile presentation fields.
+  Future<void> updateOwnVoicePresentation({
+    int? color,
+    Uint8List? backgroundBytes,
+    bool removeColor = false,
+    bool removeBackground = false,
+  }) async {}
   Future<void> startDirectChat(String userId);
   Future<List<SpaceDirectoryEntry>> searchPublicSpaces(String query);
   Future<void> joinPublicSpace(String roomId);

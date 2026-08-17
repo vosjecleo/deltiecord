@@ -39,6 +39,8 @@ part 'matrix_profiles.dart';
 class MatrixBackend extends ChatBackend {
   static const _maximumCachedProfiles = 48;
   static const _maximumCachedProfileMediaBytes = 32 * 1024 * 1024;
+  static const _maximumCachedAttachmentBytes = 64 * 1024 * 1024;
+  static const _maximumCachedAttachments = 64;
   static const _profileCacheLifetime = Duration(minutes: 15);
   static const _settingsAccountDataType = 'net.deltiecord.settings';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
@@ -127,6 +129,11 @@ class MatrixBackend extends ChatBackend {
   final MediaRangeProxy _mediaRangeProxy = MediaRangeProxy();
   final Map<String, MediaPlaybackSource> _mediaPlaybackSources = {};
   final Map<String, int> _mediaPlaybackReferences = {};
+  final LinkedHashMap<String, Uint8List> _attachmentBytesCache =
+      LinkedHashMap();
+  final Map<String, Future<Uint8List>> _attachmentDownloads = {};
+  int _attachmentBytesCacheSize = 0;
+  int _attachmentCacheGeneration = 0;
   EncryptionSetupState _encryptionSetup = const EncryptionSetupState(
     status: EncryptionSetupStatus.loading,
   );
@@ -510,6 +517,10 @@ class MatrixBackend extends ChatBackend {
 
   @override
   Future<String> createEncryptionSetup() => _createEncryptionSetup();
+
+  @override
+  Future<String> regenerateEncryptionRecoveryKey() =>
+      _regenerateEncryptionRecoveryKey();
   @override
   void selectSpace(String? spaceId) => _selectSpace(spaceId);
 
@@ -639,6 +650,19 @@ class MatrixBackend extends ChatBackend {
   );
 
   @override
+  Future<void> updateOwnVoicePresentation({
+    int? color,
+    Uint8List? backgroundBytes,
+    bool removeColor = false,
+    bool removeBackground = false,
+  }) => _updateOwnVoicePresentation(
+    color: color,
+    backgroundBytes: backgroundBytes,
+    removeColor: removeColor,
+    removeBackground: removeBackground,
+  );
+
+  @override
   Future<List<SpaceDirectoryEntry>> searchPublicSpaces(String query) =>
       _searchPublicSpaces(query);
 
@@ -758,6 +782,10 @@ class MatrixBackend extends ChatBackend {
     _linkPreviewRetryTimer?.cancel();
     _profileCache.clear();
     _profileRequests.clear();
+    _attachmentBytesCache.clear();
+    _attachmentDownloads.clear();
+    _attachmentBytesCacheSize = 0;
+    _attachmentCacheGeneration++;
     final voice = _voice;
     _voice = null;
     voice?.removeListener(notifyListeners);

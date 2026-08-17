@@ -10,12 +10,14 @@ class MobileNavigationPanel extends StatefulWidget {
     required this.backend,
     required this.onOpenRoom,
     required this.onOpenSettings,
+    required this.onOpenProfile,
     super.key,
   });
 
   final ChatBackend backend;
   final ValueChanged<RoomSummary> onOpenRoom;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenProfile;
 
   @override
   State<MobileNavigationPanel> createState() => _MobileNavigationPanelState();
@@ -38,74 +40,85 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
         })
         .toList(growable: false);
     return SafeArea(
-      child: Row(
+      child: Column(
         children: [
-          _SpaceRail(backend: backend),
           Expanded(
-            child: Column(
+            child: Row(
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-                  child: Row(
+                _SpaceRail(backend: backend),
+                Expanded(
+                  child: Column(
                     children: [
-                      Expanded(
-                        child: Text(
-                          selectedSpace == null
-                              ? 'Home'
-                              : backend.spaces
-                                        .where(
-                                          (space) => space.id == selectedSpace,
-                                        )
-                                        .firstOrNull
-                                        ?.name ??
-                                    'Space',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                selectedSpace == null
+                                    ? 'Home'
+                                    : backend.spaces
+                                              .where(
+                                                (space) =>
+                                                    space.id == selectedSpace,
+                                              )
+                                              .firstOrNull
+                                              ?.name ??
+                                          'Space',
+                                style: Theme.of(context).textTheme.titleLarge
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            IconButton(
+                              key: const ValueKey('mobile-start-chat'),
+                              tooltip: selectedSpace == null
+                                  ? 'Start a chat'
+                                  : 'Create a room',
+                              onPressed: () => selectedSpace == null
+                                  ? _startChat(context)
+                                  : _createRoom(context),
+                              icon: const Icon(Icons.add),
+                            ),
+                          ],
                         ),
                       ),
-                      IconButton(
-                        key: const ValueKey('mobile-start-chat'),
-                        tooltip: selectedSpace == null
-                            ? 'Start a chat'
-                            : 'Create a room',
-                        onPressed: () => selectedSpace == null
-                            ? _startChat(context)
-                            : _createRoom(context),
-                        icon: const Icon(Icons.add),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: TextField(
+                          key: const ValueKey('mobile-room-search'),
+                          onChanged: (value) => setState(() => _query = value),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            hintText: selectedSpace == null
+                                ? 'Search direct messages'
+                                : 'Search rooms',
+                            prefixIcon: const Icon(Icons.search, size: 20),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Expanded(
+                        child: selectedSpace == null
+                            ? _RoomList(
+                                rooms: rooms,
+                                onOpenRoom: widget.onOpenRoom,
+                              )
+                            : _SpaceRoomList(
+                                backend: backend,
+                                rooms: rooms,
+                                onOpenRoom: widget.onOpenRoom,
+                              ),
                       ),
                     ],
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: TextField(
-                    key: const ValueKey('mobile-room-search'),
-                    onChanged: (value) => setState(() => _query = value),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: selectedSpace == null
-                          ? 'Search direct messages'
-                          : 'Search rooms',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Expanded(
-                  child: selectedSpace == null
-                      ? _RoomList(rooms: rooms, onOpenRoom: widget.onOpenRoom)
-                      : _SpaceRoomList(
-                          backend: backend,
-                          rooms: rooms,
-                          onOpenRoom: widget.onOpenRoom,
-                        ),
-                ),
-                _MobileUserIsland(
-                  backend: backend,
-                  onOpenSettings: widget.onOpenSettings,
-                ),
               ],
             ),
+          ),
+          _MobileUserIsland(
+            backend: backend,
+            onOpenSettings: widget.onOpenSettings,
+            onOpenProfile: widget.onOpenProfile,
           ),
         ],
       ),
@@ -444,9 +457,11 @@ class _MobileUserIsland extends StatelessWidget {
   const _MobileUserIsland({
     required this.backend,
     required this.onOpenSettings,
+    required this.onOpenProfile,
   });
   final ChatBackend backend;
   final VoidCallback onOpenSettings;
+  final VoidCallback onOpenProfile;
 
   @override
   Widget build(BuildContext context) => SafeArea(
@@ -459,47 +474,50 @@ class _MobileUserIsland extends StatelessWidget {
         color: context.deltiecord.elevated,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          MobileAvatar(
-            bytes: backend.profileAvatarBytes,
-            fallback: backend.profileDisplayName ?? backend.userId ?? '?',
-            presence: backend.profilePresence,
-            size: 42,
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  backend.profileDisplayName ?? backend.userId ?? 'Account',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  backend.profileStatusMessage ??
-                      mobilePresenceLabel(backend.profilePresence),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+      child: InkWell(
+        onTap: onOpenProfile,
+        child: Row(
+          children: [
+            MobileAvatar(
+              bytes: backend.profileAvatarBytes,
+              fallback: backend.profileDisplayName ?? backend.userId ?? '?',
+              presence: backend.profilePresence,
+              size: 42,
             ),
-          ),
-          IconButton(
-            tooltip: 'Mute',
-            color: backend.voiceMuted ? Colors.redAccent : null,
-            onPressed: () => backend.setVoiceMuted(!backend.voiceMuted),
-            icon: Icon(backend.voiceMuted ? Icons.mic_off : Icons.mic),
-          ),
-          IconButton(
-            tooltip: 'Settings',
-            onPressed: onOpenSettings,
-            icon: const Icon(Icons.settings),
-          ),
-        ],
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    backend.profileDisplayName ?? backend.userId ?? 'Account',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    backend.profileStatusMessage ??
+                        mobilePresenceLabel(backend.profilePresence),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Mute',
+              color: backend.voiceMuted ? Colors.redAccent : null,
+              onPressed: () => backend.setVoiceMuted(!backend.voiceMuted),
+              icon: Icon(backend.voiceMuted ? Icons.mic_off : Icons.mic),
+            ),
+            IconButton(
+              tooltip: 'Settings',
+              onPressed: onOpenSettings,
+              icon: const Icon(Icons.settings),
+            ),
+          ],
+        ),
       ),
     ),
   );

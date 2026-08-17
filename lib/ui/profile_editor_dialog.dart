@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
+import '../services/avatar_color.dart';
 import '../services/timezone_catalog.dart';
 import '../services/secret_redaction.dart';
 import 'accent_color_picker.dart';
@@ -51,14 +52,23 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
   late int _profileColor = widget.initialProfile.profileColor ?? 0xff6975d9;
   late int _profileColorSecondary =
       widget.initialProfile.profileColorSecondary ?? 0xff343966;
+  late int _voiceColor =
+      widget.initialProfile.voiceColor ??
+      widget.initialProfile.profileColor ??
+      0xff353846;
   String? _timezone;
   Uint8List? _avatar;
   Uint8List? _banner;
+  Uint8List? _voiceBackground;
   String _avatarName = 'profile-avatar.png';
   String _avatarMime = 'image/png';
   bool _removeAvatar = false;
   bool _removeBanner = false;
   bool _bannerChanged = false;
+  bool _voiceBackgroundChanged = false;
+  bool _removeVoiceBackground = false;
+  bool _voiceColorChanged = false;
+  bool _removeVoiceColor = false;
   bool _saving = false;
   String? _error;
 
@@ -68,6 +78,7 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
     _timezone = widget.initialProfile.timezone;
     _avatar = widget.initialProfile.avatarBytes;
     _banner = widget.initialProfile.bannerBytes;
+    _voiceBackground = widget.initialProfile.voiceBackgroundBytes;
     _displayName.addListener(_refreshPreview);
     _pronouns.addListener(_refreshPreview);
     _bio.addListener(_refreshPreview);
@@ -99,6 +110,8 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
     statusMessage: _status.text,
     profileColor: _profileColor,
     profileColorSecondary: _profileColorSecondary,
+    voiceColor: _voiceColor,
+    voiceBackgroundBytes: _removeVoiceBackground ? null : _voiceBackground,
     extensibleFieldsSupported: widget.initialProfile.extensibleFieldsSupported,
   );
 
@@ -152,6 +165,30 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
     });
   }
 
+  Future<void> _pickVoiceBackground() async {
+    final result = await FilePicker.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final bytes =
+        result.files.single.bytes ?? await result.xFiles.single.readAsBytes();
+    if (!mounted) return;
+    final cropped = await showProfileImageCropper(
+      context,
+      bytes: bytes,
+      title: 'Crop voice background',
+      aspectRatio: 16 / 9,
+      maximumWidth: 1600,
+    );
+    if (cropped == null || !mounted) return;
+    setState(() {
+      _voiceBackground = cropped;
+      _voiceBackgroundChanged = true;
+      _removeVoiceBackground = false;
+    });
+  }
+
   Future<void> _pickTimezone() async {
     final timezone = await showDialog<String>(
       context: context,
@@ -194,6 +231,19 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
             : null,
         removeBanner: extensible && _removeBanner,
       );
+      if (extensible &&
+          (_voiceColorChanged ||
+              _voiceBackgroundChanged ||
+              _removeVoiceBackground)) {
+        await widget.backend.updateOwnVoicePresentation(
+          color: _voiceColor,
+          backgroundBytes: _voiceBackgroundChanged && !_removeVoiceBackground
+              ? _voiceBackground
+              : null,
+          removeBackground: _removeVoiceBackground,
+          removeColor: _removeVoiceColor,
+        );
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (exception) {
       if (mounted) {
@@ -288,15 +338,19 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                         ),
                         const SizedBox(height: 8),
                         const Text('Profile gradient — top'),
-                        AccentColorPicker(
+                        const SizedBox(height: 6),
+                        AccentColorPickerButton(
                           color: _profileColor,
+                          label: 'Choose top colour',
                           onChanged: (color) =>
                               setState(() => _profileColor = color),
                         ),
                         const SizedBox(height: 10),
                         const Text('Profile gradient — bottom'),
-                        AccentColorPicker(
+                        const SizedBox(height: 6),
+                        AccentColorPickerButton(
                           color: _profileColorSecondary,
+                          label: 'Choose bottom colour',
                           onChanged: (color) =>
                               setState(() => _profileColorSecondary = color),
                         ),
@@ -354,6 +408,97 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                               child: const Text('Remove banner'),
                             ),
                           ],
+                        ),
+                        const Divider(height: 26),
+                        Text(
+                          'Voice tile',
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Uses the average avatar colour by default. You can '
+                          'override it with a colour or a separately cropped '
+                          'background.',
+                        ),
+                        const SizedBox(height: 8),
+                        AccentColorPickerButton(
+                          color: _voiceColor,
+                          label: 'Choose voice colour',
+                          onChanged: (color) => setState(() {
+                            _voiceColor = color;
+                            _voiceColorChanged = true;
+                            _removeVoiceColor = false;
+                          }),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed:
+                                  widget
+                                      .initialProfile
+                                      .extensibleFieldsSupported
+                                  ? _pickVoiceBackground
+                                  : null,
+                              icon: const Icon(Icons.wallpaper_outlined),
+                              label: const Text('Voice background'),
+                            ),
+                            TextButton(
+                              onPressed:
+                                  widget
+                                      .initialProfile
+                                      .extensibleFieldsSupported
+                                  ? () => setState(() {
+                                      _voiceBackground = null;
+                                      _voiceBackgroundChanged = true;
+                                      _removeVoiceBackground = true;
+                                      _voiceColorChanged = true;
+                                      _removeVoiceColor = true;
+                                    })
+                                  : null,
+                              child: const Text('Use avatar colour'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        AspectRatio(
+                          aspectRatio: 16 / 9,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child:
+                                !_removeVoiceBackground &&
+                                    _voiceBackground != null
+                                ? Image.memory(
+                                    _voiceBackground!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : FutureBuilder<Color>(
+                                    future: _removeVoiceColor
+                                        ? representativeAvatarColor(_avatar)
+                                        : Future.value(Color(_voiceColor)),
+                                    builder: (context, snapshot) => ColoredBox(
+                                      color:
+                                          snapshot.data ??
+                                          const Color(0xff353846),
+                                      child: Center(
+                                        child: CircleAvatar(
+                                          radius: 34,
+                                          backgroundImage: _avatar == null
+                                              ? null
+                                              : MemoryImage(_avatar!),
+                                          child: _avatar == null
+                                              ? const Icon(
+                                                  Icons.person,
+                                                  size: 34,
+                                                )
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                          ),
                         ),
                         if (!widget
                             .initialProfile

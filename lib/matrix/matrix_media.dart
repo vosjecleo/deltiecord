@@ -36,6 +36,10 @@ extension _MatrixMedia on MatrixBackend {
     _mediaPlaybackSources.clear();
     _mediaPlaybackReferences.clear();
     _mediaRangeProxy.clear();
+    _attachmentBytesCache.clear();
+    _attachmentDownloads.clear();
+    _attachmentBytesCacheSize = 0;
+    _attachmentCacheGeneration++;
     _linkPreviews.clear();
     _linkPreviewRetryAfter.clear();
     _linkPreviewAttempts.clear();
@@ -147,6 +151,34 @@ extension _MatrixMedia on MatrixBackend {
     String messageId, {
     bool thumbnail = false,
   }) async {
+    final cacheKey = '$messageId:${thumbnail ? 'thumbnail' : 'original'}';
+    final cached = _attachmentBytesCache.remove(cacheKey);
+    if (cached != null) {
+      _attachmentBytesCache[cacheKey] = cached;
+      return cached;
+    }
+    final pending = _attachmentDownloads[cacheKey];
+    if (pending != null) return pending;
+    final operation = _downloadAndCacheAttachment(
+      cacheKey,
+      messageId,
+      thumbnail: thumbnail,
+      generation: _attachmentCacheGeneration,
+    );
+    _attachmentDownloads[cacheKey] = operation;
+    return operation.whenComplete(() {
+      if (identical(_attachmentDownloads[cacheKey], operation)) {
+        _attachmentDownloads.remove(cacheKey);
+      }
+    });
+  }
+
+  Future<Uint8List> _downloadAndCacheAttachment(
+    String cacheKey,
+    String messageId, {
+    required bool thumbnail,
+    required int generation,
+  }) async {
     final event = _eventById(messageId);
     if (event == null || !event.hasAttachment) {
       throw StateError('That attachment is no longer available.');
@@ -154,7 +186,24 @@ extension _MatrixMedia on MatrixBackend {
     final file = await event.downloadAndDecryptAttachment(
       getThumbnail: thumbnail && event.hasThumbnail,
     );
-    return file.bytes;
+    final bytes = file.bytes;
+    // Cache only bounded media. This avoids repeatedly downloading/decrypting
+    // GIFs as virtualized rows leave and re-enter the viewport without turning
+    // a single huge attachment into permanent process memory.
+    if (generation == _attachmentCacheGeneration &&
+        bytes.length <= 16 * 1024 * 1024) {
+      _attachmentBytesCache[cacheKey] = bytes;
+      _attachmentBytesCacheSize += bytes.length;
+      while (_attachmentBytesCache.length >
+              MatrixBackend._maximumCachedAttachments ||
+          _attachmentBytesCacheSize >
+              MatrixBackend._maximumCachedAttachmentBytes) {
+        final oldestKey = _attachmentBytesCache.keys.first;
+        final removed = _attachmentBytesCache.remove(oldestKey);
+        _attachmentBytesCacheSize -= removed?.length ?? 0;
+      }
+    }
+    return bytes;
   }
 
   Future<MediaPlaybackSource?> _getMediaPlaybackSource(String messageId) async {

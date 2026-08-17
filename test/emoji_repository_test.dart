@@ -39,6 +39,12 @@ void main() {
     );
   });
 
+  test('complete catalogue finds ordinary colon-completion terms', () async {
+    final matches = await EmojiRepository.instance.search('cat', limit: 3);
+    expect(matches, isNotEmpty);
+    expect(matches.every((entry) => entry.matches('cat')), isTrue);
+  });
+
   test('editable alias overrides provide the canonical display name', () async {
     final crying = (await EmojiRepository.instance.search('sob')).first;
     expect(crying.name, 'Loudly crying face');

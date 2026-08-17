@@ -58,3 +58,13 @@ removed when playback ends, on logout, and at shutdown.
 
 The old automatic FxTwitter/direct fallback is not used. Direct webpage preview
 traffic occurs only after the user enables the privacy setting described above.
+
+## Android push status
+
+Android currently keeps the Matrix sync connection alive only while normal
+platform lifecycle rules permit it; it does not depend on Firebase. UnifiedPush
+support requires both an installed distributor and a Matrix-compatible push
+gateway URL registered as an HTTP pusher with the homeserver. A distributor
+endpoint alone cannot consume the Matrix Push Gateway API, so Deltiecord does
+not register a half-working or hardcoded gateway. This is the remaining piece
+needed before UnifiedPush can be offered as an explicit Android setting.

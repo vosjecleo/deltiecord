@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -7,9 +8,11 @@ import 'package:mime/mime.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
+import '../../services/emoji_completion.dart';
 import '../../services/emoji_repository.dart';
 import '../../services/giphy_service.dart';
 import '../deltiecord_theme.dart';
+import '../matrix_html_text.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
@@ -47,6 +50,12 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   ChatMessage? _reply;
   ChatMessage? _edit;
   bool _sending = false;
+  bool _autoFillingInitialChunk = false;
+  List<EmojiEntry> _emojiMatches = const [];
+  int _emojiSelection = 0;
+  int? _emojiStart;
+  int _emojiGeneration = 0;
+  bool _replacingEmoji = false;
 
   ChatBackend get backend => widget.backend;
 
@@ -75,6 +84,81 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   void _composerChanged() {
     widget.onDraftChanged(_composer.text);
     unawaited(backend.setComposerTyping(_composer.text.isNotEmpty));
+    if (!_replacingEmoji) _updateEmojiCompletion();
+  }
+
+  void _updateEmojiCompletion() {
+    final selection = _composer.selection;
+    final cursor = selection.isValid
+        ? selection.extentOffset.clamp(0, _composer.text.length)
+        : _composer.text.length;
+    final completion = findEmojiCompletion(_composer.text, cursor);
+    if (completion == null) {
+      _clearEmojiCompletion();
+      return;
+    }
+    if (completion.closed) {
+      final generation = ++_emojiGeneration;
+      final familiar = EmojiRepository.instance.familiarEmoji(completion.query);
+      if (familiar != null) {
+        _replaceEmojiCompletion(completion.start, cursor, familiar);
+        return;
+      }
+      EmojiRepository.instance.exactAlias(completion.query).then((entry) {
+        if (!mounted || generation != _emojiGeneration || entry == null) return;
+        _replaceEmojiCompletion(completion.start, cursor, entry.emoji);
+      });
+      return;
+    }
+
+    final generation = ++_emojiGeneration;
+    final familiar = EmojiRepository.instance.familiarMatches(completion.query);
+    setState(() {
+      _emojiStart = completion.start;
+      _emojiMatches = familiar;
+      _emojiSelection = 0;
+    });
+    EmojiRepository.instance.search(completion.query, limit: 3).then((matches) {
+      if (!mounted || generation != _emojiGeneration) return;
+      setState(() {
+        _emojiStart = completion.start;
+        _emojiMatches = matches;
+        _emojiSelection = matches.isEmpty
+            ? 0
+            : _emojiSelection.clamp(0, matches.length - 1);
+      });
+    });
+  }
+
+  void _replaceEmojiCompletion(int start, int end, String emoji) {
+    _replacingEmoji = true;
+    _composer.value = TextEditingValue(
+      text: _composer.text.replaceRange(start, end, emoji),
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+    _replacingEmoji = false;
+    _clearEmojiCompletion();
+  }
+
+  void _acceptEmojiCompletion(EmojiEntry entry) {
+    final start = _emojiStart;
+    if (start == null) return;
+    final selection = _composer.selection;
+    final end = selection.isValid
+        ? selection.extentOffset.clamp(start, _composer.text.length)
+        : _composer.text.length;
+    _replaceEmojiCompletion(start, end, entry.emoji);
+    _focus.requestFocus();
+  }
+
+  void _clearEmojiCompletion() {
+    _emojiGeneration++;
+    if (_emojiMatches.isEmpty && _emojiStart == null) return;
+    setState(() {
+      _emojiMatches = const [];
+      _emojiStart = null;
+      _emojiSelection = 0;
+    });
   }
 
   void _handleScroll() {
@@ -101,6 +185,13 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    if (!_autoFillingInitialChunk &&
+        !backend.timelineLoading &&
+        !backend.historyLoading &&
+        messages.length < backend.preferences.timelineChunkSize &&
+        backend.canLoadMoreHistory) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _fillInitialChunk());
+    }
     return Scaffold(
       key: const ValueKey('mobile-timeline'),
       appBar: AppBar(
@@ -203,7 +294,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                         key: const ValueKey('mobile-message-timeline'),
                         controller: _scroll,
                         reverse: true,
-                        padding: const EdgeInsets.fromLTRB(6, 10, 6, 110),
+                        padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
                         itemCount:
                             messages.length +
                             ((backend.canLoadMoreHistory ||
@@ -300,10 +391,36 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             onAdd: _showAddMenu,
             onEmoji: _showEmojiPicker,
             onSend: _send,
+            emojiMatches: _emojiMatches,
+            emojiCompletionActive: _emojiStart != null,
+            emojiSelection: _emojiSelection,
+            onEmojiSelected: _acceptEmojiCompletion,
+            onEmojiSelectionChanged: (index) =>
+                setState(() => _emojiSelection = index),
+            onDismissEmojiCompletion: _clearEmojiCompletion,
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _fillInitialChunk() async {
+    if (_autoFillingInitialChunk || !mounted) return;
+    _autoFillingInitialChunk = true;
+    try {
+      var previousCount = backend.messages.length;
+      while (mounted &&
+          backend.selectedRoom?.id == widget.room.id &&
+          previousCount < backend.preferences.timelineChunkSize &&
+          backend.canLoadMoreHistory) {
+        await backend.loadMoreHistory();
+        final currentCount = backend.messages.length;
+        if (currentCount <= previousCount) break;
+        previousCount = currentCount;
+      }
+    } finally {
+      _autoFillingInitialChunk = false;
+    }
   }
 
   Future<void> _send() async {
@@ -437,18 +554,27 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       builder: (context) => _MobileGifPicker(service: _giphy),
     );
     if (gif == null) return;
-    final bytes = await _giphy.download(gif);
-    if (!mounted) return;
-    setState(() {
-      _attachments.add(
+    final roomId = widget.room.id;
+    final reply = _reply;
+    setState(() => _sending = true);
+    try {
+      final bytes = await _giphy.download(gif);
+      await backend.sendAttachment(
         AttachmentDraft(
           bytes: bytes,
           name: 'giphy-${DateTime.now().millisecondsSinceEpoch}.gif',
           mimeType: 'image/gif',
           spoiler: false,
         ),
+        roomId: roomId,
+        replyToMessageId: reply?.id,
       );
-    });
+      if (mounted && backend.selectedRoom?.id == roomId) {
+        setState(() => _reply = null);
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
   }
 
   Future<void> _showSearch() async {
@@ -517,139 +643,161 @@ class _MobileMessageRow extends StatelessWidget {
   final VoidCallback? onProfile;
 
   @override
-  Widget build(BuildContext context) => Dismissible(
-    key: ValueKey('swipe-${message.id}'),
-    direction: DismissDirection.endToStart,
-    confirmDismiss: (_) async {
-      onReply();
-      return false;
-    },
-    background: Container(
-      alignment: Alignment.centerRight,
-      padding: const EdgeInsets.only(right: 24),
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: const Icon(Icons.reply),
-    ),
-    child: InkWell(
-      onLongPress: () => _showActions(context),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(8, grouped ? 1 : 7, 8, grouped ? 1 : 4),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 46,
-              child: grouped
-                  ? null
-                  : GestureDetector(
-                      onTap: onProfile,
-                      child: MobileAvatar(
-                        bytes: message.avatarBytes,
-                        fallback: message.sender,
-                        size: 40,
-                      ),
-                    ),
+  Widget build(BuildContext context) {
+    if (message.system) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 5),
+        child: Center(
+          child: Text(
+            message.body,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.deltiecord.muted,
+              fontStyle: FontStyle.italic,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (!grouped)
-                    GestureDetector(
-                      onTap: onProfile,
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              message.sender,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 7),
-                          Text(
-                            MaterialLocalizations.of(context).formatTimeOfDay(
-                              TimeOfDay.fromDateTime(message.timestamp),
-                              alwaysUse24HourFormat:
-                                  backend.preferences.use24HourTime,
-                            ),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          if (message.pending) ...[
-                            const SizedBox(width: 5),
-                            const SizedBox.square(
-                              dimension: 10,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.5,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  if (message.reply case final reply?)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 3),
-                      padding: const EdgeInsets.all(7),
-                      decoration: BoxDecoration(
-                        color: context.deltiecord.elevated,
-                        border: Border(
-                          left: BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
-                            width: 3,
-                          ),
+          ),
+        ),
+      );
+    }
+    return Dismissible(
+      key: ValueKey('swipe-${message.id}'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) async {
+        onReply();
+        return false;
+      },
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        color: Theme.of(context).colorScheme.primaryContainer,
+        child: const Icon(Icons.reply),
+      ),
+      child: InkWell(
+        onLongPress: () => _showActions(context),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(8, grouped ? 1 : 7, 8, grouped ? 1 : 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 46,
+                child: grouped
+                    ? null
+                    : GestureDetector(
+                        onTap: onProfile,
+                        child: MobileAvatar(
+                          bytes: message.avatarBytes,
+                          fallback: message.sender,
+                          size: 40,
                         ),
                       ),
-                      child: Text(
-                        '${reply.sender}: ${reply.body}',
-                        maxLines: 2,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!grouped)
+                      GestureDetector(
+                        onTap: onProfile,
+                        child: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                message.sender,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 7),
+                            Text(
+                              MaterialLocalizations.of(context).formatTimeOfDay(
+                                TimeOfDay.fromDateTime(message.timestamp),
+                                alwaysUse24HourFormat:
+                                    backend.preferences.use24HourTime,
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            if (message.pending) ...[
+                              const SizedBox(width: 5),
+                              const SizedBox.square(
+                                dimension: 10,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 1.5,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                    ),
-                  if (!message.redacted)
-                    SelectableText(message.body)
-                  else
-                    const Text(
-                      'Message deleted',
-                      style: TextStyle(fontStyle: FontStyle.italic),
-                    ),
-                  if (message.attachment != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5),
-                      child: MobileAttachmentView(
-                        backend: backend,
-                        message: message,
-                      ),
-                    ),
-                  if (message.linkPreview case final preview?)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 5),
-                      child: MobileLinkPreviewCard(preview: preview),
-                    ),
-                  if (message.reactions.isNotEmpty)
-                    Wrap(
-                      spacing: 4,
-                      children: [
-                        for (final reaction in message.reactions)
-                          ActionChip(
-                            label: Text('${reaction.key} ${reaction.count}'),
-                            onPressed: () => backend.toggleReaction(
-                              message.id,
-                              reaction.key,
+                    if (message.reply case final reply?)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 3),
+                        padding: const EdgeInsets.all(7),
+                        decoration: BoxDecoration(
+                          color: context.deltiecord.elevated,
+                          border: Border(
+                            left: BorderSide(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 3,
                             ),
                           ),
-                      ],
-                    ),
-                ],
+                        ),
+                        child: Text(
+                          '${reply.sender}: ${reply.body}',
+                          maxLines: 2,
+                        ),
+                      ),
+                    if (!message.redacted)
+                      message.formattedBody != null
+                          ? MatrixHtmlText(
+                              html: message.formattedBody!,
+                              fallback: message.body,
+                            )
+                          : MatrixPlainText(text: message.body)
+                    else
+                      const Text(
+                        'Message deleted',
+                        style: TextStyle(fontStyle: FontStyle.italic),
+                      ),
+                    if (message.attachment != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: MobileAttachmentView(
+                          backend: backend,
+                          message: message,
+                        ),
+                      ),
+                    if (message.linkPreview case final preview?)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 5),
+                        child: MobileLinkPreviewCard(preview: preview),
+                      ),
+                    if (message.reactions.isNotEmpty)
+                      Wrap(
+                        spacing: 4,
+                        children: [
+                          for (final reaction in message.reactions)
+                            ActionChip(
+                              label: Text('${reaction.key} ${reaction.count}'),
+                              onPressed: () => backend.toggleReaction(
+                                message.id,
+                                reaction.key,
+                              ),
+                            ),
+                        ],
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Future<void> _showActions(BuildContext context) async {
     final action = await showModalBottomSheet<String>(
@@ -723,7 +871,7 @@ class _MobileMessageRow extends StatelessWidget {
   }
 }
 
-class _MobileComposer extends StatelessWidget {
+class _MobileComposer extends StatefulWidget {
   const _MobileComposer({
     required this.controller,
     required this.focusNode,
@@ -736,6 +884,12 @@ class _MobileComposer extends StatelessWidget {
     required this.onAdd,
     required this.onEmoji,
     required this.onSend,
+    required this.emojiMatches,
+    required this.emojiCompletionActive,
+    required this.emojiSelection,
+    required this.onEmojiSelected,
+    required this.onEmojiSelectionChanged,
+    required this.onDismissEmojiCompletion,
   });
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -748,108 +902,293 @@ class _MobileComposer extends StatelessWidget {
   final VoidCallback onAdd;
   final VoidCallback onEmoji;
   final VoidCallback onSend;
+  final List<EmojiEntry> emojiMatches;
+  final bool emojiCompletionActive;
+  final int emojiSelection;
+  final ValueChanged<EmojiEntry> onEmojiSelected;
+  final ValueChanged<int> onEmojiSelectionChanged;
+  final VoidCallback onDismissEmojiCompletion;
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    top: false,
-    child: Container(
-      key: const ValueKey('mobile-composer'),
-      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-      decoration: BoxDecoration(
-        color: context.deltiecord.elevated,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (contextMessage case final message?)
-            ListTile(
-              dense: true,
-              title: Text(
-                editing ? 'Editing message' : 'Replying to ${message.sender}',
-              ),
-              subtitle: Text(
-                message.body,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              trailing: IconButton(
-                onPressed: onClearContext,
-                icon: const Icon(Icons.close),
-              ),
+  State<_MobileComposer> createState() => _MobileComposerState();
+}
+
+class _MobileComposerState extends State<_MobileComposer> {
+  final _emojiOverlay = OverlayPortalController();
+  final _emojiAnchor = LayerLink();
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleEmojiOverlaySync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MobileComposer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _scheduleEmojiOverlaySync();
+  }
+
+  void _scheduleEmojiOverlaySync() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final shouldShow = widget.emojiCompletionActive;
+      if (!shouldShow) {
+        if (_emojiOverlay.isShowing) _emojiOverlay.hide();
+      } else if (!_emojiOverlay.isShowing) {
+        _emojiOverlay.show();
+      }
+    });
+  }
+
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent || widget.emojiMatches.isEmpty) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.tab) {
+      widget.onEmojiSelectionChanged(
+        (widget.emojiSelection + 1) % widget.emojiMatches.length,
+      );
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.enter) {
+      widget.onEmojiSelected(widget.emojiMatches[widget.emojiSelection]);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      widget.onDismissEmojiCompletion();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  @override
+  Widget build(BuildContext context) => OverlayPortal(
+    controller: _emojiOverlay,
+    overlayChildBuilder: (context) => CompositedTransformFollower(
+      link: _emojiAnchor,
+      showWhenUnlinked: false,
+      targetAnchor: Alignment.topLeft,
+      followerAnchor: Alignment.bottomLeft,
+      offset: const Offset(48, -4),
+      child: UnconstrainedBox(
+        alignment: Alignment.bottomLeft,
+        child: SizedBox(
+          width: min(320, MediaQuery.sizeOf(context).width - 72),
+          child: Material(
+            key: const ValueKey('mobile-emoji-completion-popup'),
+            elevation: 8,
+            color: context.deltiecord.surface,
+            shape: RoundedRectangleBorder(
+              side: BorderSide(color: context.deltiecord.divider),
+              borderRadius: BorderRadius.circular(12),
             ),
-          if (attachments.isNotEmpty)
-            SizedBox(
-              height: 74,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.all(8),
-                itemCount: attachments.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 6),
-                itemBuilder: (context, index) {
-                  final attachment = attachments[index];
-                  return InputChip(
-                    avatar: const Icon(Icons.attach_file, size: 18),
-                    label: SizedBox(
-                      width: 100,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (widget.emojiMatches.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Center(child: Text('Searching emoji…')),
+                  ),
+                for (
+                  var index = widget.emojiMatches.length - 1;
+                  index >= 0;
+                  index--
+                )
+                  InkWell(
+                    key: ValueKey('mobile-emoji-completion-$index'),
+                    onTap: () =>
+                        widget.onEmojiSelected(widget.emojiMatches[index]),
+                    child: Container(
+                      color: index == widget.emojiSelection
+                          ? context.deltiecord.hover
+                          : null,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
                       child: Text(
-                        attachment.name,
+                        '${widget.emojiMatches[index].emoji}  :${widget.emojiMatches[index].aliases.firstOrNull ?? widget.emojiMatches[index].name}:',
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    onDeleted: () => onRemoveAttachment(attachment),
-                  );
-                },
-              ),
-            ),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              IconButton(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add_circle_outline),
-              ),
-              Expanded(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    minHeight: 48,
-                    maxHeight: MediaQuery.sizeOf(context).height / 3,
                   ),
-                  child: TextField(
-                    key: const ValueKey('mobile-composer-field'),
-                    controller: controller,
-                    focusNode: focusNode,
-                    minLines: 1,
-                    maxLines: null,
-                    keyboardType: TextInputType.multiline,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: const InputDecoration(
-                      hintText: 'Message',
-                      border: InputBorder.none,
-                      filled: false,
-                    ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+    child: CompositedTransformTarget(
+      link: _emojiAnchor,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          key: const ValueKey('mobile-composer'),
+          margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+          decoration: BoxDecoration(
+            color: context.deltiecord.elevated,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.contextMessage case final message?)
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    widget.editing
+                        ? 'Editing message'
+                        : 'Replying to ${message.sender}',
+                  ),
+                  subtitle: Text(
+                    message.body,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: IconButton(
+                    onPressed: widget.onClearContext,
+                    icon: const Icon(Icons.close),
                   ),
                 ),
-              ),
-              IconButton(
-                onPressed: onEmoji,
-                icon: const Icon(Icons.emoji_emotions_outlined),
-              ),
-              IconButton(
-                onPressed: sending ? null : onSend,
-                icon: sending
-                    ? const SizedBox.square(
-                        dimension: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send),
+              if (widget.attachments.isNotEmpty)
+                SizedBox(
+                  height: 74,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.all(8),
+                    itemCount: widget.attachments.length,
+                    separatorBuilder: (_, _) => const SizedBox(width: 6),
+                    itemBuilder: (context, index) {
+                      final attachment = widget.attachments[index];
+                      return _PendingAttachmentPreview(
+                        attachment: attachment,
+                        onRemove: () => widget.onRemoveAttachment(attachment),
+                      );
+                    },
+                  ),
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  IconButton(
+                    onPressed: widget.onAdd,
+                    icon: const Icon(Icons.add_circle_outline),
+                  ),
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: 48,
+                        maxHeight: MediaQuery.sizeOf(context).height / 3,
+                      ),
+                      child: Focus(
+                        onKeyEvent: _handleKey,
+                        child: TextField(
+                          key: const ValueKey('mobile-composer-field'),
+                          controller: widget.controller,
+                          focusNode: widget.focusNode,
+                          minLines: 1,
+                          maxLines: null,
+                          keyboardType: TextInputType.multiline,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: const InputDecoration(
+                            hintText: 'Message',
+                            border: InputBorder.none,
+                            filled: false,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.onEmoji,
+                    icon: const Icon(Icons.emoji_emotions_outlined),
+                  ),
+                  IconButton(
+                    onPressed: widget.sending ? null : widget.onSend,
+                    icon: widget.sending
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.send),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     ),
   );
+}
+
+class _PendingAttachmentPreview extends StatelessWidget {
+  const _PendingAttachmentPreview({
+    required this.attachment,
+    required this.onRemove,
+  });
+
+  final AttachmentDraft attachment;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = attachment.mimeType.startsWith('image/');
+    final isVideo = attachment.mimeType.startsWith('video/');
+    return SizedBox(
+      width: 116,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: isImage
+                ? Image.memory(
+                    attachment.bytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  )
+                : ColoredBox(
+                    color: context.deltiecord.input,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isVideo
+                              ? Icons.movie_outlined
+                              : Icons.insert_drive_file_outlined,
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            attachment.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+          Positioned(
+            right: 2,
+            top: 2,
+            child: IconButton.filled(
+              tooltip: 'Remove attachment',
+              visualDensity: VisualDensity.compact,
+              onPressed: onRemove,
+              icon: const Icon(Icons.close, size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _MobileEmojiPicker extends StatefulWidget {
@@ -860,54 +1199,158 @@ class _MobileEmojiPicker extends StatefulWidget {
 }
 
 class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
-  String _query = '';
+  final _query = TextEditingController();
+  List<EmojiEntry> _results = const [];
+  EmojiCategory? _selectedCategory;
+  int _generation = 0;
 
   @override
-  Widget build(BuildContext context) => FractionallySizedBox(
-    heightFactor: 0.72,
-    child: Padding(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        children: [
-          TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search emoji',
+  void initState() {
+    super.initState();
+    _query.addListener(_search);
+    _search();
+  }
+
+  Future<void> _search() async {
+    final generation = ++_generation;
+    final results = await EmojiRepository.instance.search(
+      _query.text,
+      limit: _query.text.trim().isEmpty ? null : 160,
+    );
+    if (mounted && generation == _generation) {
+      setState(() => _results = results);
+    }
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _selectedCategory == null
+        ? _results
+        : _results
+              .where((entry) => entry.category == _selectedCategory)
+              .toList(growable: false);
+    final grouped = <EmojiCategory, List<EmojiEntry>>{};
+    for (final entry in visible) {
+      (grouped[entry.category] ??= []).add(entry);
+    }
+    return FractionallySizedBox(
+      heightFactor: 0.72,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            TextField(
+              controller: _query,
+              autofocus: true,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Search names and aliases',
+              ),
             ),
-            onChanged: (value) => setState(() => _query = value),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: FutureBuilder<List<EmojiEntry>>(
-              future: EmojiRepository.instance.search(_query, limit: 300),
-              builder: (context, snapshot) {
-                final entries = snapshot.data;
-                if (entries == null) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                return GridView.builder(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 7,
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                children: [
+                  _MobileEmojiCategoryButton(
+                    label: 'All emoji',
+                    icon: Icons.apps,
+                    selected: _selectedCategory == null,
+                    onTap: () => setState(() => _selectedCategory = null),
                   ),
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) => IconButton(
-                    tooltip:
-                        ':${entries[index].aliases.firstOrNull ?? entries[index].name}:',
-                    onPressed: () =>
-                        Navigator.pop(context, entries[index].emoji),
-                    icon: Text(
-                      entries[index].emoji,
-                      style: const TextStyle(fontSize: 27),
+                  for (final category in EmojiCategory.values)
+                    _MobileEmojiCategoryButton(
+                      label: category.label,
+                      icon: _mobileEmojiCategoryIcon(category),
+                      selected: _selectedCategory == category,
+                      onTap: () => setState(() => _selectedCategory = category),
                     ),
-                  ),
-                );
-              },
+                ],
+              ),
             ),
-          ),
-        ],
+            Expanded(
+              child: CustomScrollView(
+                slivers: [
+                  for (final category in EmojiCategory.values)
+                    if (grouped[category] case final entries?) ...[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                          child: Text(
+                            category.label,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                        ),
+                      ),
+                      SliverGrid(
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 52,
+                            ),
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final entry = entries[index];
+                          return IconButton(
+                            key: ValueKey('mobile-emoji-picker-${entry.emoji}'),
+                            tooltip:
+                                '${entry.name}  :${entry.aliases.firstOrNull ?? entry.name}:',
+                            onPressed: () =>
+                                Navigator.pop(context, entry.emoji),
+                            icon: Text(
+                              entry.emoji,
+                              style: const TextStyle(fontSize: 27),
+                            ),
+                          );
+                        }, childCount: entries.length),
+                      ),
+                    ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
+    );
+  }
+}
+
+IconData _mobileEmojiCategoryIcon(EmojiCategory category) => switch (category) {
+  EmojiCategory.smileysAndPeople => Icons.mood,
+  EmojiCategory.animalsAndNature => Icons.pets,
+  EmojiCategory.foodAndDrink => Icons.restaurant,
+  EmojiCategory.travelAndPlaces => Icons.travel_explore,
+  EmojiCategory.activities => Icons.sports_esports,
+  EmojiCategory.objects => Icons.lightbulb_outline,
+  EmojiCategory.symbols => Icons.category_outlined,
+  EmojiCategory.flags => Icons.flag_outlined,
+};
+
+class _MobileEmojiCategoryButton extends StatelessWidget {
+  const _MobileEmojiCategoryButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+    tooltip: label,
+    isSelected: selected,
+    onPressed: onTap,
+    icon: Icon(icon),
+    selectedIcon: Icon(icon, color: Theme.of(context).colorScheme.primary),
   );
 }
 

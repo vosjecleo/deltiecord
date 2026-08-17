@@ -51,6 +51,7 @@ class _SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<_SettingsScreen> {
   _SettingsPage _page = _SettingsPage.account;
+  bool _mobilePageOpen = false;
   Future<UserProfileSummary>? _ownProfile;
   late final MicrophoneTestController _microphoneTest =
       MicrophoneTestController();
@@ -79,78 +80,134 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => CallbackShortcuts(
-    bindings: {
-      const SingleActivator(LogicalKeyboardKey.escape): () =>
-          Navigator.of(context).maybePop(),
-    },
-    child: Focus(
-      autofocus: true,
-      child: ListenableBuilder(
-        listenable: backend,
-        builder: (context, _) => Scaffold(
-          appBar: AppBar(
-            title: const Text('Settings'),
-            leading: IconButton(
-              tooltip: 'Close settings',
-              onPressed: Navigator.of(context).pop,
-              icon: const Icon(Icons.close),
-            ),
-          ),
-          body: Row(
-            children: [
-              SizedBox(
-                width: 220,
-                child: Material(
-                  color: context.deltiecord.panel,
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: ListView(
-                          padding: const EdgeInsets.all(10),
-                          children: [
-                            for (final page in _SettingsPage.values)
-                              ListTile(
-                                dense: true,
-                                selected: _page == page,
-                                leading: Icon(_iconFor(page), size: 19),
-                                title: Text(_labelFor(page)),
-                                onTap: () => setState(() => _page = page),
+  Widget build(BuildContext context) {
+    final mobile = MediaQuery.sizeOf(context).width < 700;
+    void closeTopmost() {
+      if (mobile && _mobilePageOpen) {
+        setState(() => _mobilePageOpen = false);
+      } else {
+        Navigator.of(context).maybePop();
+      }
+    }
+
+    return PopScope(
+      canPop: !mobile || !_mobilePageOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _mobilePageOpen) {
+          setState(() => _mobilePageOpen = false);
+        }
+      },
+      child: CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.escape): closeTopmost,
+        },
+        child: Focus(
+          autofocus: true,
+          child: ListenableBuilder(
+            listenable: backend,
+            builder: (context, _) => Scaffold(
+              appBar: AppBar(
+                title: Text(
+                  mobile && _mobilePageOpen ? _labelFor(_page) : 'Settings',
+                ),
+                leading: IconButton(
+                  tooltip: mobile && _mobilePageOpen
+                      ? 'Back to settings'
+                      : 'Close settings',
+                  onPressed: closeTopmost,
+                  icon: Icon(
+                    mobile && _mobilePageOpen ? Icons.arrow_back : Icons.close,
+                  ),
+                ),
+              ),
+              body: mobile
+                  ? AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      transitionBuilder: (child, animation) => SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.12, 0),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                      child: _mobilePageOpen
+                          ? _settingsPagePane(
+                              key: ValueKey('mobile-settings-${_page.name}'),
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                14,
+                                16,
+                                36,
                               ),
-                          ],
+                            )
+                          : _settingsNavigation(
+                              key: const ValueKey('mobile-settings-navigation'),
+                              mobile: true,
+                            ),
+                    )
+                  : Row(
+                      children: [
+                        SizedBox(
+                          width: 220,
+                          child: _settingsNavigation(mobile: false),
                         ),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.logout, size: 19),
-                        title: const Text('Log out'),
-                        onTap: backend.logout,
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                  ),
-                ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(28, 22, 32, 40),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: _pageBody(),
+                        const VerticalDivider(width: 1),
+                        Expanded(child: _settingsPagePane()),
+                      ],
                     ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _settingsNavigation({required bool mobile, Key? key}) => Material(
+    key: key,
+    color: context.deltiecord.panel,
+    child: Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(10),
+            children: [
+              for (final page in _SettingsPage.values)
+                ListTile(
+                  selected: !mobile && _page == page,
+                  leading: Icon(_iconFor(page), size: 21),
+                  title: Text(_labelFor(page)),
+                  trailing: mobile ? const Icon(Icons.chevron_right) : null,
+                  onTap: () => setState(() {
+                    _page = page;
+                    if (mobile) _mobilePageOpen = true;
+                  }),
+                ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        ListTile(
+          leading: const Icon(Icons.logout, size: 21),
+          title: const Text('Log out'),
+          onTap: backend.logout,
+        ),
+        const SizedBox(height: 6),
+      ],
     ),
   );
+
+  Widget _settingsPagePane({Key? key, EdgeInsets? padding}) =>
+      SingleChildScrollView(
+        key: key,
+        padding: padding ?? const EdgeInsets.fromLTRB(28, 22, 32, 40),
+        child: Align(
+          alignment: Alignment.topLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: _pageBody(),
+          ),
+        ),
+      );
 
   Widget _pageBody() => switch (_page) {
     _SettingsPage.account => _account(),
@@ -462,7 +519,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         decoration: const InputDecoration(
           labelText: 'Fallback emoji font',
           helperText:
-              'Bundled Noto Color Emoji matches the desktop emoji style.',
+              'System fallback is recommended and avoids changing text spacing.',
           border: OutlineInputBorder(),
         ),
         items: const [
@@ -778,8 +835,10 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       ),
       const SizedBox(height: 16),
       const Text('Accent colour'),
-      AccentColorPicker(
+      const SizedBox(height: 8),
+      AccentColorPickerButton(
         color: preferences.accentColor,
+        label: 'Open colour wheel',
         onChanged: (color) => backend.updatePreferences(
           backend.preferences.copyWith(accentColor: color),
         ),

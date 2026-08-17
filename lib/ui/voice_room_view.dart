@@ -6,6 +6,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
+import '../services/avatar_color.dart';
 import 'deltiecord_theme.dart';
 
 class VoiceRoomView extends StatefulWidget {
@@ -117,6 +118,7 @@ class _VoiceRoomViewState extends State<VoiceRoomView> {
               connectedHere &&
                   (streams.isNotEmpty || backend.voiceCameraEnabled)
               ? _VideoStage(
+                  backend: backend,
                   streams: streams,
                   pinnedStreamId: _pinnedStreamId,
                   participants: widget.room.voiceParticipants,
@@ -420,38 +422,14 @@ class _ParticipantCard extends StatelessWidget {
     builder: (context, snapshot) {
       final details = snapshot.data;
       final avatar = details?.avatarBytes ?? participant.avatarBytes;
-      final top = Color(
-        details?.profileColor ??
-            Theme.of(context).colorScheme.primary.toARGB32(),
-      );
-      final bottom = Color(
-        details?.profileColorSecondary ?? context.deltiecord.panel.toARGB32(),
-      );
       final own = participant.userId == backend.userId;
-      return Container(
-        decoration: BoxDecoration(
-          borderRadius: DeltiecordCorners.borderRadius,
-          border: Border.all(
-            color: participant.speaking
-                ? const Color(0xff76d49b)
-                : context.deltiecord.divider,
-            width: participant.speaking ? 3 : 1,
-          ),
-          image: details?.bannerBytes == null
-              ? null
-              : DecorationImage(
-                  image: MemoryImage(details!.bannerBytes!),
-                  fit: BoxFit.cover,
-                ),
-          gradient: details?.bannerBytes == null
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [top, bottom],
-                )
-              : null,
-        ),
-        clipBehavior: Clip.antiAlias,
+      final isSpeaking =
+          participant.speaking ||
+          (own && !backend.voiceMuted && backend.voiceInputLevel > 0.035);
+      return _VoiceTileSurface(
+        profile: details,
+        avatar: avatar,
+        speaking: isSpeaking,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -467,10 +445,10 @@ class _ParticipantCard extends StatelessWidget {
             Center(
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 100),
-                padding: EdgeInsets.all(participant.speaking ? 4 : 2),
+                padding: EdgeInsets.all(isSpeaking ? 4 : 2),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: participant.speaking
+                  color: isSpeaking
                       ? const Color(0xff76d49b)
                       : const Color(0x66000000),
                 ),
@@ -499,7 +477,7 @@ class _ParticipantCard extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
-                  if (participant.speaking)
+                  if (isSpeaking)
                     const Icon(
                       Icons.graphic_eq,
                       color: Color(0xff76d49b),
@@ -563,6 +541,52 @@ class _ParticipantCard extends StatelessWidget {
         ),
       );
     },
+  );
+}
+
+class _VoiceTileSurface extends StatelessWidget {
+  const _VoiceTileSurface({
+    required this.profile,
+    required this.avatar,
+    required this.speaking,
+    required this.child,
+    this.margin,
+  });
+
+  final UserProfileSummary? profile;
+  final Uint8List? avatar;
+  final bool speaking;
+  final Widget child;
+  final EdgeInsetsGeometry? margin;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Color>(
+    future: profile?.voiceColor != null
+        ? Future.value(Color(profile!.voiceColor!))
+        : representativeAvatarColor(avatar, fallback: context.deltiecord.panel),
+    builder: (context, snapshot) => Container(
+      margin: margin,
+      decoration: BoxDecoration(
+        borderRadius: DeltiecordCorners.borderRadius,
+        border: Border.all(
+          color: speaking
+              ? const Color(0xff76d49b)
+              : context.deltiecord.divider,
+          width: speaking ? 3 : 1,
+        ),
+        image: profile?.voiceBackgroundBytes == null
+            ? null
+            : DecorationImage(
+                image: MemoryImage(profile!.voiceBackgroundBytes!),
+                fit: BoxFit.cover,
+              ),
+        color: profile?.voiceBackgroundBytes == null
+            ? snapshot.data ?? context.deltiecord.panel
+            : null,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    ),
   );
 }
 
@@ -665,6 +689,7 @@ class _DeviceSelectors extends StatelessWidget {
 
 class _VideoStage extends StatelessWidget {
   const _VideoStage({
+    required this.backend,
     required this.streams,
     required this.pinnedStreamId,
     required this.participants,
@@ -673,6 +698,7 @@ class _VideoStage extends StatelessWidget {
     required this.onPin,
   });
 
+  final ChatBackend backend;
   final List<RtcMediaStreamSummary> streams;
   final String? pinnedStreamId;
   final List<VoiceParticipantSummary> participants;
@@ -725,6 +751,7 @@ class _VideoStage extends StatelessWidget {
                   SizedBox(
                     width: 190,
                     child: _RtcAvatarTile(
+                      backend: backend,
                       participant: participant,
                       profile: profileFor(participant.userId),
                     ),
@@ -754,6 +781,7 @@ class _VideoStage extends StatelessWidget {
           itemBuilder: (context, index) {
             if (index >= streams.length) {
               return _RtcAvatarTile(
+                backend: backend,
                 participant: cameraOffParticipants[index - streams.length],
                 profile: profileFor(
                   cameraOffParticipants[index - streams.length].userId,
@@ -780,8 +808,13 @@ class _VideoStage extends StatelessWidget {
 }
 
 class _RtcAvatarTile extends StatelessWidget {
-  const _RtcAvatarTile({required this.participant, required this.profile});
+  const _RtcAvatarTile({
+    required this.backend,
+    required this.participant,
+    required this.profile,
+  });
 
+  final ChatBackend backend;
   final VoiceParticipantSummary participant;
   final Future<UserProfileSummary> profile;
 
@@ -791,34 +824,16 @@ class _RtcAvatarTile extends StatelessWidget {
     builder: (context, snapshot) {
       final details = snapshot.data;
       final avatar = details?.avatarBytes ?? participant.avatarBytes;
-      final top = Color(
-        details?.profileColor ??
-            Theme.of(context).colorScheme.primary.toARGB32(),
-      );
-      final bottom = Color(
-        details?.profileColorSecondary ?? context.deltiecord.input.toARGB32(),
-      );
-      return Container(
+      final speaking =
+          participant.speaking ||
+          (participant.userId == backend.userId &&
+              !backend.voiceMuted &&
+              backend.voiceInputLevel > 0.035);
+      return _VoiceTileSurface(
+        profile: details,
+        avatar: avatar,
+        speaking: speaking,
         margin: const EdgeInsets.all(2),
-        decoration: BoxDecoration(
-          borderRadius: DeltiecordCorners.borderRadius,
-          border: Border.all(
-            color: participant.speaking
-                ? const Color(0xff76d49b)
-                : context.deltiecord.divider,
-            width: participant.speaking ? 3 : 1,
-          ),
-          image: details?.bannerBytes == null
-              ? null
-              : DecorationImage(
-                  image: MemoryImage(details!.bannerBytes!),
-                  fit: BoxFit.cover,
-                ),
-          gradient: details?.bannerBytes == null
-              ? LinearGradient(colors: [top, bottom])
-              : null,
-        ),
-        clipBehavior: Clip.antiAlias,
         child: Stack(
           fit: StackFit.expand,
           children: [

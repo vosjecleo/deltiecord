@@ -63,14 +63,26 @@ extension _MatrixLinkPreviews on MatrixBackend {
       );
       Uint8List? imageBytes;
       final image = response.ogImage;
-      final declaredImageSize = _previewPropertyInt(properties, const [
-        'matrix:image:size',
-        'og:image:size',
-      ]);
+      final declaredImageSize =
+          response.matrixImageSize ??
+          _previewPropertyInt(properties, const [
+            'matrix:image:size',
+            'og:image:size',
+          ]);
       if (image != null &&
           LinkPreviewNetworkPolicy.mayLoadMedia(image) &&
           (declaredImageSize == null || declaredImageSize <= 5 * 1024 * 1024)) {
-        imageBytes = await _previewImageBytes(image);
+        // Preview media is optional. A stale/missing MXC thumbnail must not
+        // discard otherwise useful OpenGraph title and description metadata.
+        try {
+          imageBytes = await _previewImageBytes(image);
+        } catch (exception) {
+          developer.log(
+            'Homeserver preview image unavailable '
+            '(${exception.runtimeType}).',
+            name: 'deltiecord.preview',
+          );
+        }
       }
       result = parseHomeserverLinkPreview(
         url: url,

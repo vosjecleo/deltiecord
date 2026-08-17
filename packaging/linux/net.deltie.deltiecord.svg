@@ -1,5 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#191a1e"/>
-  <path d="M62 50h62c52 0 82 28 82 77s-30 79-82 79H62V50zm43 34v88h18c27 0 41-15 41-45 0-29-14-43-41-43h-18z" fill="#7c83e8"/>
-  <path d="M43 33h170v190H43z" fill="none" stroke="#b9bcff" stroke-width="8"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Deltiecord logo, supplied by the project owner. -->
+<svg width="400" height="300" viewBox="0 0 105.83333 79.374999"
+  version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(0,-185.20833)">
+    <path
+      style="fill:#f20747;fill-opacity:1;stroke-width:0.114464"
+      d="m 15.875,264.58333 37.041667,-55.5625 28.310416,42.33333 H 52.916667 l 7.9375,-11.90625 -7.9375,-11.90625 -24.60625,37.04167 77.522923,-5e-5 -52.916673,-79.375 -52.9166644267831,79.375 z" />
+  </g>
 </svg>

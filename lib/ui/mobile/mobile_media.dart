@@ -1,9 +1,12 @@
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../backend/chat_backend.dart';
@@ -47,6 +50,7 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
     };
     return GestureDetector(
       onTap: hidden ? () => setState(() => _revealed = true) : null,
+      onLongPress: hidden ? null : _showMediaActions,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -67,16 +71,158 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
       ),
     );
   }
+
+  Future<void> _showMediaActions() async {
+    final attachment = widget.message.attachment!;
+    final image = attachment.kind == AttachmentKind.image;
+    final video = attachment.kind == AttachmentKind.video;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            if (image)
+              ListTile(
+                leading: const Icon(Icons.copy),
+                title: const Text('Copy image'),
+                onTap: () => Navigator.pop(context, 'copy-image'),
+              ),
+            ListTile(
+              leading: const Icon(Icons.link),
+              title: Text(
+                image ? 'Copy image reference' : 'Copy media reference',
+              ),
+              onTap: () => Navigator.pop(context, 'copy-reference'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: Text(image ? 'Save image as…' : 'Save media as…'),
+              onTap: () => Navigator.pop(context, 'save'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.open_in_new),
+              title: const Text('Open externally'),
+              onTap: () => Navigator.pop(context, 'open'),
+            ),
+            if (image || video)
+              ListTile(
+                leading: const Icon(Icons.fullscreen),
+                title: const Text('View fullscreen'),
+                onTap: () => Navigator.pop(context, 'fullscreen'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'copy-reference':
+        final reference = await widget.backend.getAttachmentReference(
+          widget.message.id,
+        );
+        if (reference != null) {
+          await Clipboard.setData(ClipboardData(text: reference));
+        }
+      case 'copy-image':
+        final bytes = await widget.backend.downloadAttachment(
+          widget.message.id,
+        );
+        final clipboard = SystemClipboard.instance;
+        if (clipboard != null) {
+          final item = DataWriterItem(suggestedName: attachment.name);
+          switch (attachment.mimeType) {
+            case 'image/jpeg':
+              item.add(Formats.jpeg(bytes));
+            case 'image/gif':
+              item.add(Formats.gif(bytes));
+            case 'image/webp':
+              item.add(Formats.webp(bytes));
+            default:
+              item.add(Formats.png(bytes));
+          }
+          await clipboard.write([item]);
+        }
+      case 'save':
+        final target = await FilePicker.saveFile(
+          dialogTitle: 'Save attachment',
+          fileName: attachment.name,
+        );
+        if (target != null) {
+          final bytes = await widget.backend.downloadAttachment(
+            widget.message.id,
+          );
+          await File(target).writeAsBytes(bytes, flush: true);
+        }
+      case 'open':
+        final bytes = await widget.backend.downloadAttachment(
+          widget.message.id,
+        );
+        final file = await TemporaryAttachmentStore.instance.create(
+          bytes: bytes,
+          displayName: attachment.name,
+        );
+        await launchUrl(
+          Uri.file(file.path),
+          mode: LaunchMode.externalApplication,
+        );
+      case 'fullscreen':
+        if (!mounted) return;
+        if (image) {
+          final bytes = await widget.backend.downloadAttachment(
+            widget.message.id,
+          );
+          if (mounted) _showImageFullscreen(context, bytes);
+        } else if (video) {
+          await showDialog<void>(
+            context: context,
+            barrierColor: Colors.black,
+            builder: (context) => Dialog.fullscreen(
+              backgroundColor: Colors.black,
+              child: Stack(
+                children: [
+                  Center(
+                    child: _MobilePlayer(
+                      backend: widget.backend,
+                      message: widget.message,
+                      audioOnly: false,
+                    ),
+                  ),
+                  _fullscreenCloseButton(context),
+                ],
+              ),
+            ),
+          );
+        }
+    }
+  }
 }
 
-class _MobileImage extends StatelessWidget {
+class _MobileImage extends StatefulWidget {
   const _MobileImage({required this.backend, required this.message});
   final ChatBackend backend;
   final ChatMessage message;
 
   @override
+  State<_MobileImage> createState() => _MobileImageState();
+}
+
+class _MobileImageState extends State<_MobileImage> {
+  late Future<Uint8List> _bytes = widget.backend.downloadAttachment(
+    widget.message.id,
+  );
+
+  @override
+  void didUpdateWidget(covariant _MobileImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.id != widget.message.id) {
+      _bytes = widget.backend.downloadAttachment(widget.message.id);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) => FutureBuilder<Uint8List>(
-    future: backend.downloadAttachment(message.id),
+    future: _bytes,
     builder: (context, snapshot) {
       if (snapshot.hasError) return const Text('Could not load image');
       final bytes = snapshot.data;
@@ -87,34 +233,7 @@ class _MobileImage extends StatelessWidget {
         );
       }
       return GestureDetector(
-        onTap: () => showDialog<void>(
-          context: context,
-          barrierColor: Colors.black,
-          builder: (context) => Dialog.fullscreen(
-            backgroundColor: Colors.black,
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: InteractiveViewer(
-                    minScale: 0.5,
-                    maxScale: 6,
-                    child: Center(child: Image.memory(bytes)),
-                  ),
-                ),
-                Positioned(
-                  right: 12,
-                  top: 12,
-                  child: SafeArea(
-                    child: IconButton.filled(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        onTap: () => _showImageFullscreen(context, bytes),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
           child: ClipRRect(
@@ -130,6 +249,43 @@ class _MobileImage extends StatelessWidget {
     },
   );
 }
+
+void _showImageFullscreen(BuildContext context, Uint8List bytes) {
+  showDialog<void>(
+    context: context,
+    barrierColor: Colors.black,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 6,
+              child: Center(child: Image.memory(bytes)),
+            ),
+          ),
+          _fullscreenCloseButton(context),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _fullscreenCloseButton(BuildContext context) => Positioned(
+  right: 12,
+  top: 12,
+  child: SafeArea(
+    child: IconButton(
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black87,
+        foregroundColor: Colors.white,
+      ),
+      onPressed: () => Navigator.pop(context),
+      icon: const Icon(Icons.close, color: Colors.white, size: 26),
+    ),
+  ),
+);
 
 class _MobilePlayer extends StatefulWidget {
   const _MobilePlayer({

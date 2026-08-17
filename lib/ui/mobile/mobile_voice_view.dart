@@ -5,7 +5,16 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
+import '../../services/avatar_color.dart';
 import 'mobile_widgets.dart';
+
+Color _voiceAvatarBorder(BuildContext context) {
+  final background = Theme.of(context).scaffoldBackgroundColor;
+  if (background.computeLuminance() < 0.01) return Colors.white;
+  return Theme.of(context).brightness == Brightness.dark
+      ? const Color(0xffb8bac2)
+      : Colors.black;
+}
 
 class MobileVoiceView extends StatefulWidget {
   const MobileVoiceView({
@@ -134,6 +143,10 @@ class _MobileVoiceViewState extends State<MobileVoiceView> {
                         stream: stream,
                         participant: participant,
                         speaking: participant?.speaking ?? false,
+                        selfSpeaking:
+                            userId == backend.userId &&
+                            !backend.voiceMuted &&
+                            backend.voiceInputLevel > 0.035,
                         profile: _profiles.putIfAbsent(
                           userId,
                           () => backend.getUserProfile(userId),
@@ -231,6 +244,7 @@ class _VoiceParticipantTile extends StatelessWidget {
     required this.userId,
     required this.stream,
     required this.speaking,
+    required this.selfSpeaking,
     required this.profile,
     required this.participant,
   });
@@ -238,6 +252,7 @@ class _VoiceParticipantTile extends StatelessWidget {
   final String userId;
   final RtcMediaStreamSummary? stream;
   final bool speaking;
+  final bool selfSpeaking;
   final Future<UserProfileSummary> profile;
   final VoiceParticipantSummary? participant;
 
@@ -247,71 +262,83 @@ class _VoiceParticipantTile extends StatelessWidget {
     builder: (context, snapshot) {
       final profile = snapshot.data;
       final media = stream;
-      return GestureDetector(
-        onDoubleTap: media == null ? null : () => _fullscreen(context, media),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: speaking
-                  ? const Color(0xff23c483)
-                  : Theme.of(context).dividerColor,
-              width: speaking ? 3 : 1,
+      final isSpeaking = speaking || selfSpeaking;
+      return FutureBuilder<Color>(
+        future: profile?.voiceColor != null
+            ? Future.value(Color(profile!.voiceColor!))
+            : representativeAvatarColor(profile?.avatarBytes),
+        builder: (context, colorSnapshot) => GestureDetector(
+          onDoubleTap: media == null ? null : () => _fullscreen(context, media),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSpeaking
+                    ? const Color(0xff23c483)
+                    : Theme.of(context).dividerColor,
+                width: isSpeaking ? 3 : 1,
+              ),
             ),
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (media != null)
-                _RtcVideo(stream: media)
-              else if (profile?.bannerBytes case final banner?)
-                Image.memory(banner, fit: BoxFit.cover)
-              else
-                ColoredBox(color: Color(profile?.profileColor ?? 0xff353846)),
-              if (media == null)
-                Center(
-                  child: MobileAvatar(
-                    bytes: profile?.avatarBytes,
-                    fallback: profile?.displayName ?? userId,
-                    size: 86,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (media != null)
+                  _RtcVideo(stream: media)
+                else if (profile?.voiceBackgroundBytes case final banner?)
+                  Image.memory(banner, fit: BoxFit.cover)
+                else
+                  ColoredBox(
+                    color: colorSnapshot.data ?? const Color(0xff353846),
                   ),
-                ),
-              Positioned(
-                left: 10,
-                right: 10,
-                bottom: 8,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        profile?.displayName ?? userId,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          shadows: [Shadow(blurRadius: 5, color: Colors.black)],
+                if (media == null)
+                  Center(
+                    child: MobileAvatar(
+                      bytes: profile?.avatarBytes,
+                      fallback: profile?.displayName ?? userId,
+                      size: 86,
+                      borderColor: _voiceAvatarBorder(context),
+                      speaking: isSpeaking,
+                    ),
+                  ),
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 8,
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          profile?.displayName ?? userId,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            shadows: [
+                              Shadow(blurRadius: 5, color: Colors.black),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    if (speaking)
-                      const Icon(Icons.graphic_eq, color: Color(0xff23c483)),
-                  ],
-                ),
-              ),
-              if (userId != backend.userId)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: IconButton.filledTonal(
-                    tooltip: 'Local participant controls',
-                    onPressed: () => _participantControls(context),
-                    icon: const Icon(Icons.more_horiz),
+                      if (isSpeaking)
+                        const Icon(Icons.graphic_eq, color: Color(0xff23c483)),
+                    ],
                   ),
                 ),
-            ],
+                if (userId != backend.userId)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: IconButton.filledTonal(
+                      tooltip: 'Local participant controls',
+                      onPressed: () => _participantControls(context),
+                      icon: const Icon(Icons.more_horiz),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       );

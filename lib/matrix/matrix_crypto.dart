@@ -119,4 +119,41 @@ extension _MatrixCrypto on MatrixBackend {
       rethrow;
     }
   }
+
+  Future<String> _regenerateEncryptionRecoveryKey() async {
+    try {
+      final current = await _matrix.getCryptoIdentityState();
+      if (!current.initialized || !current.connected) {
+        throw StateError(
+          'Recover and verify this device before replacing the recovery key.',
+        );
+      }
+      // The SDK rewrites Secure Secret Storage with a new key while retaining
+      // the already-connected cross-signing identity and online key backup.
+      // Never run this from an unconnected device: the local identity secrets
+      // are what make a non-destructive rotation possible.
+      final recoveryKey = await _matrix.initCryptoIdentity(
+        keyName: 'Deltiecord recovery key',
+        wipeSecureStorage: true,
+        wipeKeyBackup: false,
+        wipeCrossSigning: false,
+        setupMasterKey: true,
+        setupSelfSigningKey: true,
+        setupUserSigningKey: true,
+        setupOnlineKeyBackup: true,
+      );
+      await refreshEncryptionSetup();
+      return recoveryKey;
+    } catch (exception) {
+      _encryptionSetup = EncryptionSetupState(
+        status: _encryptionSetup.status,
+        keyBackupEnabled: _encryptionSetup.keyBackupEnabled,
+        crossSigningEnabled: _encryptionSetup.crossSigningEnabled,
+        deviceVerified: _encryptionSetup.deviceVerified,
+        message: _friendlyError(exception),
+      );
+      _notifyBackendListeners();
+      rethrow;
+    }
+  }
 }

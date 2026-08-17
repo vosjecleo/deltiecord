@@ -12,6 +12,7 @@ import 'ui/chat_shell.dart';
 import 'ui/deltiecord_theme.dart';
 import 'ui/login_screen.dart';
 import 'ui/mobile/mobile_chat_shell.dart';
+import 'ui/security_center.dart';
 
 class DeltiecordApp extends StatelessWidget {
   const DeltiecordApp({
@@ -114,10 +115,10 @@ class DeltiecordApp extends StatelessWidget {
               fontFamily: preferences.fontFamily == 'System'
                   ? null
                   : preferences.fontFamily,
-              // Keep emoji rendering deterministic across Linux and Windows.
-              // Without an explicit fallback, Skia delegates missing glyphs
-              // to the host font configuration and can select monochrome or
-              // incomplete emoji fonts on otherwise identical installs.
+              // Platform fallback is the default. Applying Noto Color Emoji
+              // to an entire Flutter text run changes the metrics of digits
+              // and spaces on some hosts; the bundled face is therefore an
+              // explicit advanced compatibility option only.
               fontFamilyFallback: emojiFontFamily == systemEmojiFontFamily
                   ? null
                   : <String>[emojiFontFamily],
@@ -283,8 +284,14 @@ class DeltiecordApp extends StatelessWidget {
             ),
             SessionStatus.signedIn =>
               mobile
-                  ? MobileChatShell(backend: backend)
-                  : ChatShell(backend: backend),
+                  ? _EncryptionRecoveryPrompt(
+                      backend: backend,
+                      child: MobileChatShell(backend: backend),
+                    )
+                  : _EncryptionRecoveryPrompt(
+                      backend: backend,
+                      child: ChatShell(backend: backend),
+                    ),
             SessionStatus.signedOut ||
             SessionStatus.signingIn => LoginScreen(backend: backend),
           },
@@ -292,6 +299,68 @@ class DeltiecordApp extends StatelessWidget {
       },
     );
   }
+}
+
+class _EncryptionRecoveryPrompt extends StatefulWidget {
+  const _EncryptionRecoveryPrompt({required this.backend, required this.child});
+
+  final ChatBackend backend;
+  final Widget child;
+
+  @override
+  State<_EncryptionRecoveryPrompt> createState() =>
+      _EncryptionRecoveryPromptState();
+}
+
+class _EncryptionRecoveryPromptState extends State<_EncryptionRecoveryPrompt> {
+  bool _dialogOpen = false;
+  bool _promptedForCurrentNeed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.backend.addListener(_encryptionChanged);
+    _encryptionChanged();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EncryptionRecoveryPrompt oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.backend != widget.backend) {
+      oldWidget.backend.removeListener(_encryptionChanged);
+      widget.backend.addListener(_encryptionChanged);
+    }
+    _encryptionChanged();
+  }
+
+  void _encryptionChanged() {
+    if (!mounted) return;
+    final status = widget.backend.encryptionSetup.status;
+    final needsCredential =
+        status == EncryptionSetupStatus.needsRecovery ||
+        status == EncryptionSetupStatus.needsRepair;
+    if (!needsCredential) {
+      _promptedForCurrentNeed = false;
+      return;
+    }
+    if (_dialogOpen || _promptedForCurrentNeed) return;
+    _promptedForCurrentNeed = true;
+    _dialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showSecurityCenter(context, widget.backend);
+      _dialogOpen = false;
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.backend.removeListener(_encryptionChanged);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _NoMotionPageTransitionsBuilder extends PageTransitionsBuilder {

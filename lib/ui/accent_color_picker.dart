@@ -3,6 +3,112 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+class AccentColorPickerButton extends StatefulWidget {
+  const AccentColorPickerButton({
+    required this.color,
+    required this.onChanged,
+    this.label = 'Choose colour',
+    super.key,
+  });
+
+  final int color;
+  final ValueChanged<int> onChanged;
+  final String label;
+
+  @override
+  State<AccentColorPickerButton> createState() =>
+      _AccentColorPickerButtonState();
+}
+
+class _AccentColorPickerButtonState extends State<AccentColorPickerButton> {
+  Offset? _anchor;
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTapDown: (details) => _anchor = details.globalPosition,
+    child: OutlinedButton.icon(
+      onPressed: () => showAccentColorPickerPopup(
+        context,
+        color: widget.color,
+        onChanged: widget.onChanged,
+        anchor: _anchor,
+      ),
+      icon: Container(
+        width: 22,
+        height: 22,
+        decoration: BoxDecoration(
+          color: Color(widget.color),
+          shape: BoxShape.circle,
+          border: Border.all(color: Theme.of(context).dividerColor),
+        ),
+      ),
+      label: Text(
+        '${widget.label}  ${_AccentColorPickerState._hexValue(widget.color)}',
+      ),
+    ),
+  );
+}
+
+Future<void> showAccentColorPickerPopup(
+  BuildContext context, {
+  required int color,
+  required ValueChanged<int> onChanged,
+  Offset? anchor,
+}) {
+  if (MediaQuery.sizeOf(context).width < 700) {
+    return showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 28),
+          child: AccentColorPicker(color: color, onChanged: onChanged),
+        ),
+      ),
+    );
+  }
+  return showGeneralDialog<void>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Close colour picker',
+    barrierColor: Colors.black38,
+    pageBuilder: (context, _, _) => LayoutBuilder(
+      builder: (context, constraints) {
+        const width = 530.0;
+        const height = 300.0;
+        final point = anchor ?? constraints.biggest.center(Offset.zero);
+        final left = (point.dx - width / 2).clamp(
+          12.0,
+          constraints.maxWidth - width - 12,
+        );
+        final top = (point.dy - 36).clamp(
+          12.0,
+          constraints.maxHeight - height - 12,
+        );
+        return Stack(
+          children: [
+            Positioned(
+              left: left,
+              top: top,
+              width: width,
+              child: Material(
+                elevation: 18,
+                borderRadius: BorderRadius.circular(12),
+                clipBehavior: Clip.antiAlias,
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: AccentColorPicker(color: color, onChanged: onChanged),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+}
+
 class AccentColorPicker extends StatefulWidget {
   const AccentColorPicker({
     required this.color,

@@ -26,12 +26,12 @@ void main() {
     const preferences = AppPreferences();
     expect(preferences.compactness, 0.5);
     expect(preferences.fontFamily, 'Liberation Sans');
-    expect(preferences.emojiFontFamily, 'Deltiecord Emoji');
+    expect(preferences.emojiFontFamily, systemEmojiFontFamily);
   });
 
-  test('stale emoji font values migrate to the bundled color font', () {
-    expect(normalizeEmojiFontFamily('<none>'), bundledEmojiFontFamily);
-    expect(normalizeEmojiFontFamily(''), bundledEmojiFontFamily);
+  test('stale emoji font values migrate to the system color font', () {
+    expect(normalizeEmojiFontFamily('<none>'), systemEmojiFontFamily);
+    expect(normalizeEmojiFontFamily(''), systemEmojiFontFamily);
     expect(
       normalizeEmojiFontFamily(systemEmojiFontFamily),
       systemEmojiFontFamily,

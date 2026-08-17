@@ -16,6 +16,27 @@ report reproducible problems with relevant platform details.
   across more physical Android devices.
 - Android exposes fewer explicit input/output routing controls than desktop on
   some devices; unsupported routing choices degrade to the system route.
+- UnifiedPush is not registered yet. A distributor endpoint alone cannot
+  consume Matrix push-gateway requests; deployment needs a configured
+  Matrix-compatible push gateway before Deltiecord can register a pusher.
+
+## Fixed for build 63
+
+- Mobile message links now use the shared safe link renderer and link previews
+  refresh immediately when direct fallback is enabled.
+- Mobile colon emoji completion now searches the complete local catalogue and
+  categorized emoji browsing matches desktop.
+- Mobile GIF selection sends immediately, pending attachments show previews,
+  and repeated encrypted media/GIF reads share a bounded session cache.
+- Mobile navigation swipes work over message rows, profiles render their shared
+  colours and dismiss from a downward drag, and narrow Settings uses a usable
+  category/detail navigation stack.
+- Unverified sessions prompt for recovery and verified users can deliberately
+  replace their recovery key from the shared Security Center.
+- Voice participant tiles now use a dedicated background presentation and show
+  local speaking state without reusing the ordinary profile banner.
+- The Linux process name and desktop/Android launcher art now identify
+  Deltiecord consistently.
 
 ## Fixed in v0.9.18 build 62
 

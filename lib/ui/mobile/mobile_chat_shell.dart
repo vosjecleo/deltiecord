@@ -8,6 +8,7 @@ import '../../services/draft_store.dart';
 import '../settings_screen.dart';
 import 'mobile_details_panel.dart';
 import 'mobile_navigation.dart';
+import 'mobile_profile_sheet.dart';
 import 'mobile_timeline.dart';
 import 'mobile_voice_view.dart';
 
@@ -31,6 +32,7 @@ class _MobileChatShellState extends State<MobileChatShell> {
   final DraftStore _draftStore = DraftStore();
   String? _lastRoomId;
   bool _openingRoom = false;
+  final Map<int, Offset> _pointerStarts = {};
 
   ChatBackend get backend => widget.backend;
 
@@ -112,14 +114,27 @@ class _MobileChatShellState extends State<MobileChatShell> {
         }
       },
       child: Scaffold(
-        body: GestureDetector(
+        body: Listener(
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0;
-            if (!_detailsVisible && !_navigationVisible && velocity > 450) {
+          // Raw pointer tracking deliberately observes (but does not win) the
+          // gesture arena. Message rows may still claim a left drag for reply,
+          // while a right drag anywhere on the timeline reliably opens nav.
+          onPointerDown: (event) =>
+              _pointerStarts[event.pointer] = event.position,
+          onPointerCancel: (event) => _pointerStarts.remove(event.pointer),
+          onPointerUp: (event) {
+            final start = _pointerStarts.remove(event.pointer);
+            if (start == null) return;
+            final delta = event.position - start;
+            if (delta.dx.abs() < 72 || delta.dx.abs() < delta.dy.abs() * 1.25) {
+              return;
+            }
+            if (!_detailsVisible && !_navigationVisible && delta.dx > 0) {
               setState(() => _navigationVisible = true);
-            } else if (_navigationVisible && room != null && velocity < -450) {
+            } else if (_navigationVisible && room != null && delta.dx < 0) {
               setState(() => _navigationVisible = false);
+            } else if (_detailsVisible && delta.dx > 0) {
+              setState(() => _detailsVisible = false);
             }
           },
           child: Stack(
@@ -181,6 +196,16 @@ class _MobileChatShellState extends State<MobileChatShell> {
                         backend: backend,
                         onOpenRoom: _openRoom,
                         onOpenSettings: _showSettings,
+                        onOpenProfile: () {
+                          final userId = backend.userId;
+                          if (userId == null) return;
+                          showMobileProfileSheet(
+                            context,
+                            backend,
+                            userId,
+                            onEditOwnProfile: _showSettings,
+                          );
+                        },
                       ),
                     ),
                   ),

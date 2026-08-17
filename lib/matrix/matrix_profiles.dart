@@ -5,6 +5,8 @@ const _profilePronounsField = 'net.deltiecord.pronouns';
 const _profileBannerField = 'net.deltiecord.banner';
 const _profileColorField = 'net.deltiecord.profile_color';
 const _profileColorSecondaryField = 'net.deltiecord.profile_color_secondary';
+const _profileVoiceColorField = 'net.deltiecord.voice_color';
+const _profileVoiceBackgroundField = 'net.deltiecord.voice_background';
 
 /// Reads and writes standard and namespaced extensible Matrix profile fields.
 ///
@@ -46,6 +48,13 @@ extension _MatrixProfiles on MatrixBackend {
       profile.additionalProperties[_profileBannerField] as String? ?? '',
     );
     final bannerBytes = await _profileOriginalMedia(bannerUri);
+    final voiceBackgroundUri = Uri.tryParse(
+      profile.additionalProperties[_profileVoiceBackgroundField] as String? ??
+          '',
+    );
+    final voiceBackgroundBytes = await _profileOriginalMedia(
+      voiceBackgroundUri,
+    );
     final capability = await _profileCapability();
     CachedPresence? presence;
     try {
@@ -73,6 +82,10 @@ extension _MatrixProfiles on MatrixBackend {
       profileColorSecondary: _parseProfileColor(
         profile.additionalProperties[_profileColorSecondaryField],
       ),
+      voiceColor: _parseProfileColor(
+        profile.additionalProperties[_profileVoiceColorField],
+      ),
+      voiceBackgroundBytes: voiceBackgroundBytes,
       extensibleFieldsSupported: capability?.enabled == true,
       blocked: _matrix.ignoredUsers.contains(userId),
     );
@@ -83,7 +96,8 @@ extension _MatrixProfiles on MatrixBackend {
       (total, entry) =>
           total +
           (entry.$1.avatarBytes?.length ?? 0) +
-          (entry.$1.bannerBytes?.length ?? 0),
+          (entry.$1.bannerBytes?.length ?? 0) +
+          (entry.$1.voiceBackgroundBytes?.length ?? 0),
     );
     while (_profileCache.length > MatrixBackend._maximumCachedProfiles ||
         (mediaBytes > MatrixBackend._maximumCachedProfileMediaBytes &&
@@ -91,7 +105,8 @@ extension _MatrixProfiles on MatrixBackend {
       final removed = _profileCache.remove(_profileCache.keys.first);
       mediaBytes -=
           (removed?.$1.avatarBytes?.length ?? 0) +
-          (removed?.$1.bannerBytes?.length ?? 0);
+          (removed?.$1.bannerBytes?.length ?? 0) +
+          (removed?.$1.voiceBackgroundBytes?.length ?? 0);
     }
     return result;
   }
@@ -219,6 +234,69 @@ extension _MatrixProfiles on MatrixBackend {
         } on MatrixException catch (exception) {
           if (exception.error != MatrixError.M_UNRECOGNIZED) rethrow;
         }
+      }
+      _profileCache.remove(userId);
+      _notifyBackendListeners();
+    } catch (exception) {
+      _error = _friendlyError(exception);
+      _notifyBackendListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> _updateOwnVoicePresentation({
+    int? color,
+    Uint8List? backgroundBytes,
+    required bool removeColor,
+    required bool removeBackground,
+  }) async {
+    final userId = _matrix.userID;
+    if (userId == null) return;
+    final capability = await _profileCapability();
+    bool supports(String key) {
+      if (capability?.enabled != true) return false;
+      final allowed = capability?.allowed;
+      if (allowed != null) return allowed.contains(key);
+      return !(capability?.disallowed?.contains(key) ?? false);
+    }
+
+    Never unsupported(String key) => throw UnsupportedError(
+      'This homeserver does not advertise support for the profile field $key.',
+    );
+
+    try {
+      if (removeColor) {
+        if (!supports(_profileVoiceColorField)) {
+          unsupported(_profileVoiceColorField);
+        }
+        await _matrix.deleteProfileField(userId, _profileVoiceColorField);
+      } else if (color != null) {
+        if (!supports(_profileVoiceColorField)) {
+          unsupported(_profileVoiceColorField);
+        }
+        final value =
+            '#${color.toRadixString(16).padLeft(8, '0').substring(2)}';
+        await _matrix.setProfileField(userId, _profileVoiceColorField, {
+          _profileVoiceColorField: value,
+        });
+      }
+      if (removeBackground) {
+        if (!supports(_profileVoiceBackgroundField)) {
+          unsupported(_profileVoiceBackgroundField);
+        }
+        await _matrix.deleteProfileField(userId, _profileVoiceBackgroundField);
+      } else if (backgroundBytes != null) {
+        if (!supports(_profileVoiceBackgroundField)) {
+          unsupported(_profileVoiceBackgroundField);
+        }
+        final mxc = await _matrix.uploadContent(
+          backgroundBytes,
+          filename: 'voice-background.png',
+          contentType: 'image/png',
+        );
+        await _matrix.setProfileField(userId, _profileVoiceBackgroundField, {
+          _profileVoiceBackgroundField: mxc.toString(),
+        });
       }
       _profileCache.remove(userId);
       _notifyBackendListeners();

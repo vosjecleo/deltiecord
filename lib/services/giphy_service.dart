@@ -116,12 +116,20 @@ class GiphyService {
         .whereType<Map>()
         .map((item) {
           final images = item['images'] as Map?;
-          final preview = images?['fixed_width'] as Map?;
-          final original = images?['original'] as Map?;
+          final preview =
+              (images?['fixed_width_still'] as Map?) ??
+              (images?['fixed_width'] as Map?);
+          // Originals can be tens of megabytes. A downsized rendition keeps
+          // chat quality while making selection, encryption, and upload much
+          // faster for every client involved.
+          final send =
+              (images?['downsized_medium'] as Map?) ??
+              (images?['downsized'] as Map?) ??
+              (images?['original'] as Map?);
           return GifSearchResult(
             title: item['title']?.toString() ?? 'GIF',
             previewUrl: Uri.parse(preview?['url']?.toString() ?? ''),
-            shareUrl: Uri.parse(original?['url']?.toString() ?? ''),
+            shareUrl: Uri.parse(send?['url']?.toString() ?? ''),
           );
         })
         .where((gif) => gif.previewUrl.hasScheme && gif.shareUrl.hasScheme)

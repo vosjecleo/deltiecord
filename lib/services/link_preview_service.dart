@@ -222,7 +222,14 @@ class DirectLinkPreviewFetcher {
       Uint8List? imageBytes;
       final imageUrl = metadata.imageUrl;
       if (imageUrl != null) {
-        imageBytes = await _fetchImage(imageUrl);
+        // Images are an enhancement to the text card. Keep a valid title or
+        // description when an origin's image is unavailable or exceeds the
+        // bounded media policy.
+        try {
+          imageBytes = await _fetchImage(imageUrl);
+        } on Exception {
+          imageBytes = null;
+        }
       }
       final preview = LinkPreview(
         url: initialUrl,

@@ -57,6 +57,31 @@ void main() {
     expect(preview?.imageBytes, [1, 2, 3]);
   });
 
+  test('direct fallback keeps text metadata when its image fails', () async {
+    final fetcher = DirectLinkPreviewFetcher(
+      resolveHost: (_) async => [InternetAddress('93.184.216.34')],
+      transport: _FakeTransport({
+        'https://public.example/page': _response(
+          '<meta property="og:title" content="Still useful">'
+          '<meta property="og:description" content="Text survives">'
+          '<meta property="og:image" content="/missing.png">',
+        ),
+        'https://public.example/missing.png': DirectPreviewResponse(
+          statusCode: 404,
+          contentType: 'text/plain',
+          body: const Stream.empty(),
+        ),
+      }),
+    );
+
+    final preview = await fetcher.fetch(
+      Uri.parse('https://public.example/page'),
+    );
+    expect(preview?.title, 'Still useful');
+    expect(preview?.description, 'Text survives');
+    expect(preview?.imageBytes, isNull);
+  });
+
   test('rejects redirects to private hosts before connecting', () async {
     final transport = _FakeTransport({
       'https://public.example/page': DirectPreviewResponse(

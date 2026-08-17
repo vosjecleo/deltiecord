@@ -85,6 +85,50 @@ class _SecurityDialogState extends State<_SecurityDialog> {
     }
   }
 
+  Future<void> _regenerateRecoveryKey() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Replace recovery key?'),
+        content: const Text(
+          'Your existing recovery key will stop working. Cross-signing and '
+          'encrypted key backup will be kept, but you must save the new key '
+          'before closing Deltiecord.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Replace key'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _working = true;
+      _localError = null;
+      _savedGeneratedKey = false;
+    });
+    try {
+      final key = await widget.backend.regenerateEncryptionRecoveryKey();
+      if (mounted) setState(() => _generatedRecoveryKey = key);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _localError =
+              widget.backend.encryptionSetup.message ??
+              'The recovery key could not be replaced.';
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final security = widget.backend.encryptionSetup;
@@ -181,6 +225,13 @@ class _SecurityDialogState extends State<_SecurityDialog> {
             FilledButton(
               onPressed: _working ? null : _createSetup,
               child: Text(_working ? 'Setting up…' : 'Set up encryption'),
+            ),
+          if (security.status == EncryptionSetupStatus.ready &&
+              generatedKey == null)
+            FilledButton.tonalIcon(
+              onPressed: _working ? null : _regenerateRecoveryKey,
+              icon: const Icon(Icons.key_outlined),
+              label: const Text('Replace recovery key'),
             ),
           if (generatedKey != null)
             FilledButton(

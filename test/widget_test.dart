@@ -21,17 +21,14 @@ void main() {
     expect(find.text('Sign in'), findsOneWidget);
   });
 
-  testWidgets('applies the bundled emoji font to ordinary application text', (
+  testWidgets('new installs defer emoji shaping to the platform font stack', (
     tester,
   ) async {
     final backend = FakeBackend()..currentStatus = SessionStatus.signedOut;
     await tester.pumpWidget(DeltiecordApp(backend: backend));
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(
-      app.theme!.textTheme.bodyMedium!.fontFamilyFallback,
-      contains('Deltiecord Emoji'),
-    );
+    expect(app.theme!.textTheme.bodyMedium!.fontFamilyFallback, isNull);
   });
 
   testWidgets('shows joined rooms and opens a timeline', (tester) async {
@@ -86,6 +83,11 @@ void main() {
     expect(find.text('OLED'), findsOneWidget);
     expect(find.byKey(const Key('interface-scale-slider')), findsOneWidget);
     expect(find.byKey(const Key('compactness-slider')), findsOneWidget);
+    final colourWheelButton = find.textContaining('Open colour wheel');
+    await tester.ensureVisible(colourWheelButton);
+    await tester.pumpAndSettle();
+    await tester.tap(colourWheelButton);
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('accent-colour-wheel')), findsOneWidget);
 
     await tester.enterText(
@@ -2246,6 +2248,65 @@ void main() {
     expect(find.text('Home'), findsOneWidget);
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byKey(const ValueKey('mobile-user-island')), findsOneWidget);
+  });
+
+  testWidgets('Android composer completes local colon emoji aliases', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!emoji-mobile:test',
+          name: 'Emoji mobile',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Emoji mobile'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('mobile-composer-field')),
+      ':sob:',
+    );
+    await tester.pumpAndSettle();
+
+    final field = tester.widget<TextField>(
+      find.byKey(const ValueKey('mobile-composer-field')),
+    );
+    expect(field.controller!.text, '😭');
+  });
+
+  testWidgets('Android composer searches the complete local emoji catalogue', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!emoji-search-mobile:test',
+          name: 'Emoji search mobile',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Emoji search mobile'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('mobile-composer-field')),
+      'hello :cat',
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('mobile-emoji-completion-popup')),
+      findsOneWidget,
+    );
+    expect(find.textContaining(':cat'), findsWidgets);
   });
 
   testWidgets('Android room opening and navigation slide preserve selection', (

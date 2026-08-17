@@ -96,7 +96,11 @@ silently placed in account data.
 | `net.deltiecord.banner` | `mxc://` URI for the profile banner | Render colour/empty banner |
 | `net.deltiecord.profile_color` | `#RRGGBB` primary colour | Use application accent |
 | `net.deltiecord.profile_color_secondary` | `#RRGGBB` secondary gradient colour | Use primary colour |
+| `net.deltiecord.voice_color` | `#RRGGBB` optional RTC tile colour | Derive a representative colour from the avatar |
+| `net.deltiecord.voice_background` | `mxc://` URI for an independently cropped RTC tile background | Use the explicit or avatar-derived colour |
 
 Display name and avatar use standard Matrix profile fields. Presence and the
 short status message use standard Matrix presence APIs. A homeserver or client
-that ignores the custom fields still sees a normal Matrix profile.
+that ignores the custom fields still sees a normal Matrix profile. The ordinary
+profile banner is deliberately not reused as an RTC background: each image has
+a different crop and privacy/presentation purpose.

@@ -145,6 +145,10 @@ extension _MatrixSession on MatrixBackend {
       _maximumUploadBytes = null;
       _mediaPlaybackSources.clear();
       _mediaPlaybackReferences.clear();
+      _attachmentBytesCache.clear();
+      _attachmentDownloads.clear();
+      _attachmentBytesCacheSize = 0;
+      _attachmentCacheGeneration++;
       _deviceSessions = const [];
       _profileDisplayName = null;
       _profileAvatarBytes = null;
@@ -622,8 +626,10 @@ extension _MatrixSession on MatrixBackend {
 
   Future<void> _updatePreferences(AppPreferences preferences) async {
     if (_matrix.userID == null) return;
-    if (preferences.fetchDirectLinkPreviews !=
-        _preferences.fetchDirectLinkPreviews) {
+    final previewPolicyChanged =
+        preferences.fetchDirectLinkPreviews !=
+        _preferences.fetchDirectLinkPreviews;
+    if (previewPolicyChanged) {
       // A previous homeserver-only miss must not suppress a newly opted-in
       // direct fallback (and vice versa). Event previews hydrate again lazily.
       _linkPreviews.clear();
@@ -653,6 +659,13 @@ extension _MatrixSession on MatrixBackend {
       if (pending != null) unawaited(_persistPreferences(pending));
     });
     _notifyBackendListeners();
+    final timeline = _timeline;
+    if (previewPolicyChanged && timeline != null) {
+      // Rehydrate the current room immediately. Waiting for another Matrix
+      // timeline event made this privacy toggle appear broken until the user
+      // switched rooms or received a message.
+      unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
+    }
   }
 
   Future<void> _persistPreferences(AppPreferences preferences) async {

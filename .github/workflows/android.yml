@@ -81,9 +81,13 @@ jobs:
             exit 1
           fi
           if [[ -z "$KEY_ALIAS" ]]; then
-            KEY_ALIAS="$(keytool -J-Duser.language=en -list -v \
+            if ! keytool_output="$(keytool -J-Duser.language=en -list -v \
               -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
-              -storepass "$STORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+              -storepass "$STORE_PASSWORD" 2>&1)"; then
+              echo '::error title=Invalid Android keystore::The supplied keystore could not be opened with DELTIECORD_ANDROID_STORE_PASSWORD.'
+              exit 1
+            fi
+            KEY_ALIAS="$(sed -n 's/^Alias name: //p' <<<"$keytool_output" | head -n 1)"
           fi
           if [[ -z "$KEY_ALIAS" ]]; then
             echo '::error title=Invalid Android keystore::No signing-key alias could be read from the supplied keystore.'

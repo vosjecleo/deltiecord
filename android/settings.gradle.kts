@@ -20,8 +20,8 @@ pluginManagement {
 plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     // CargoKit-based native plugins still use Gradle's deprecated exec API.
-    // AGP 8.10 supports API 36 while retaining that Gradle 8 compatibility.
-    id("com.android.application") version "8.10.1" apply false
+    // Stay on AGP 8 while meeting Flutter's current Gradle/API 36 baseline.
+    id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.3.20" apply false
 }
 

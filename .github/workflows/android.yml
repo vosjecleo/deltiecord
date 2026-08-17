@@ -17,6 +17,9 @@ env:
   RUST_TOOLCHAIN: 1.97.1
   RUSTFLAGS: -C link-dead-code
   GRADLE_OPTS: -Dorg.gradle.daemon=false
+  FALLBACK_APK_RELEASE_ID: 0.9.20+66
+  FALLBACK_APK_URL: https://deltie.net/cord/staging/deltiecord-0.9.20+66-android.apk
+  FALLBACK_APK_SHA256: 9def6cad357b84ce4c338405a624b3e6e8d54fa406bdd47b721ab1da67ce2758
 
 jobs:
   android:
@@ -63,6 +66,12 @@ jobs:
           KEY_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+          release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
+          if [[ "$release_id" == "$FALLBACK_APK_RELEASE_ID" ]]; then
+            echo 'Using the checksum-pinned stable-signed APK built from this release source.'
+            echo 'DELTIECORD_USE_PINNED_APK=1' >>"$GITHUB_ENV"
+            exit 0
+          fi
           missing=()
           [[ -n "$KEYSTORE_BASE64" ]] || missing+=(DELTIECORD_ANDROID_KEYSTORE_BASE64)
           [[ -n "$STORE_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_STORE_PASSWORD)
@@ -109,6 +118,7 @@ jobs:
         run: flutter test --concurrency=1
 
       - name: Build Android APK and app bundle
+        if: env.DELTIECORD_USE_PINNED_APK != '1'
         run: |
           flutter build apk --release
           flutter build appbundle --release
@@ -119,8 +129,14 @@ jobs:
           set -euo pipefail
           release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
           mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/deltiecord-${release_id}-android.apk"
-          cp build/app/outputs/bundle/release/app-release.aab "dist/deltiecord-${release_id}-android.aab"
+          if [[ "${DELTIECORD_USE_PINNED_APK:-}" == 1 ]]; then
+            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+              "$FALLBACK_APK_URL" -o "dist/deltiecord-${release_id}-android.apk"
+            echo "$FALLBACK_APK_SHA256  dist/deltiecord-${release_id}-android.apk" | sha256sum --check --strict
+          else
+            cp build/app/outputs/flutter-apk/app-release.apk "dist/deltiecord-${release_id}-android.apk"
+            cp build/app/outputs/bundle/release/app-release.aab "dist/deltiecord-${release_id}-android.aab"
+          fi
           (cd dist && sha256sum -- * >SHA256SUMS-android)
 
       - name: Upload Android artifacts

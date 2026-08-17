@@ -7,16 +7,20 @@ extension _MatrixLinkPreviews on MatrixBackend {
   /// Direct origin requests are made only after explicit user opt-in and only
   /// by [DirectLinkPreviewFetcher], which pins public DNS results to sockets.
   Future<void> _hydrateLinkPreviews(Timeline timeline) async {
-    final pending = <Event>[];
+    final pending = <(Event, Event)>[];
     for (final event in timeline.events) {
       final retryAfter = _linkPreviewRetryAfter[event.eventId];
+      final displayEvent = event.type == EventTypes.Message
+          ? event.getDisplayEvent(timeline)
+          : event;
       if (_linkPreviews.containsKey(event.eventId) ||
           (retryAfter != null && DateTime.now().isBefore(retryAfter)) ||
-          event.type != EventTypes.Message ||
-          event.hasAttachment) {
+          displayEvent.type != EventTypes.Message ||
+          displayEvent.hasAttachment ||
+          event.relationshipType == RelationshipTypes.edit) {
         continue;
       }
-      pending.add(event);
+      pending.add((event, displayEvent));
     }
 
     // Limit parallel homeserver requests. This keeps an embed-heavy room from
@@ -26,28 +30,39 @@ extension _MatrixLinkPreviews on MatrixBackend {
       await Future.wait(
         pending
             .sublist(offset, end)
-            .map((event) => _hydrateEventPreview(event)),
+            .map(
+              (candidate) => _hydrateEventPreview(
+                sourceEvent: candidate.$1,
+                displayEvent: candidate.$2,
+              ),
+            ),
       );
       if (!identical(timeline, _timeline)) return;
     }
   }
 
-  Future<void> _hydrateEventPreview(Event event) async {
+  Future<void> _hydrateEventPreview({
+    required Event sourceEvent,
+    required Event displayEvent,
+  }) async {
     final urls = extractPreviewUrls(
-      event.calcUnlocalizedBody(
+      displayEvent.calcUnlocalizedBody(
         hideReply: true,
         hideEdit: true,
         plaintextBody: true,
       ),
     );
     if (urls.isEmpty) {
-      _linkPreviews[event.eventId] = null;
+      // Do not turn an event into a permanent miss. A late edit/replacement
+      // can add a URL without replacing the original event ID used by the UI.
       return;
     }
     final url = urls.first;
     final cached = _linkPreviewUrlCache.getEntry(url);
     if (cached.$1) {
-      _linkPreviews[event.eventId] = cached.$2;
+      if (cached.$2 case final preview?) {
+        _linkPreviews[sourceEvent.eventId] = preview;
+      }
       return;
     }
 
@@ -56,7 +71,7 @@ extension _MatrixLinkPreviews on MatrixBackend {
     try {
       final response = await _matrix.getUrlPreview(
         url,
-        ts: event.originServerTs.millisecondsSinceEpoch,
+        ts: sourceEvent.originServerTs.millisecondsSinceEpoch,
       );
       final properties = Map<String, Object?>.from(
         response.additionalProperties,
@@ -109,34 +124,40 @@ extension _MatrixLinkPreviews on MatrixBackend {
     }
 
     if (result != null) {
-      _linkPreviews[event.eventId] = result;
+      _linkPreviews[sourceEvent.eventId] = result;
       _linkPreviewUrlCache.put(url, result);
-      _linkPreviewRetryAfter.remove(event.eventId);
-      _linkPreviewAttempts.remove(event.eventId);
+      _linkPreviewRetryAfter.remove(sourceEvent.eventId);
+      _linkPreviewAttempts.remove(sourceEvent.eventId);
       return;
     }
 
     if (homeserverFailure == null) {
-      // A valid empty response is a stable plain-link result for a short TTL.
-      _linkPreviews[event.eventId] = null;
+      // Keep a valid empty response only in the expiring URL cache. Storing a
+      // null event result made it impossible for the same timeline to recover
+      // when a server's preview cache populated later.
       _linkPreviewUrlCache.put(url, null);
       return;
     }
 
-    final attempts = (_linkPreviewAttempts[event.eventId] ?? 0) + 1;
-    _linkPreviewAttempts[event.eventId] = attempts;
+    final attempts = (_linkPreviewAttempts[sourceEvent.eventId] ?? 0) + 1;
+    _linkPreviewAttempts[sourceEvent.eventId] = attempts;
     developer.log(
       'Homeserver URL preview attempt failed '
       '(${homeserverFailure.runtimeType}).',
       name: 'deltiecord.preview',
     );
     if (attempts >= 3) {
-      _linkPreviews[event.eventId] = null;
+      // The homeserver can legitimately omit the preview API. Cache the URL
+      // miss briefly, but leave the event retryable and allow the opt-in
+      // direct fallback to work immediately after its preference is enabled.
       _linkPreviewUrlCache.put(url, null);
-      _linkPreviewRetryAfter.remove(event.eventId);
+      _linkPreviewAttempts.remove(sourceEvent.eventId);
+      _linkPreviewRetryAfter[sourceEvent.eventId] = DateTime.now().add(
+        _linkPreviewUrlCache.failureLifetime,
+      );
       return;
     }
-    _linkPreviewRetryAfter[event.eventId] = DateTime.now().add(
+    _linkPreviewRetryAfter[sourceEvent.eventId] = DateTime.now().add(
       const Duration(seconds: 30),
     );
     final timeline = _timeline;

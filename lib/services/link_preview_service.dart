@@ -14,6 +14,7 @@ import 'public_network_address.dart';
 
 const _maximumPreviewDocumentBytes = 1024 * 1024;
 const _maximumPreviewImageBytes = 5 * 1024 * 1024;
+const _maximumPreviewVideoBytes = 512 * 1024 * 1024;
 const _maximumRedirects = 4;
 const _requestTimeout = Duration(seconds: 8);
 
@@ -113,6 +114,12 @@ class LinkPreviewCache {
 
   final int maximumEntries;
   final Duration successLifetime;
+
+  /// How long an unavailable preview suppresses another network attempt.
+  ///
+  /// Misses are intentionally not copied into the event-level cache: an edit,
+  /// a newly populated homeserver cache, or enabling direct fallback must be
+  /// able to recover while the room remains open.
   final Duration failureLifetime;
   final LinkedHashMap<String, _CachedPreview> _entries = LinkedHashMap();
 
@@ -220,6 +227,7 @@ class DirectLinkPreviewFetcher {
       );
       final metadata = _metadataFromDocument(document, url);
       Uint8List? imageBytes;
+      Uri? videoUrl;
       final imageUrl = metadata.imageUrl;
       if (imageUrl != null) {
         // Images are an enhancement to the text card. Keep a valid title or
@@ -231,13 +239,23 @@ class DirectLinkPreviewFetcher {
           imageBytes = null;
         }
       }
+      if (metadata.videoUrl case final candidate?) {
+        try {
+          videoUrl = await _validateVideo(candidate);
+        } on Exception {
+          videoUrl = null;
+        }
+      }
       final preview = LinkPreview(
         url: initialUrl,
         title: metadata.title,
         description: metadata.description,
         siteName: metadata.siteName,
         imageBytes: imageBytes,
-        videoUrl: null,
+        // Playback is only exposed by this explicitly opt-in fetcher. The
+        // candidate and every redirect are resolved and probed first so a
+        // page cannot point the player at a local network service.
+        videoUrl: videoUrl,
         width: metadata.width,
         height: metadata.height,
       );
@@ -297,6 +315,66 @@ class DirectLinkPreviewFetcher {
     return null;
   }
 
+  Future<Uri?> _validateVideo(Uri url) async {
+    var current = url;
+    for (var redirects = 0; redirects <= _maximumRedirects; redirects++) {
+      _validateScheme(current);
+      final addresses = await _resolveHost(
+        current.host,
+      ).timeout(requestTimeout);
+      if (addresses.isEmpty ||
+          addresses.any((item) => !isPublicInternetAddress(item))) {
+        throw const HttpException(
+          'Preview video host did not resolve publicly.',
+        );
+      }
+      final response = await _transport
+          .get(
+            current,
+            addresses.first,
+            accept: 'video/*,application/octet-stream;q=0.5',
+            headers: const {HttpHeaders.rangeHeader: 'bytes=0-0'},
+          )
+          .timeout(requestTimeout);
+      if (_isRedirect(response.statusCode)) {
+        await _cancelBody(response.body);
+        final location = response.location;
+        if (location == null || redirects == _maximumRedirects) {
+          throw const HttpException(
+            'Invalid or excessive preview video redirect.',
+          );
+        }
+        current = current.resolveUri(location);
+        continue;
+      }
+      final type = response.contentType?.toLowerCase();
+      final acceptableType =
+          type?.startsWith('video/') == true ||
+          type == 'application/octet-stream';
+      final totalSize = _responseResourceSize(response);
+      final valid =
+          (response.statusCode == HttpStatus.ok ||
+              response.statusCode == HttpStatus.partialContent) &&
+          acceptableType &&
+          totalSize != null &&
+          totalSize > 0 &&
+          totalSize <= _maximumPreviewVideoBytes;
+      await _cancelBody(response.body);
+      return valid ? current : null;
+    }
+    return null;
+  }
+
+  int? _responseResourceSize(DirectPreviewResponse response) {
+    final contentRange = response.contentRange;
+    final match = contentRange == null
+        ? null
+        : RegExp(r'^bytes\s+\d+-\d+/(\d+)$').firstMatch(contentRange.trim());
+    final rangeSize = int.tryParse(match?.group(1) ?? '');
+    if (rangeSize != null) return rangeSize;
+    return response.contentLength >= 0 ? response.contentLength : null;
+  }
+
   static void _validateScheme(Uri url) {
     if ((!url.isScheme('http') && !url.isScheme('https')) || url.host.isEmpty) {
       throw const HttpException('Only public HTTP(S) previews are allowed.');
@@ -327,6 +405,7 @@ class _DocumentMetadata {
     this.description,
     this.siteName,
     this.imageUrl,
+    this.videoUrl,
     this.width,
     this.height,
   });
@@ -334,6 +413,7 @@ class _DocumentMetadata {
   final String? description;
   final String? siteName;
   final Uri? imageUrl;
+  final Uri? videoUrl;
   final int? width;
   final int? height;
 }
@@ -365,6 +445,16 @@ _DocumentMetadata _metadataFromDocument(Document document, Uri baseUrl) {
   final image = meta(const ['og:image', 'twitter:image'], maximumLength: 4096);
   final imageUrl = image == null ? null : Uri.tryParse(image);
   final resolvedImage = imageUrl == null ? null : baseUrl.resolveUri(imageUrl);
+  final video = meta(const [
+    'og:video:secure_url',
+    'og:video:url',
+    'og:video',
+    'twitter:player:stream',
+  ], maximumLength: 4096);
+  final parsedVideo = video == null ? null : Uri.tryParse(video);
+  final resolvedVideo = parsedVideo == null
+      ? null
+      : baseUrl.resolveUri(parsedVideo);
   final title =
       meta(const ['og:title', 'twitter:title'], maximumLength: 512) ??
       document.querySelector('title')?.text.trim();
@@ -377,6 +467,7 @@ _DocumentMetadata _metadataFromDocument(Document document, Uri baseUrl) {
     ]),
     siteName: meta(const ['og:site_name'], maximumLength: 128) ?? baseUrl.host,
     imageUrl: resolvedImage,
+    videoUrl: resolvedVideo,
     width: dimension(const ['og:image:width']),
     height: dimension(const ['og:image:height']),
   );
@@ -387,6 +478,7 @@ abstract interface class DirectPreviewTransport {
     Uri url,
     InternetAddress address, {
     required String accept,
+    Map<String, String> headers = const {},
   });
 }
 
@@ -397,12 +489,14 @@ class DirectPreviewResponse {
     this.contentType,
     this.contentLength = -1,
     this.location,
+    this.contentRange,
   });
   final int statusCode;
   final Stream<List<int>> body;
   final String? contentType;
   final int contentLength;
   final Uri? location;
+  final String? contentRange;
 }
 
 class PinnedDirectPreviewTransport implements DirectPreviewTransport {
@@ -413,6 +507,7 @@ class PinnedDirectPreviewTransport implements DirectPreviewTransport {
     Uri url,
     InternetAddress address, {
     required String accept,
+    Map<String, String> headers = const {},
   }) async {
     final client = HttpClient()
       ..connectionTimeout = _requestTimeout
@@ -458,6 +553,9 @@ class PinnedDirectPreviewTransport implements DirectPreviewTransport {
           HttpHeaders.userAgentHeader,
           'Deltiecord/$deltiecordVersion (link preview)',
         );
+      for (final entry in headers.entries) {
+        request.headers.set(entry.key, entry.value);
+      }
       final response = await request.close().timeout(_requestTimeout);
       StreamSubscription<List<int>>? subscription;
       late final StreamController<List<int>> controller;
@@ -494,6 +592,7 @@ class PinnedDirectPreviewTransport implements DirectPreviewTransport {
             : locationHeader == null || locationHeader.trim().isEmpty
             ? null
             : Uri.tryParse(locationHeader),
+        contentRange: response.headers.value(HttpHeaders.contentRangeHeader),
         body: controller.stream,
       );
     } catch (_) {
@@ -501,4 +600,9 @@ class PinnedDirectPreviewTransport implements DirectPreviewTransport {
       rethrow;
     }
   }
+}
+
+Future<void> _cancelBody(Stream<List<int>> body) async {
+  final subscription = body.listen((_) {});
+  await subscription.cancel();
 }

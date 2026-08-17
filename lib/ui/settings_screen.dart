@@ -1056,7 +1056,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         subtitle: const Text(
           'Direct previews contact websites from your device and may expose '
           'your IP address and browsing metadata to those sites. This is used '
-          'only when the Matrix homeserver cannot provide a preview.',
+          'only when the Matrix homeserver cannot provide a preview. Playing '
+          'an embedded video also contacts its public media host.',
         ),
         value: preferences.fetchDirectLinkPreviews,
         onChanged: (value) => backend.updatePreferences(

@@ -436,7 +436,14 @@ class MobileLinkPreviewCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (preview.imageBytes case final image?)
+            if (preview.videoUrl case final video?)
+              MobileLinkPreviewVideo(
+                uri: video,
+                thumbnail: preview.imageBytes,
+                width: preview.width,
+                height: preview.height,
+              )
+            else if (preview.imageBytes case final image?)
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: Image.memory(
@@ -470,4 +477,118 @@ class MobileLinkPreviewCard extends StatelessWidget {
       ),
     ),
   );
+}
+
+class MobileLinkPreviewVideo extends StatefulWidget {
+  const MobileLinkPreviewVideo({
+    required this.uri,
+    this.thumbnail,
+    this.width,
+    this.height,
+    super.key,
+  });
+
+  final Uri uri;
+  final Uint8List? thumbnail;
+  final int? width;
+  final int? height;
+
+  @override
+  State<MobileLinkPreviewVideo> createState() => _MobileLinkPreviewVideoState();
+}
+
+class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
+  Player? _player;
+  VideoController? _controller;
+  bool _opening = false;
+  String? _error;
+
+  Future<void> _play() async {
+    final current = _player;
+    if (current != null) {
+      await current.playOrPause();
+      return;
+    }
+    if (_opening) return;
+    setState(() {
+      _opening = true;
+      _error = null;
+    });
+    final player = Player(
+      configuration: const PlayerConfiguration(bufferSize: 64 * 1024 * 1024),
+    );
+    final controller = VideoController(player);
+    try {
+      await player.open(Media(widget.uri.toString()), play: true);
+      if (!mounted) {
+        await player.dispose();
+        return;
+      }
+      setState(() {
+        _player = player;
+        _controller = controller;
+      });
+    } catch (_) {
+      await player.dispose();
+      if (mounted) setState(() => _error = 'Could not play embedded video');
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    final player = _player;
+    if (player != null) unawaited(player.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final width = widget.width?.toDouble() ?? 16;
+    final height = widget.height?.toDouble() ?? 9;
+    final ratio = width > 0 && height > 0 ? width / height : 16 / 9;
+    final player = _player;
+    final controller = _controller;
+    return AspectRatio(
+      aspectRatio: ratio,
+      child: player != null && controller != null
+          ? Video(
+              controller: controller,
+              controls: AdaptiveVideoControls,
+              fit: BoxFit.contain,
+            )
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: Colors.black,
+                  child: widget.thumbnail == null
+                      ? null
+                      : Image.memory(widget.thumbnail!, fit: BoxFit.cover),
+                ),
+                Center(
+                  child: _opening
+                      ? const CircularProgressIndicator()
+                      : IconButton.filled(
+                          tooltip: 'Play embedded video',
+                          onPressed: _play,
+                          icon: const Icon(Icons.play_arrow),
+                        ),
+                ),
+                if (_error case final error?)
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Text(
+                        error,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
 }

@@ -20,7 +20,10 @@ fails. Every DNS result and redirect target must be public and the actual TLS
 peer address is validated before sending a request, so DNS rebinding cannot
 redirect preview traffic into a private network. Proxies and cookies are
 disabled, documents and images are bounded, and strict content-type, redirect,
-and timeout limits apply.
+and timeout limits apply. Embedded video candidates are exposed only in this
+opt-in mode after a bounded range probe validates their public host, redirects,
+content type, and declared size. Pressing Play then streams from that validated
+public media URL.
 Matrix tokens and headers are never sent to a preview site.
 
 ## MatrixRTC and WebRTC infrastructure

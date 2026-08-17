@@ -6,6 +6,24 @@ import 'package:deltiecord/services/link_preview_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'live direct transport completes HTTPS and parses metadata',
+    () async {
+      final url = Platform.environment['DELTIECORD_LIVE_PREVIEW_URL'];
+      final preview = await DirectLinkPreviewFetcher().fetch(
+        Uri.parse(url ?? 'https://example.com/'),
+      );
+      expect(preview, isNotNull);
+      if (url == null) expect(preview?.title, contains('Example Domain'));
+      if (Platform.environment['DELTIECORD_LIVE_PREVIEW_EXPECT_VIDEO'] == '1') {
+        expect(preview?.videoUrl, isNotNull);
+      }
+    },
+    skip: Platform.environment['DELTIECORD_LIVE_PREVIEW_TEST'] == '1'
+        ? false
+        : 'Set DELTIECORD_LIVE_PREVIEW_TEST=1 for the opt-in network probe.',
+  );
+
   test('extracts balanced URLs and drops prose punctuation', () {
     expect(
       extractPreviewUrls(
@@ -56,6 +74,36 @@ void main() {
     expect(preview?.description, 'World');
     expect(preview?.imageBytes, [1, 2, 3]);
   });
+
+  test(
+    'direct fallback validates video metadata before exposing playback',
+    () async {
+      final transport = _FakeTransport({
+        'https://public.example/page': _response(
+          '<meta property="og:title" content="Clip">'
+          '<meta property="og:video" content="https://cdn.example/clip.mp4">',
+        ),
+        'https://cdn.example/clip.mp4': DirectPreviewResponse(
+          statusCode: HttpStatus.partialContent,
+          contentType: 'video/mp4',
+          contentLength: 1,
+          contentRange: 'bytes 0-0/4096',
+          body: Stream.value([0]),
+        ),
+      });
+      final fetcher = DirectLinkPreviewFetcher(
+        resolveHost: (_) async => [InternetAddress('93.184.216.34')],
+        transport: transport,
+      );
+
+      final preview = await fetcher.fetch(
+        Uri.parse('https://public.example/page'),
+      );
+
+      expect(preview?.videoUrl, Uri.parse('https://cdn.example/clip.mp4'));
+      expect(transport.headers.last[HttpHeaders.rangeHeader], 'bytes=0-0');
+    },
+  );
 
   test('direct fallback keeps text metadata when its image fails', () async {
     final fetcher = DirectLinkPreviewFetcher(
@@ -158,6 +206,17 @@ void main() {
     cache.put(Uri.parse('https://example.org/c'), null);
     expect(cache.getEntry(a).$1, isFalse);
   });
+
+  test('preview cache expires misses so an open room can recover', () async {
+    final cache = LinkPreviewCache(
+      failureLifetime: const Duration(milliseconds: 5),
+    );
+    final url = Uri.parse('https://example.org/recover');
+    cache.put(url, null);
+    expect(cache.getEntry(url), (true, null));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(cache.getEntry(url).$1, isFalse);
+  });
 }
 
 DirectPreviewResponse _response(String html) {
@@ -174,14 +233,17 @@ class _FakeTransport implements DirectPreviewTransport {
   _FakeTransport(this.responses);
   final Map<String, DirectPreviewResponse> responses;
   final List<String> opened = [];
+  final List<Map<String, String>> headers = [];
 
   @override
   Future<DirectPreviewResponse> get(
     Uri url,
     InternetAddress address, {
     required String accept,
+    Map<String, String> headers = const {},
   }) async {
     opened.add(url.toString());
+    this.headers.add(headers);
     return responses[url.toString()] ??
         (throw StateError('Unexpected request to $url'));
   }

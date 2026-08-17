@@ -69,15 +69,16 @@ jobs:
           [[ -n "$KEY_ALIAS" ]] || missing+=(DELTIECORD_ANDROID_KEY_ALIAS)
           [[ -n "$KEY_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_KEY_PASSWORD)
           if ((${#missing[@]})); then
-            printf 'Missing required Android signing secret: %s\n' "${missing[@]}" >&2
+            missing_list="$(IFS=', '; echo "${missing[*]}")"
+            echo "::error title=Android signing secrets unavailable::Missing required repository secret(s): $missing_list"
             exit 1
           fi
           if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode >"$RUNNER_TEMP/deltiecord-release.jks"; then
-            echo 'DELTIECORD_ANDROID_KEYSTORE_BASE64 is not valid base64.' >&2
+            echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 is not valid base64.'
             exit 1
           fi
           if [[ ! -s "$RUNNER_TEMP/deltiecord-release.jks" ]]; then
-            echo 'DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.' >&2
+            echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.'
             exit 1
           fi
           chmod 0600 "$RUNNER_TEMP/deltiecord-release.jks"

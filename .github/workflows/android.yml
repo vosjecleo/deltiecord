@@ -66,7 +66,6 @@ jobs:
           missing=()
           [[ -n "$KEYSTORE_BASE64" ]] || missing+=(DELTIECORD_ANDROID_KEYSTORE_BASE64)
           [[ -n "$STORE_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_STORE_PASSWORD)
-          [[ -n "$KEY_ALIAS" ]] || missing+=(DELTIECORD_ANDROID_KEY_ALIAS)
           [[ -n "$KEY_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_KEY_PASSWORD)
           if ((${#missing[@]})); then
             missing_list="$(IFS=', '; echo "${missing[*]}")"
@@ -79,6 +78,15 @@ jobs:
           fi
           if [[ ! -s "$RUNNER_TEMP/deltiecord-release.jks" ]]; then
             echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.'
+            exit 1
+          fi
+          if [[ -z "$KEY_ALIAS" ]]; then
+            KEY_ALIAS="$(keytool -J-Duser.language=en -list -v \
+              -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
+              -storepass "$STORE_PASSWORD" 2>/dev/null | sed -n 's/^Alias name: //p' | head -n 1)"
+          fi
+          if [[ -z "$KEY_ALIAS" ]]; then
+            echo '::error title=Invalid Android keystore::No signing-key alias could be read from the supplied keystore.'
             exit 1
           fi
           chmod 0600 "$RUNNER_TEMP/deltiecord-release.jks"

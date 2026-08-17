@@ -25,8 +25,9 @@ scroll position, and local per-room draft while panels move on or off screen.
 Release CI requires a persistent signing identity. It will fail rather than
 silently produce an APK with a GitHub runner's temporary debug certificate.
 Provide the keystore through the `DELTIECORD_ANDROID_KEYSTORE_BASE64`,
-`DELTIECORD_ANDROID_STORE_PASSWORD`, `DELTIECORD_ANDROID_KEY_ALIAS`, and
-`DELTIECORD_ANDROID_KEY_PASSWORD` repository secrets. Local release builds may
+`DELTIECORD_ANDROID_STORE_PASSWORD`, and `DELTIECORD_ANDROID_KEY_PASSWORD`
+repository secrets. `DELTIECORD_ANDROID_KEY_ALIAS` is optional because CI can
+derive the first key alias from the keystore. Local release builds may
 use ignored `android/key.properties` values with the equivalent fields. Never
 commit a keystore or signing password.
 

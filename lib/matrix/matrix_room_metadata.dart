@@ -145,23 +145,20 @@ extension _MatrixRoomMetadata on MatrixBackend {
 
   Future<bool> _refreshAvatar(Room room) async {
     final avatar = room.avatar;
-    if (_avatarUris.containsKey(room.id) && _avatarUris[room.id] == avatar) {
+    if (_avatarUris.containsKey(room.id) &&
+        _avatarUris[room.id] == avatar &&
+        _avatarBytes[room.id] != null) {
       return false;
     }
     _avatarUris[room.id] = avatar;
     _avatarBytes.remove(room.id);
     if (avatar == null || !avatar.isScheme('mxc')) return true;
-    final mediaId = avatar.pathSegments.join('/');
-    if (mediaId.isEmpty) return true;
-    final response = await _matrix.getContentThumbnail(
-      avatar.host,
-      mediaId,
-      96,
-      96,
-      method: Method.crop,
-      animated: false,
-    );
-    _avatarBytes[room.id] = response.data;
+    final pooled = _avatarMediaPool.peek(avatar, AvatarMediaPool.rowDimension);
+    final bytes =
+        pooled ??
+        await _avatarMedia(avatar, AvatarMediaPool.rowDimension) ??
+        Uint8List(0);
+    if (bytes.isNotEmpty) _avatarBytes[room.id] = bytes;
     return true;
   }
 

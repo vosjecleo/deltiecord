@@ -84,7 +84,7 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    implementation("org.unifiedpush.android:connector:3.0.10") {
+    implementation("org.unifiedpush.android:connector:3.3.3") {
         // flutter_secure_storage already supplies the Android Tink artifact.
         // Both artifacts contain the same core classes, so including the
         // connector's JVM Tink dependency makes D8 reject the application.

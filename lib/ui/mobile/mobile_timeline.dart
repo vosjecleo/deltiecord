@@ -1140,6 +1140,18 @@ class _MobileMessageRow extends StatelessWidget {
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
+            if (message.failed)
+              ListTile(
+                leading: const Icon(Icons.refresh),
+                title: const Text('Retry send'),
+                onTap: () => Navigator.pop(context, 'retry'),
+              ),
+            if (message.failed || message.pending)
+              ListTile(
+                leading: const Icon(Icons.close),
+                title: const Text('Discard failed send'),
+                onTap: () => Navigator.pop(context, 'discard'),
+              ),
             ListTile(
               leading: const Icon(Icons.reply),
               title: const Text('Reply'),
@@ -1177,6 +1189,10 @@ class _MobileMessageRow extends StatelessWidget {
       ),
     );
     switch (action) {
+      case 'retry':
+        await backend.retryMessage(message.id);
+      case 'discard':
+        await backend.cancelPendingMessage(message.id);
       case 'reply':
         onReply();
       case 'edit':

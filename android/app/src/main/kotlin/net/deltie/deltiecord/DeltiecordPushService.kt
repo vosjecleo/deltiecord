@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import org.unifiedpush.android.connector.FailedReason
-import org.unifiedpush.android.connector.PushService
+import org.unifiedpush.android.connector.MessagingReceiver
 import org.unifiedpush.android.connector.data.PushEndpoint
 import org.unifiedpush.android.connector.data.PushMessage
 import org.json.JSONObject
@@ -17,43 +17,43 @@ import org.json.JSONObject
  * UnifiedPush distributor. Endpoint URLs stay in private Android preferences;
  * they are never logged because they are bearer capabilities.
  */
-class DeltiecordPushService : PushService() {
-    override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {
+class DeltiecordPushService : MessagingReceiver() {
+    override fun onNewEndpoint(context: Context, endpoint: PushEndpoint, instance: String) {
         val endpointUrl = endpoint.url
             .replace(Regex("[\\u0000-\\u001f\\u007f\\u200b\\ufeff]"), "")
             .trim()
         if (endpointUrl.isBlank()) {
-            preferences(this).edit()
+            preferences(context).edit()
                 .putString(errorKey(instance), "EMPTY_ENDPOINT")
                 .apply()
             stateChangedListener?.invoke(instance)
             return
         }
-        preferences(this).edit()
+        preferences(context).edit()
             .putString(endpointKey(instance), endpointUrl)
             .remove(errorKey(instance))
             .apply()
         stateChangedListener?.invoke(instance)
     }
 
-    override fun onMessage(message: PushMessage, instance: String) {
+    override fun onMessage(context: Context, message: PushMessage, instance: String) {
         // Matrix push payloads are wake-up hints, not a source of decrypted
         // message text. Deltiecord syncs Matrix after the user opens the alert.
-        preferences(this).edit()
+        preferences(context).edit()
             .putLong("last_message_received_ms", System.currentTimeMillis())
             .apply()
-        showMatrixActivityNotification(this, message.content)
+        showMatrixActivityNotification(context, message.content)
     }
 
-    override fun onRegistrationFailed(reason: FailedReason, instance: String) {
-        preferences(this).edit()
+    override fun onRegistrationFailed(context: Context, reason: FailedReason, instance: String) {
+        preferences(context).edit()
             .putString(errorKey(instance), reason.name)
             .apply()
         stateChangedListener?.invoke(instance)
     }
 
-    override fun onUnregistered(instance: String) {
-        clear(this, instance)
+    override fun onUnregistered(context: Context, instance: String) {
+        clear(context, instance)
         stateChangedListener?.invoke(instance)
     }
 

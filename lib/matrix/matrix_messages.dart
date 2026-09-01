@@ -436,6 +436,7 @@ extension _MatrixMessages on MatrixBackend {
       throw StateError('That failed message is no longer available.');
     }
     try {
+      _dismissedLocalEchoIds.remove(messageId);
       await _prepareEncryptedSend(event.room);
       await event.sendAgain();
     } catch (exception) {
@@ -448,7 +449,20 @@ extension _MatrixMessages on MatrixBackend {
   Future<void> _cancelPendingMessage(String messageId) async {
     final event = _eventById(messageId);
     if (event == null || event.status.isSent) return;
-    await event.cancelSend();
+    // `cancelSend` removes the SDK's database row, but some failure paths keep
+    // the in-memory local echo in the current Timeline. Hide it immediately
+    // and forget its offline-send ownership so a permanently failed echo can
+    // never reappear or be retried after the user explicitly discards it.
+    _dismissedLocalEchoIds.add(messageId);
+    _offlineSendRooms.remove(messageId);
+    _notifyBackendListeners();
+    try {
+      await event.cancelSend();
+    } catch (_) {
+      // A missing SDK row is already the desired durable result. The local
+      // suppression remains authoritative for the lifetime of this timeline.
+    }
+    _cacheCurrentRoomMessages();
     _notifyBackendListeners();
   }
 

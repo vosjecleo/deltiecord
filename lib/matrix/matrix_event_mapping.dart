@@ -37,6 +37,7 @@ extension _MatrixEventMapping on MatrixBackend {
     final timeline = _timeline;
     if (timeline == null) return const [];
     return _timelineWindowEvents(timeline)
+        .where((event) => !_dismissedLocalEchoIds.contains(event.eventId))
         .where((event) => _isVisibleTimelineEvent(event))
         .where((event) => event.relationshipType != RelationshipTypes.edit)
         .map((event) {

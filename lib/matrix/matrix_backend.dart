@@ -12,6 +12,7 @@ import 'package:matrix/encryption/utils/crypto_setup_extension.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
+import '../services/avatar_media_pool.dart';
 import '../services/font_preferences.dart';
 import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
@@ -50,12 +51,15 @@ class MatrixBackend extends ChatBackend {
   MatrixBackend({
     ChatNotificationSink? notifications,
     DirectLinkPreviewFetcher? directPreviewFetcher,
+    AvatarMediaPool? avatarMediaPool,
   }) : _notifications = notifications ?? const SilentChatNotificationSink(),
        _directPreviewFetcher =
-           directPreviewFetcher ?? DirectLinkPreviewFetcher();
+           directPreviewFetcher ?? DirectLinkPreviewFetcher(),
+       _avatarMediaPool = avatarMediaPool ?? AvatarMediaPool();
 
   final ChatNotificationSink _notifications;
   final DirectLinkPreviewFetcher _directPreviewFetcher;
+  final AvatarMediaPool _avatarMediaPool;
   Client? _client;
   Timeline? _timeline;
   MatrixVoiceController? _voice;
@@ -112,6 +116,7 @@ class MatrixBackend extends ChatBackend {
   final LinkedHashMap<String, List<ChatMessage>> _roomMessageCache =
       LinkedHashMap();
   final Map<String, String> _offlineSendRooms = {};
+  final Set<String> _dismissedLocalEchoIds = {};
   bool _retryingOfflineSends = false;
   bool _notificationsPrimed = false;
   bool _notificationPreviewsEnabled = true;
@@ -424,7 +429,7 @@ class MatrixBackend extends ChatBackend {
     _roomMessageCache
       ..remove(roomId)
       ..[roomId] = List.unmodifiable(snapshot);
-    while (_roomMessageCache.length > 4) {
+    while (_roomMessageCache.length > 12) {
       _roomMessageCache.remove(_roomMessageCache.keys.first);
     }
   }
@@ -828,7 +833,9 @@ class MatrixBackend extends ChatBackend {
     _client?.dispose();
     unawaited(_notifications.dispose());
     unawaited(_mediaRangeProxy.close());
+    unawaited(_avatarMediaPool.clear(disk: false));
     _offlineSendRooms.clear();
+    _dismissedLocalEchoIds.clear();
     super.dispose();
   }
 }

@@ -11,12 +11,14 @@ const _profileVoiceBackgroundField = 'net.deltiecord.voice_background';
 class _ProfileCacheEntry {
   _ProfileCacheEntry({
     required this.profile,
+    required this.avatarUri,
     required this.metadataFetchedAt,
     required this.statusFetchedAt,
     required this.lastAccessedAt,
   });
 
   UserProfileSummary profile;
+  Uri? avatarUri;
   DateTime metadataFetchedAt;
   DateTime statusFetchedAt;
   DateTime lastAccessedAt;
@@ -143,7 +145,7 @@ extension _MatrixProfiles on MatrixBackend {
     }
 
     final old = previous?.profile;
-    final avatarUri = remoteProfile?.avatarUrl;
+    final avatarUri = remoteProfile?.avatarUrl ?? previous?.avatarUri;
     final bannerUri = Uri.tryParse(
       remoteProfile?.additionalProperties[_profileBannerField] as String? ?? '',
     );
@@ -155,7 +157,11 @@ extension _MatrixProfiles on MatrixBackend {
     final avatarBytes = refreshMedia || old == null
         ? avatarUri == null
               ? null
-              : await _profileMedia(avatarUri, 512, 512) ?? old?.avatarBytes
+              : await _avatarMedia(
+                      avatarUri,
+                      AvatarMediaPool.profileDimension,
+                    ) ??
+                    old?.avatarBytes
         : old.avatarBytes;
     final bannerBytes = refreshMedia || old == null
         ? bannerUri == null
@@ -211,6 +217,7 @@ extension _MatrixProfiles on MatrixBackend {
     _profileCache.remove(userId);
     _profileCache[userId] = _ProfileCacheEntry(
       profile: withSyncedPresence,
+      avatarUri: avatarUri,
       metadataFetchedAt: needsProfileResponse
           ? now
           : previous.metadataFetchedAt,
@@ -396,6 +403,21 @@ extension _MatrixProfiles on MatrixBackend {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<Uint8List?> _avatarMedia(Uri? mxc, int dimension) {
+    if (mxc == null) return Future<Uint8List?>.value();
+    return _avatarMediaPool.load(mxc, dimension, () async {
+      final response = await _matrix.getContentThumbnail(
+        mxc.host,
+        mxc.pathSegments.join('/'),
+        dimension,
+        dimension,
+        method: Method.crop,
+        animated: false,
+      );
+      return response.data;
+    });
   }
 
   Future<Uint8List?> _profileOriginalMedia(Uri? mxc) async {

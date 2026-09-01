@@ -61,7 +61,7 @@ jobs:
           packaging/linux/build-appimage.sh
           version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
           release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
-          mv "dist/deltiecord_${version}_amd64.deb" "dist/deltiecord-${release_id}-linux-debian-amd64.deb"
+          mv "dist/deltiecord_${release_id}_amd64.deb" "dist/deltiecord-${release_id}-linux-debian-amd64.deb"
           mv "dist/Deltiecord-${version}-x86_64.AppImage" "dist/deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
           cp packaging/README.md dist/README.txt
           printf 'Deltiecord %s\nGit commit: %s\n' "$release_id" "$GITHUB_SHA" >dist/BUILD-INFO.txt

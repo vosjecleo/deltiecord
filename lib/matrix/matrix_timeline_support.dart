@@ -57,29 +57,58 @@ extension _MatrixTimelineSupport on MatrixBackend {
   }
 
   Future<void> _hydrateSenderAvatars(Timeline timeline) async {
-    for (final event in timeline.events) {
+    final missing = <(String, Uri)>[];
+    final seen = <String>{};
+    for (final event in _timelineWindowEvents(timeline)) {
+      if (!seen.add(event.senderId)) continue;
       final sender = event.senderFromMemoryOrFallback;
       final avatar = sender.avatarUrl;
       if (_senderAvatarUris.containsKey(event.senderId) &&
-          _senderAvatarUris[event.senderId] == avatar) {
+          _senderAvatarUris[event.senderId] == avatar &&
+          _senderAvatarBytes[event.senderId] != null) {
         continue;
       }
       _senderAvatarUris[event.senderId] = avatar;
       _senderAvatarBytes.remove(event.senderId);
       if (avatar == null || !avatar.isScheme('mxc')) continue;
-      try {
-        final response = await _matrix.getContentThumbnail(
-          avatar.host,
-          avatar.pathSegments.join('/'),
-          64,
-          64,
-          method: Method.crop,
-          animated: false,
-        );
-        _senderAvatarBytes[event.senderId] = response.data;
-      } catch (_) {
-        // Missing profile media should fall back to an initial.
+
+      final profile = _profileCache[event.senderId];
+      if (profile?.avatarUri == avatar &&
+          profile?.profile.avatarBytes != null) {
+        final bytes = profile!.profile.avatarBytes!;
+        _avatarMediaPool.seed(avatar, bytes, AvatarMediaPool.profileDimension);
+        _senderAvatarBytes[event.senderId] = bytes;
+        continue;
       }
+      final pooled = _avatarMediaPool.peek(
+        avatar,
+        AvatarMediaPool.rowDimension,
+      );
+      if (pooled != null) {
+        _senderAvatarBytes[event.senderId] = pooled;
+        continue;
+      }
+      missing.add((event.senderId, avatar));
+    }
+
+    for (var start = 0; start < missing.length; start += 4) {
+      final end = min(start + 4, missing.length);
+      await Future.wait(
+        missing.sublist(start, end).map((entry) async {
+          try {
+            final bytes = await _avatarMedia(
+              entry.$2,
+              AvatarMediaPool.rowDimension,
+            );
+            if (bytes != null && _senderAvatarUris[entry.$1] == entry.$2) {
+              _senderAvatarBytes[entry.$1] = bytes;
+            }
+          } catch (_) {
+            // Missing profile media should fall back to an initial.
+          }
+        }),
+      );
+      if (identical(_timeline, timeline)) _notifyBackendListeners();
     }
   }
 

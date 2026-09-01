@@ -34,13 +34,20 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <service
+        <!-- Handle distributor broadcasts synchronously while the connector's
+             wake lock is held. This remains reliable when Flutter and the
+             application process were not already running. -->
+        <receiver
             android:name=".DeltiecordPushService"
-            android:exported="false">
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
-                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
+                <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
+                <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT" />
+                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
             </intent-filter>
-        </service>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

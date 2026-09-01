@@ -145,6 +145,7 @@ extension _MatrixSession on MatrixBackend {
       _avatarUris.clear();
       _senderAvatarBytes.clear();
       _senderAvatarUris.clear();
+      await _avatarMediaPool.clear();
       _decryptedPreviews.clear();
       _replyPreviews.clear();
       _linkPreviews.clear();
@@ -159,6 +160,8 @@ extension _MatrixSession on MatrixBackend {
       _spaceRoomOrderOverrides.clear();
       _collapsedChannelCategories.clear();
       _roomMessageCache.clear();
+      _offlineSendRooms.clear();
+      _dismissedLocalEchoIds.clear();
       _notificationsPrimed = false;
       _maximumUploadBytes = null;
       _mediaPlaybackSources.clear();
@@ -497,17 +500,11 @@ extension _MatrixSession on MatrixBackend {
     final avatar = event.senderFromMemoryOrFallback.avatarUrl;
     if (avatar == null || !avatar.isScheme('mxc')) return null;
     try {
-      final response = await _matrix.getContentThumbnail(
-        avatar.host,
-        avatar.pathSegments.join('/'),
-        96,
-        96,
-        method: Method.crop,
-        animated: false,
-      );
+      final bytes = await _avatarMedia(avatar, AvatarMediaPool.rowDimension);
+      if (bytes == null) return null;
       _senderAvatarUris[event.senderId] = avatar;
-      _senderAvatarBytes[event.senderId] = response.data;
-      return response.data;
+      _senderAvatarBytes[event.senderId] = bytes;
+      return bytes;
     } catch (_) {
       return null;
     }

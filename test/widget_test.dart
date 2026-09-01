@@ -2685,6 +2685,45 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
   });
 
+  testWidgets('Android can discard a failed local echo', (tester) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!failed:test',
+          name: 'Failed send',
+          lastMessage: 'stuck',
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: 'Deltiecord-45-123',
+          sender: 'Deltie',
+          senderId: '@deltie:test',
+          body: 'stuck',
+          timestamp: DateTime(2026),
+          pending: false,
+          failed: true,
+          own: true,
+        ),
+      ];
+
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Failed send').first);
+    await tester.pumpAndSettle();
+    await tester.longPress(
+      find.byKey(const ValueKey('swipe-Deltiecord-45-123')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard failed send'));
+    await tester.pumpAndSettle();
+
+    expect(backend.cancelledMessageIds, ['Deltiecord-45-123']);
+  });
+
   testWidgets('Android drafts survive room navigation', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
@@ -2853,6 +2892,8 @@ class FakeBackend extends ChatBackend {
   final List<String?> sentMessageRoomIds = [];
   final List<String?> sentAttachmentRoomIds = [];
   final List<String> redactedMessageIds = [];
+  final List<String> cancelledMessageIds = [];
+  final List<String> retriedMessageIds = [];
   final List<(String, String)> toggledReactions = [];
   final List<(String, bool)> mutedRooms = [];
   final List<(String, bool)> categoryCollapseChanges = [];
@@ -3205,9 +3246,14 @@ class FakeBackend extends ChatBackend {
   }
 
   @override
-  Future<void> retryMessage(String messageId) async {}
+  Future<void> retryMessage(String messageId) async {
+    retriedMessageIds.add(messageId);
+  }
+
   @override
-  Future<void> cancelPendingMessage(String messageId) async {}
+  Future<void> cancelPendingMessage(String messageId) async {
+    cancelledMessageIds.add(messageId);
+  }
 
   @override
   Future<void> toggleReaction(String messageId, String key) async {

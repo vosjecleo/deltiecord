@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-version="$(sed -n 's/^version: \([^+]*\).*/\1/p' "$repo_root/pubspec.yaml")"
+version="$(sed -n 's/^version: \(.*\)/\1/p' "$repo_root/pubspec.yaml")"
 dist="$repo_root/dist"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

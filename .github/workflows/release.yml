@@ -127,6 +127,12 @@ jobs:
           The project is licensed under AGPL-3.0-or-later. Bundled third-party notices are included in the binary packages and source tree.
           EOF
 
+          # Tag recreation during prerelease correction must not strand stale
+          # platform assets under the final tag. Keep publication idempotent so
+          # the newest successful tagged commit replaces the earlier draft.
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release delete "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --yes
+          fi
           gh release create "$GITHUB_REF_NAME" release-assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "Deltiecord ${version} build ${build} (Beta)" \

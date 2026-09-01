@@ -36,6 +36,30 @@ void main() {
     );
   });
 
+  test('uses the Matrix gateway on the capability endpoint origin', () {
+    expect(
+      matrixPushGatewayForUnifiedPushEndpoint(
+        'https://ntfy.sh/up-high-entropy?up=1',
+      ),
+      Uri.parse('https://ntfy.sh/_matrix/push/v1/notify'),
+    );
+    expect(
+      matrixPushGatewayForUnifiedPushEndpoint(
+        'https://push.deltie.net/up-high-entropy?up=1',
+      ),
+      Uri.parse('https://push.deltie.net/_matrix/push/v1/notify'),
+    );
+  });
+
+  test('does not derive a gateway from an unsafe endpoint', () {
+    expect(
+      matrixPushGatewayForUnifiedPushEndpoint(
+        'http://127.0.0.1/up-high-entropy?up=1',
+      ),
+      isNull,
+    );
+  });
+
   test('rejects unsafe endpoint origins and shapes', () {
     expect(
       normalizeUnifiedPushEndpoint('https://push.deltie.net:444/up-secret'),

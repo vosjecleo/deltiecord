@@ -269,3 +269,21 @@ String? normalizeUnifiedPushEndpoint(String value) {
   }
   return uri.toString();
 }
+
+/// Returns the Matrix push gateway belonging to a UnifiedPush endpoint.
+///
+/// An ntfy capability is only meaningful to the ntfy server that issued it.
+/// Sending an `ntfy.sh` capability to Deltiecord's private ntfy gateway makes
+/// the gateway reject the device and causes the homeserver to delete its
+/// pusher. Keep the opaque capability and its Matrix gateway on one origin.
+Uri? matrixPushGatewayForUnifiedPushEndpoint(String value) {
+  final normalized = normalizeUnifiedPushEndpoint(value);
+  final endpoint = normalized == null ? null : Uri.tryParse(normalized);
+  if (endpoint == null) return null;
+  return Uri(
+    scheme: endpoint.scheme,
+    host: endpoint.host,
+    port: endpoint.hasPort ? endpoint.port : null,
+    path: '/_matrix/push/v1/notify',
+  );
+}

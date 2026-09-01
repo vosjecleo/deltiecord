@@ -6,10 +6,6 @@ part of 'matrix_backend.dart';
 /// path. Room-specific asynchronous work is guarded elsewhere by the timeline
 /// generation established by this lifecycle.
 extension _MatrixSession on MatrixBackend {
-  static final Uri _unifiedPushGateway = Uri.parse(
-    'https://push.deltie.net/_matrix/push/v1/notify',
-  );
-
   Future<void> _initializeSession() async {
     try {
       await _syncSubscription?.cancel();
@@ -783,7 +779,8 @@ extension _MatrixSession on MatrixBackend {
 
   Future<void> _setUnifiedPushEndpoint(String endpoint) async {
     final normalized = normalizeUnifiedPushEndpoint(endpoint);
-    if (_matrix.userID == null || normalized == null) {
+    final gateway = matrixPushGatewayForUnifiedPushEndpoint(endpoint);
+    if (_matrix.userID == null || normalized == null || gateway == null) {
       throw ArgumentError('UnifiedPush returned an invalid endpoint.');
     }
     final profileTag = 'mobile_${_matrix.deviceID ?? 'android'}';
@@ -816,7 +813,7 @@ extension _MatrixSession on MatrixBackend {
         lang: 'en',
         profileTag: profileTag,
         data: PusherData(
-          url: _unifiedPushGateway,
+          url: gateway,
           // FluffyChat likewise uses the privacy-preserving Matrix format: the
           // distributor receives IDs/counts and the client resolves content.
           format: 'event_id_only',

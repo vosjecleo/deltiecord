@@ -74,10 +74,11 @@ Configured from Android notification settings. Deltiecord uses the standard
 UnifiedPush distributor protocol and contains no shared ntfy credentials. The
 selected distributor supplies a
 private, high-entropy endpoint. Deltiecord registers that complete endpoint as
-the Matrix pushkey through
-`https://push.deltie.net/_matrix/push/v1/notify` and keeps it in private Android
-preferences. The endpoint is a bearer capability and is never displayed in the
-UI or written to logs.
+the Matrix pushkey through the Matrix gateway on the same ntfy origin and keeps
+it in private Android preferences. For example, a `push.deltie.net` capability
+uses `https://push.deltie.net/_matrix/push/v1/notify`, while an `ntfy.sh`
+capability uses the corresponding `ntfy.sh` gateway. The endpoint is a bearer
+capability and is never displayed in the UI or written to logs.
 
 Release builds use an installed external distributor such as ntfy. Embedded
 Firebase-compatible WebPush is disabled until Deltiecord has a dedicated,

@@ -513,8 +513,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         Text('UnifiedPush', style: Theme.of(context).textTheme.titleMedium),
         const Text(
           'Uses a distributor app such as ntfy to wake Deltiecord for Matrix '
-          'activity. Install ntfy and configure it with '
-          'https://push.deltie.net.',
+          'activity. The distributor endpoint and Matrix gateway are kept on '
+          'the same ntfy server, including custom servers.',
         ),
         if (_unifiedPushState case final stateFuture?)
           FutureBuilder<UnifiedPushState>(

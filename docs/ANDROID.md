@@ -44,11 +44,11 @@ existing encrypted-preview privacy preference. Notification payloads select the
 corresponding room/event when the process receives them.
 
 Notifications settings use the standard UnifiedPush Android connector. Install
-and configure an external distributor (such as the ntfy Android app) for
-`https://push.deltie.net`, select it in Deltiecord, then Deltiecord registers the
-complete private distributor endpoint with the Matrix HTTP push gateway at
-`https://push.deltie.net/_matrix/push/v1/notify`. Neither distributor credentials
-nor generated endpoint capabilities are shipped or logged by Deltiecord.
+and configure an external distributor such as the ntfy Android app, then select
+it in Deltiecord. Deltiecord registers the complete private endpoint with the
+Matrix HTTP push gateway on that same ntfy server. Neither distributor
+credentials nor generated endpoint capabilities are shipped or logged by
+Deltiecord.
 
 The embedded Firebase-compatible distributor is not enabled in release builds.
 Matrix requires a WebPush-capable gateway and VAPID configuration for that

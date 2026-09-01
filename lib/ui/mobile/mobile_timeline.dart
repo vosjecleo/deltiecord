@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
 
 import '../../backend/chat_backend.dart';
@@ -210,19 +211,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       } else {
         await backend.loadMoreFuture();
       }
-      // Adjacent avatars, previews, and decrypted media can settle over more
-      // than one frame. Keep the same Matrix event fixed until layout settles,
-      // but stop immediately if the user starts a new gesture.
-      for (var pass = 0; pass < 4; pass++) {
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted || inputGeneration != _timelineInputGeneration) return;
-        final before = _scroll.hasClients ? _scroll.position.pixels : 0.0;
-        _restoreScrollAnchor(anchor);
-        if (!_scroll.hasClients ||
-            (_scroll.position.pixels - before).abs() < 0.5) {
-          break;
-        }
-      }
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || inputGeneration != _timelineInputGeneration) return;
+      _restoreScrollAnchor(anchor);
     } finally {
       _pageLoadInFlight = false;
     }
@@ -683,6 +674,16 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               onTap: () => Navigator.pop(context, 'media'),
             ),
             ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () => Navigator.pop(context, 'camera-photo'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Record video'),
+              onTap: () => Navigator.pop(context, 'camera-video'),
+            ),
+            ListTile(
               leading: const Icon(Icons.gif_box_outlined),
               title: const Text('GIF'),
               onTap: () => Navigator.pop(context, 'gif'),
@@ -693,6 +694,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     );
     if (choice == 'gif') return _showGifPicker();
     if (choice == null) return;
+    if (choice == 'camera-photo' || choice == 'camera-video') {
+      await _captureMedia(video: choice == 'camera-video');
+      return;
+    }
     final result = await FilePicker.pickFiles(
       allowMultiple: true,
       withData: true,
@@ -712,6 +717,31 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           ),
         );
     setState(() => _attachments.addAll(drafts));
+  }
+
+  Future<void> _captureMedia({required bool video}) async {
+    final picker = ImagePicker();
+    final file = video
+        ? await picker.pickVideo(source: ImageSource.camera)
+        : await picker.pickImage(source: ImageSource.camera);
+    if (file == null || !mounted) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
+    final name = file.name.isEmpty
+        ? '${video ? 'video' : 'photo'}-${DateTime.now().millisecondsSinceEpoch}'
+        : file.name;
+    setState(() {
+      _attachments.add(
+        AttachmentDraft(
+          bytes: bytes,
+          name: name,
+          mimeType:
+              lookupMimeType(name, headerBytes: bytes) ??
+              (video ? 'video/mp4' : 'image/jpeg'),
+          spoiler: false,
+        ),
+      );
+    });
   }
 
   Future<void> _showEmojiPicker() async {
@@ -1034,7 +1064,7 @@ class _MobileMessageRow extends StatelessWidget {
                           message: message,
                         ),
                       ),
-                    if (message.linkPreview case final preview?)
+                    for (final preview in message.linkPreviews)
                       Padding(
                         padding: const EdgeInsets.only(top: 5),
                         child: MobileLinkPreviewCard(preview: preview),
@@ -1359,7 +1389,7 @@ class _MobileComposerState extends State<_MobileComposer> {
                 ),
               if (widget.attachments.isNotEmpty)
                 SizedBox(
-                  height: 74,
+                  height: 96,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.all(8),
@@ -1481,13 +1511,13 @@ class _PendingAttachmentPreview extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () => _showActions(context),
       onLongPress: () => _showActions(context),
-      child: SizedBox(
-        width: 116,
+      child: SizedBox.square(
+        dimension: 80,
         child: Stack(
           fit: StackFit.expand,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: DeltiecordCorners.borderRadius,
               child: isImage
                   ? Image.memory(
                       attachment.bytes,

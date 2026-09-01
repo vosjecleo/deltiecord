@@ -29,11 +29,14 @@ void main() {
     );
   });
 
-  test('rejects endpoints that could leak the push capability', () {
+  test('accepts HTTPS endpoints returned by other distributors', () {
     expect(
       normalizeUnifiedPushEndpoint('https://evil.example/up-secret'),
-      isNull,
+      'https://evil.example/up-secret',
     );
+  });
+
+  test('rejects unsafe endpoint origins and shapes', () {
     expect(
       normalizeUnifiedPushEndpoint('https://push.deltie.net:444/up-secret'),
       isNull,

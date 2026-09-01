@@ -43,13 +43,22 @@ Deltiecord creates an Android message notification channel and preserves the
 existing encrypted-preview privacy preference. Notification payloads select the
 corresponding room/event when the process receives them.
 
-The application deliberately has no Firebase Cloud Messaging dependency. Its
 Notifications settings use the standard UnifiedPush Android connector. Install
 and configure an external distributor (such as the ntfy Android app) for
 `https://push.deltie.net`, select it in Deltiecord, then Deltiecord registers the
 complete private distributor endpoint with the Matrix HTTP push gateway at
 `https://push.deltie.net/_matrix/push/v1/notify`. Neither distributor credentials
 nor generated endpoint capabilities are shipped or logged by Deltiecord.
+
+Deltiecord also includes UnifiedPush's optional embedded Firebase-compatible
+WebPush distributor. External distributors are preferred; the embedded option
+is available for testers who choose Google-backed delivery. It shares the same
+Matrix pusher implementation and does not require a private signing key in the
+client binary.
+
+Release CI produces architecture-specific APKs for `arm64-v8a`,
+`armeabi-v7a`, and `x86_64`, plus an AAB. Most current physical phones should
+use the smaller `arm64-v8a` APK.
 
 Push payloads are treated as generic Matrix activity wake-ups, not as trusted
 plaintext message content. Opening a push resumes normal authenticated Matrix

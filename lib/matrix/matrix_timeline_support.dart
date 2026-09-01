@@ -6,6 +6,37 @@ part of 'matrix_backend.dart';
 /// are serialized because sync bursts can otherwise duplicate network work and
 /// let stale room results outlive a fast room switch.
 extension _MatrixTimelineSupport on MatrixBackend {
+  int get _timelineWindowCapacity => TimelineWindowPolicy.hardCap(
+    chunkSize: _preferences.timelineChunkSize,
+    chunkCap: _preferences.timelineChunkCap,
+  );
+
+  List<Event> _timelineWindowEvents(Timeline timeline) {
+    final start = _timelineWindowStart.clamp(0, timeline.events.length);
+    final end = min(timeline.events.length, start + _timelineWindowCapacity);
+    return timeline.events.sublist(start, end);
+  }
+
+  void _setTimelineWindowStart(Timeline timeline, int start) {
+    final maximum = TimelineWindowPolicy.maximumWindowStart(
+      eventCount: timeline.events.length,
+      capacity: _timelineWindowCapacity,
+    );
+    _timelineWindowStart = start.clamp(0, maximum);
+    _timelineHasPrunedNewerEvents = _timelineWindowStart > 0;
+    _timelineWindowHeadEventId = timeline.events.isEmpty
+        ? null
+        : timeline.events[_timelineWindowStart].eventId;
+  }
+
+  void _stabilizeTimelineWindow(Timeline timeline) {
+    if (!_timelineHasPrunedNewerEvents) return;
+    final head = _timelineWindowHeadEventId;
+    if (head == null) return;
+    final index = timeline.events.indexWhere((event) => event.eventId == head);
+    if (index >= 0) _setTimelineWindowStart(timeline, index);
+  }
+
   Future<void> _hydrateSenderAvatars(Timeline timeline) async {
     for (final event in timeline.events) {
       final sender = event.senderFromMemoryOrFallback;
@@ -103,12 +134,6 @@ extension _MatrixTimelineSupport on MatrixBackend {
     _linkPreviews.removeWhere(
       (eventId, _) => !retainedEventIds.contains(eventId),
     );
-    _linkPreviewRetryAfter.removeWhere(
-      (eventId, _) => !retainedEventIds.contains(eventId),
-    );
-    _linkPreviewAttempts.removeWhere(
-      (eventId, _) => !retainedEventIds.contains(eventId),
-    );
     for (final eventId
         in _mediaPlaybackSources.keys
             .where((eventId) => !retainedEventIds.contains(eventId))
@@ -150,9 +175,10 @@ extension _MatrixTimelineSupport on MatrixBackend {
 
   void _onTimelineUpdate(int generation) {
     if (generation != _timelineGeneration) return;
-    _notifyBackendListeners();
     final timeline = _timeline;
     if (timeline != null) {
+      _stabilizeTimelineWindow(timeline);
+      _notifyBackendListeners();
       unawaited(_hydrateCurrentTimeline(timeline, generation));
       unawaited(_markSelectedRoomRead());
     }

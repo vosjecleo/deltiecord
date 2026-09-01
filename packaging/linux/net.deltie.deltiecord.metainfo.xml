@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.21" date="2026-09-01" type="development">
+      <description>
+        <p>Stabilizes timeline pagination, adds multi-link previews and optional FxTwitter rewriting, improves mobile media capture and actions, and repairs distributor-neutral Android push setup.</p>
+      </description>
+    </release>
     <release version="0.9.20" date="2026-08-17" type="development">
       <description>
         <p>Stabilizes bidirectional timeline pagination, restores complete mobile media actions and date context, adds automatic update checks, and hardens UnifiedPush endpoint rotation and notification identities.</p>

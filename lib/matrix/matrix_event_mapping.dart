@@ -36,7 +36,7 @@ extension _MatrixEventMapping on MatrixBackend {
   List<ChatMessage> get _mappedMessages {
     final timeline = _timeline;
     if (timeline == null) return const [];
-    return timeline.events
+    return _timelineWindowEvents(timeline)
         .where((event) => _isVisibleTimelineEvent(event))
         .where((event) => event.relationshipType != RelationshipTypes.edit)
         .map((event) {
@@ -92,7 +92,15 @@ extension _MatrixEventMapping on MatrixBackend {
                 : null,
             reply: _replyPreviews[event.eventId],
             avatarBytes: _senderAvatarBytes[event.senderId],
-            linkPreview: blocked ? null : _linkPreviews[event.eventId],
+            linkPreview: blocked
+                ? null
+                : _linkPreviews[event.eventId]?.firstOrNull,
+            additionalLinkPreviews: blocked
+                ? const []
+                : (_linkPreviews[event.eventId]
+                          ?.skip(1)
+                          .toList(growable: false) ??
+                      const []),
             senderId: event.senderId,
             readBy: _readersFor(event, timeline),
             blocked: blocked,

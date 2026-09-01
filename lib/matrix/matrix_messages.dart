@@ -90,23 +90,36 @@ extension _MatrixMessages on MatrixBackend {
     if (timeline == null || _historyLoading || !canLoadMoreHistory) {
       return;
     }
+    final loadedWindowEnd = _timelineWindowStart + _timelineWindowCapacity;
+    if (loadedWindowEnd < timeline.events.length) {
+      _setTimelineWindowStart(
+        timeline,
+        TimelineWindowPolicy.moveOlder(
+          currentStart: _timelineWindowStart,
+          eventCount: timeline.events.length,
+          capacity: _timelineWindowCapacity,
+          pageSize: _preferences.timelineChunkSize,
+        ),
+      );
+      _notifyBackendListeners();
+      return;
+    }
     _historyLoading = true;
     _notifyBackendListeners();
     try {
       final pageSize = _preferences.timelineChunkSize;
-      final visibleBefore = _mappedMessages.length;
       var loaded = 0;
+      var visibleLoaded = 0;
       // Relations, edits, and malformed events do not become visible rows. A
       // single raw 30-event page can therefore yield far fewer than 30 chat
       // rows. Continue through a bounded number of raw pages so opening a room
       // does not immediately strand the user behind another pagination click.
       for (
         var pass = 0;
-        pass < 8 &&
-            _mappedMessages.length - visibleBefore < pageSize &&
-            canLoadMoreHistory;
+        pass < 8 && visibleLoaded < pageSize && canLoadMoreHistory;
         pass++
       ) {
+        final beforeIds = timeline.events.map((event) => event.eventId).toSet();
         var pageLoaded = 0;
         if (!_timelineDatabaseExhausted) {
           pageLoaded = await _appendStoredHistory(timeline, pageSize);
@@ -116,20 +129,23 @@ extension _MatrixMessages on MatrixBackend {
         }
         loaded += pageLoaded;
         if (!identical(timeline, _timeline)) return;
+        visibleLoaded += timeline.events.where((event) {
+          return !beforeIds.contains(event.eventId) &&
+              _isVisibleTimelineEvent(event) &&
+              event.relationshipType != RelationshipTypes.edit;
+        }).length;
         if (pageLoaded == 0 && !canLoadMoreHistory) break;
       }
       if (!identical(timeline, _timeline)) return;
       if (loaded == 0) return;
-      final hardCap = TimelineWindowPolicy.hardCap(
-        chunkSize: pageSize,
-        chunkCap: _preferences.timelineChunkCap,
+      // The SDK keeps the complete active-room event list so its relation and
+      // pagination state remains authoritative. Only Deltiecord's independent
+      // presentation window moves; this avoids corrupting the SDK list while
+      // retaining the configured widget/mapping cap.
+      _setTimelineWindowStart(
+        timeline,
+        max(0, timeline.events.length - _timelineWindowCapacity),
       );
-      final evicted = TimelineWindowPolicy.trimNewestFirst(
-        timeline.events,
-        hardCap: hardCap,
-        loaded: TimelinePageDirection.older,
-      );
-      if (evicted > 0) _timelineHasPrunedNewerEvents = true;
       await _decryptTimelineEvents(timeline);
       if (!identical(timeline, _timeline)) return;
       unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
@@ -176,8 +192,8 @@ extension _MatrixMessages on MatrixBackend {
       return 0;
     }
     // Once local history is consumed, paginate with the chunk token directly.
-    // The SDK's normal database offset is based on events.length; that offset
-    // repeats pages after Deltiecord trims the list to its bounded hard cap.
+    // Deltiecord's separate database cursor may have consumed local rows even
+    // when the SDK timeline still has a usable server continuation token.
     timeline.isFragmentedTimeline = true;
     final beforeIds = timeline.events.map((event) => event.eventId).toSet();
     final previousToken = timeline.chunk.prevBatch;
@@ -209,62 +225,31 @@ extension _MatrixMessages on MatrixBackend {
     _historyLoading = true;
     _notifyBackendListeners();
     try {
-      // A live SDK timeline cannot request the future, even after Deltiecord
-      // evicts its newest events to keep the moving window bounded. Rebuild a
-      // fragmented timeline around the newest retained event first. Its
-      // forward token lets subsequent pages move toward the live end without
-      // jumping all the way to present.
-      var activeTimeline = timeline;
-      if (_timelineHasPrunedNewerEvents && !timeline.canRequestFuture) {
-        if (timeline.events.isEmpty) return;
-        final anchorId = timeline.events.first.eventId;
-        final chunk = await timeline.room.getEventContext(anchorId);
-        if (!identical(timeline, _timeline) || chunk == null) return;
-        final generation = _timelineGeneration;
-        final replacement = Timeline(
-          room: timeline.room,
-          chunk: chunk,
-          onUpdate: () => _onTimelineUpdate(generation),
+      if (_timelineWindowStart > 0) {
+        _setTimelineWindowStart(
+          timeline,
+          TimelineWindowPolicy.moveNewer(
+            currentStart: _timelineWindowStart,
+            pageSize: _preferences.timelineChunkSize,
+          ),
         );
-        if (!identical(timeline, _timeline)) {
-          replacement.cancelSubscriptions();
-          return;
-        }
-        TimelineWindowPolicy.deduplicateBy(
-          replacement.events,
-          (event) => event.eventId,
-        );
-        timeline.cancelSubscriptions();
-        _timeline = replacement;
-        _timelineDatabaseOffset = replacement.events.length;
-        _timelineDatabaseExhausted = true;
-        _timelineServerExhausted = replacement.chunk.prevBatch.isEmpty;
-        activeTimeline = replacement;
+        unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
+        return;
       }
-
-      if (activeTimeline.canRequestFuture) {
-        await activeTimeline.requestFuture(
+      if (timeline.canRequestFuture) {
+        await timeline.requestFuture(
           historyCount: _preferences.timelineChunkSize,
         );
       }
-      if (!identical(activeTimeline, _timeline)) return;
+      if (!identical(timeline, _timeline)) return;
       TimelineWindowPolicy.deduplicateBy(
-        activeTimeline.events,
+        timeline.events,
         (event) => event.eventId,
       );
-      final hardCap = TimelineWindowPolicy.hardCap(
-        chunkSize: _preferences.timelineChunkSize,
-        chunkCap: _preferences.timelineChunkCap,
-      );
-      TimelineWindowPolicy.trimNewestFirst(
-        activeTimeline.events,
-        hardCap: hardCap,
-        loaded: TimelinePageDirection.newer,
-      );
-      _timelineHasPrunedNewerEvents = activeTimeline.canRequestFuture;
-      await _decryptTimelineEvents(activeTimeline);
-      if (!identical(activeTimeline, _timeline)) return;
-      unawaited(_hydrateCurrentTimeline(activeTimeline, _timelineGeneration));
+      _setTimelineWindowStart(timeline, 0);
+      await _decryptTimelineEvents(timeline);
+      if (!identical(timeline, _timeline)) return;
+      unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
     } catch (exception) {
       _error = _friendlyError(exception);
     } finally {
@@ -280,7 +265,10 @@ extension _MatrixMessages on MatrixBackend {
     String? replyToMessageId,
     String? editMessageId,
   }) async {
-    final value = text.trim();
+    final originalValue = text.trim();
+    final value = _preferences.improveTwitterLinks
+        ? rewriteTwitterLinks(originalValue)
+        : originalValue;
     final targetRoomId = roomId ?? _selectedRoomId;
     if (value.isEmpty || targetRoomId == null) return;
     try {
@@ -292,7 +280,11 @@ extension _MatrixMessages on MatrixBackend {
           ? null
           : _eventById(replyToMessageId);
       late final Future<String?> operation;
-      if (formattedBody == null || formattedBody.isEmpty) {
+      final outgoingFormattedBody =
+          formattedBody != null && _preferences.improveTwitterLinks
+          ? rewriteTwitterLinks(formattedBody)
+          : formattedBody;
+      if (outgoingFormattedBody == null || outgoingFormattedBody.isEmpty) {
         operation = room.sendTextEvent(
           value,
           txid: transactionId,
@@ -311,7 +303,7 @@ extension _MatrixMessages on MatrixBackend {
             'msgtype': MessageTypes.Text,
             'body': value,
             'format': 'org.matrix.custom.html',
-            'formatted_body': formattedBody,
+            'formatted_body': outgoingFormattedBody,
             ..._mentionsFor(value, replyEvent),
           },
           inReplyTo: replyEvent,

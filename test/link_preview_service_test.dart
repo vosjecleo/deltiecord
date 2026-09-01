@@ -6,6 +6,20 @@ import 'package:deltiecord/services/link_preview_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('rewrites X and Twitter links while preserving other hosts', () {
+    expect(
+      rewriteTwitterLinks('See https://x.com/alice/status/123?s=20'),
+      'See https://fxtwitter.com/alice/status/123?s=20',
+    );
+    expect(
+      rewriteTwitterLinks('Profile https://x.com/alice'),
+      'Profile https://fxtwitter.com/alice',
+    );
+    expect(
+      rewriteTwitterLinks('Docs https://example.com/x.com/alice'),
+      'Docs https://example.com/x.com/alice',
+    );
+  });
   test(
     'live direct transport completes HTTPS and parses metadata',
     () async {

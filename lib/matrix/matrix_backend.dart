@@ -80,6 +80,8 @@ class MatrixBackend extends ChatBackend {
   bool _timelineDatabaseExhausted = false;
   bool _timelineServerExhausted = false;
   bool _timelineHasPrunedNewerEvents = false;
+  int _timelineWindowStart = 0;
+  String? _timelineWindowHeadEventId;
   bool _timelineHydrationRunning = false;
   bool _timelineHydrationRequested = false;
   final Set<String> _loadedBackupRoomIds = {};
@@ -89,11 +91,8 @@ class MatrixBackend extends ChatBackend {
   final Map<String, Uri?> _senderAvatarUris = {};
   final Map<String, String> _decryptedPreviews = {};
   final Map<String, ReplyPreview> _replyPreviews = {};
-  final Map<String, LinkPreview?> _linkPreviews = {};
+  final Map<String, List<LinkPreview>> _linkPreviews = {};
   final LinkPreviewCache _linkPreviewUrlCache = LinkPreviewCache();
-  final Map<String, DateTime> _linkPreviewRetryAfter = {};
-  final Map<String, int> _linkPreviewAttempts = {};
-  Timer? _linkPreviewRetryTimer;
   Timer? _profileRefreshTimer;
   bool _profileRefreshRunning = false;
   final LinkedHashMap<String, _ProfileCacheEntry> _profileCache =
@@ -200,7 +199,12 @@ class MatrixBackend extends ChatBackend {
   @override
   bool get canLoadMoreHistory {
     final timeline = _timeline;
-    if (timeline == null || _timelineServerExhausted) return false;
+    if (timeline == null) return false;
+    if (_timelineWindowStart + _timelineWindowCapacity <
+        timeline.events.length) {
+      return true;
+    }
+    if (_timelineServerExhausted) return false;
     // The SDK's canRequestHistory flag only describes its own database cursor.
     // Deltiecord owns a separate bounded-window cursor, which may still have
     // local events even after the SDK considers its initial page exhausted.
@@ -780,12 +784,10 @@ class MatrixBackend extends ChatBackend {
     _timelineDatabaseExhausted = false;
     _timelineServerExhausted = false;
     _timelineHasPrunedNewerEvents = false;
+    _timelineWindowStart = 0;
+    _timelineWindowHeadEventId = null;
     _replyPreviews.clear();
     _linkPreviews.clear();
-    _linkPreviewRetryAfter.clear();
-    _linkPreviewAttempts.clear();
-    _linkPreviewRetryTimer?.cancel();
-    _linkPreviewRetryTimer = null;
     _mediaPlaybackSources.clear();
     _mediaPlaybackReferences.clear();
     _mediaRangeProxy.clear();
@@ -804,7 +806,6 @@ class MatrixBackend extends ChatBackend {
   void dispose() {
     _typingStopTimer?.cancel();
     _settingsSaveTimer?.cancel();
-    _linkPreviewRetryTimer?.cancel();
     _stopProfileRefreshTimer();
     _profileCache.clear();
     _profileRequests.clear();

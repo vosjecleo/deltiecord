@@ -513,8 +513,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         Text('UnifiedPush', style: Theme.of(context).textTheme.titleMedium),
         const Text(
           'Uses a distributor app such as ntfy to wake Deltiecord for Matrix '
-          'activity without Firebase. Configure that app with '
-          'https://push.deltie.net, then select it here.',
+          'activity. Configure ntfy with https://push.deltie.net, or choose '
+          'the optional embedded Firebase-compatible distributor.',
         ),
         if (_unifiedPushState case final stateFuture?)
           FutureBuilder<UnifiedPushState>(
@@ -536,8 +536,14 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 subtitle: Text(
                   state?.error != null
                       ? 'Distributor error: ${state!.error}'
-                      : state?.distributor ??
-                            'Install and configure a UnifiedPush distributor.',
+                      : [
+                          state?.distributor ??
+                              'Install and configure a UnifiedPush distributor.',
+                          if (state?.lastMessageReceived case final received?)
+                            'Last background push: ${received.toLocal()}',
+                          if (state?.lastNotificationPosted case final posted?)
+                            'Last native alert: ${posted.toLocal()}',
+                        ].join('\n'),
                 ),
                 trailing: snapshot.connectionState != ConnectionState.done
                     ? const SizedBox.square(
@@ -1064,6 +1070,19 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         value: preferences.fetchDirectLinkPreviews,
         onChanged: (value) => backend.updatePreferences(
           preferences.copyWith(fetchDirectLinkPreviews: value),
+        ),
+      ),
+      SwitchListTile(
+        key: const ValueKey('improve-twitter-links-toggle'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Improve X/Twitter links with FxTwitter'),
+        subtitle: const Text(
+          'Uses FxTwitter for previews and rewrites newly sent X/Twitter '
+          'links. Disable this to preserve the original host.',
+        ),
+        value: preferences.improveTwitterLinks,
+        onChanged: (value) => backend.updatePreferences(
+          preferences.copyWith(improveTwitterLinks: value),
         ),
       ),
       const Divider(height: 28),

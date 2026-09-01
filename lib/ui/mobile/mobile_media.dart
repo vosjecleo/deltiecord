@@ -60,6 +60,8 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
   @override
   Widget build(BuildContext context) {
     final attachment = widget.message.attachment!;
+    final image = attachment.kind == AttachmentKind.image;
+    final video = attachment.kind == AttachmentKind.video;
     final hidden = attachment.spoiler && !_revealed;
     final media = switch (attachment.kind) {
       AttachmentKind.image => _MobileImage(
@@ -79,7 +81,9 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
     return GestureDetector(
       onTap: hidden
           ? () => setState(() => _revealed = true)
-          : _showMediaActions,
+          : image
+          ? _openImageFullscreen
+          : null,
       onLongPress: hidden ? null : _showMediaActions,
       child: Stack(
         alignment: Alignment.center,
@@ -97,9 +101,30 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
               avatar: Icon(Icons.visibility_off, size: 17),
               label: Text('Spoiler — tap to reveal'),
             ),
+          if (!hidden && (image || video))
+            Positioned(
+              right: 6,
+              top: 6,
+              child: IconButton.filled(
+                tooltip: 'Media actions',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black87,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _showMediaActions,
+                icon: const Icon(Icons.more_vert),
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _openImageFullscreen() async {
+    final bytes = await widget.backend.downloadAttachment(widget.message.id);
+    if (mounted) {
+      _showImageFullscreen(context, bytes, onActions: _showMediaActions);
+    }
   }
 
   Future<void> _showMediaActions() async {
@@ -202,7 +227,9 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
           final bytes = await widget.backend.downloadAttachment(
             widget.message.id,
           );
-          if (mounted) _showImageFullscreen(context, bytes);
+          if (mounted) {
+            _showImageFullscreen(context, bytes, onActions: _showMediaActions);
+          }
         } else if (video) {
           await showDialog<void>(
             context: context,
@@ -219,6 +246,7 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
                     ),
                   ),
                   _fullscreenCloseButton(context),
+                  _fullscreenActionsButton(context, _showMediaActions),
                 ],
               ),
             ),
@@ -298,7 +326,11 @@ class _MobileImageState extends State<_MobileImage> {
   }
 }
 
-void _showImageFullscreen(BuildContext context, Uint8List bytes) {
+void _showImageFullscreen(
+  BuildContext context,
+  Uint8List bytes, {
+  VoidCallback? onActions,
+}) {
   showDialog<void>(
     context: context,
     barrierColor: Colors.black,
@@ -314,6 +346,7 @@ void _showImageFullscreen(BuildContext context, Uint8List bytes) {
             ),
           ),
           _fullscreenCloseButton(context),
+          if (onActions != null) _fullscreenActionsButton(context, onActions),
         ],
       ),
     ),
@@ -337,6 +370,22 @@ Widget _fullscreenCloseButton(BuildContext context) => Positioned(
     ),
   ),
 );
+
+Widget _fullscreenActionsButton(BuildContext context, VoidCallback onPressed) =>
+    Positioned(
+      right: 64,
+      top: 12,
+      child: SafeArea(
+        child: IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black87,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: onPressed,
+          icon: const Icon(Icons.more_vert),
+        ),
+      ),
+    );
 
 class _MediaClosePainter extends CustomPainter {
   const _MediaClosePainter();

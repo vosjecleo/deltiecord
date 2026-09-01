@@ -149,10 +149,6 @@ extension _MatrixSession on MatrixBackend {
       _replyPreviews.clear();
       _linkPreviews.clear();
       _linkPreviewUrlCache.clear();
-      _linkPreviewRetryAfter.clear();
-      _linkPreviewAttempts.clear();
-      _linkPreviewRetryTimer?.cancel();
-      _linkPreviewRetryTimer = null;
       _outboundSessionsReset.clear();
       _roomsMarkingRead.clear();
       _lastMarkedReadEventIds.clear();
@@ -587,6 +583,8 @@ extension _MatrixSession on MatrixBackend {
       sharePresence: content?.tryGet<bool>('share_presence') ?? true,
       fetchDirectLinkPreviews:
           content?.tryGet<bool>('fetch_direct_link_previews') ?? false,
+      improveTwitterLinks:
+          content?.tryGet<bool>('improve_twitter_links') ?? true,
       accentColor: content?.tryGet<int>('accent_color') ?? 0xff6975d9,
       fontFamily: _supportedInterfaceFont(
         content?.tryGet<String>('font_family'),
@@ -664,14 +662,13 @@ extension _MatrixSession on MatrixBackend {
     if (_matrix.userID == null) return;
     final previewPolicyChanged =
         preferences.fetchDirectLinkPreviews !=
-        _preferences.fetchDirectLinkPreviews;
+            _preferences.fetchDirectLinkPreviews ||
+        preferences.improveTwitterLinks != _preferences.improveTwitterLinks;
     if (previewPolicyChanged) {
       // A previous homeserver-only miss must not suppress a newly opted-in
       // direct fallback (and vice versa). Event previews hydrate again lazily.
       _linkPreviews.clear();
       _linkPreviewUrlCache.clear();
-      _linkPreviewAttempts.clear();
-      _linkPreviewRetryAfter.clear();
     }
     if (preferences.sharePresence != _preferences.sharePresence) {
       unawaited(
@@ -731,6 +728,7 @@ extension _MatrixSession on MatrixBackend {
           'send_typing_notifications': preferences.sendTypingNotifications,
           'share_presence': preferences.sharePresence,
           'fetch_direct_link_previews': preferences.fetchDirectLinkPreviews,
+          'improve_twitter_links': preferences.improveTwitterLinks,
           'accent_color': preferences.accentColor,
           'font_family': preferences.fontFamily,
           'emoji_font_family': preferences.emojiFontFamily,

@@ -1,24 +1,35 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'public_network_address.dart';
+
 /// Android UnifiedPush distributor state for one Matrix account registration.
 final class UnifiedPushState {
-  const UnifiedPushState({this.distributor, this.endpoint, this.error});
+  const UnifiedPushState({
+    this.distributor,
+    this.endpoint,
+    this.error,
+    this.lastMessageReceived,
+    this.lastNotificationPosted,
+  });
 
   final String? distributor;
   final String? endpoint;
   final String? error;
+  final DateTime? lastMessageReceived;
+  final DateTime? lastNotificationPosted;
 
   bool get registered => endpoint?.isNotEmpty == true;
 }
 
 /// Platform boundary for the official Android UnifiedPush connector.
 ///
-/// Deltiecord never embeds distributor credentials. Users configure an ntfy
-/// distributor app, which returns a private capability endpoint through the
-/// Android connector protocol.
+/// External distributors such as ntfy and the optional embedded distributor
+/// both return a private capability endpoint through the Android connector
+/// protocol. Deltiecord never logs or exposes that bearer capability.
 final class UnifiedPushPlatform {
   UnifiedPushPlatform._() {
     _channel.setMethodCallHandler((call) async {
@@ -141,7 +152,20 @@ final class UnifiedPushPlatform {
         distributor: result?['distributor'] as String?,
         endpoint: result?['endpoint'] as String?,
         error: result?['error'] as String?,
+        lastMessageReceived: _dateFromMilliseconds(
+          result?['lastMessageReceived'],
+        ),
+        lastNotificationPosted: _dateFromMilliseconds(
+          result?['lastNotificationPosted'],
+        ),
       );
+
+  DateTime? _dateFromMilliseconds(Object? value) {
+    final milliseconds = int.tryParse('$value');
+    return milliseconds == null
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
 
   Future<UnifiedPushState> _invokeRegistration(
     String method,
@@ -174,6 +198,11 @@ String? normalizeUnifiedPushEndpoint(String value) {
   var normalized = value
       .replaceAll(RegExp(r'[\u0000-\u001f\u007f\u200b\ufeff]'), '')
       .trim();
+  if (normalized.length >= 2 &&
+      ((normalized.startsWith('"') && normalized.endsWith('"')) ||
+          (normalized.startsWith("'") && normalized.endsWith("'")))) {
+    normalized = normalized.substring(1, normalized.length - 1).trim();
+  }
   if (normalized.toLowerCase().startsWith('push.deltie.net/')) {
     normalized = 'https://$normalized';
   }
@@ -197,10 +226,15 @@ String? normalizeUnifiedPushEndpoint(String value) {
   if (uri != null && uri.fragment.isNotEmpty) {
     uri = Uri.tryParse(uri.toString().split('#').first);
   }
+  final literalAddress = uri == null
+      ? null
+      : InternetAddress.tryParse(uri.host);
   if (uri == null ||
       uri.scheme.toLowerCase() != 'https' ||
-      uri.host.toLowerCase() != 'push.deltie.net' ||
+      uri.host.isEmpty ||
       (uri.hasPort && uri.port != 443) ||
+      uri.host.toLowerCase() == 'localhost' ||
+      (literalAddress != null && !isPublicInternetAddress(literalAddress)) ||
       uri.userInfo.isNotEmpty ||
       uri.pathSegments.where((part) => part.isNotEmpty).isEmpty) {
     return null;

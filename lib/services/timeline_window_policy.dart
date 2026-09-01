@@ -2,11 +2,11 @@ import 'dart:math';
 
 enum TimelinePageDirection { older, newer }
 
-/// Applies Deltiecord's bounded moving-window rules to newest-first events.
+/// Applies Deltiecord's bounded presentation-window rules to newest-first events.
 ///
-/// Matrix timelines expose index zero as the newest event. Loading older
-/// context therefore evicts from the beginning, while moving toward the
-/// present evicts from the end. Scroll anchoring remains a UI responsibility.
+/// Matrix timelines expose index zero as the newest event. Deltiecord leaves
+/// the SDK-owned list intact and moves a UI window over it. The legacy trim
+/// helper remains for isolated list-policy tests and non-SDK callers.
 abstract final class TimelineWindowPolicy {
   static int hardCap({required int chunkSize, required int chunkCap}) =>
       min(120, max(1, chunkSize) * max(1, chunkCap));
@@ -15,6 +15,28 @@ abstract final class TimelineWindowPolicy {
   /// bounded number of events Deltiecord keeps materialized in the timeline.
   static int advanceDatabaseOffset(int currentOffset, int fetchedCount) =>
       currentOffset + max(0, fetchedCount);
+
+  /// Returns the greatest valid start for a full presentation window.
+  static int maximumWindowStart({
+    required int eventCount,
+    required int capacity,
+  }) => max(0, eventCount - max(1, capacity));
+
+  /// Moves a presentation window toward older events without exposing a
+  /// short, unstable tail at the end of the SDK-owned event list.
+  static int moveOlder({
+    required int currentStart,
+    required int eventCount,
+    required int capacity,
+    required int pageSize,
+  }) => min(
+    maximumWindowStart(eventCount: eventCount, capacity: capacity),
+    max(0, currentStart) + max(1, pageSize),
+  );
+
+  /// Moves a presentation window toward the live end of a newest-first list.
+  static int moveNewer({required int currentStart, required int pageSize}) =>
+      max(0, currentStart - max(1, pageSize));
 
   /// Removes repeated identities while preserving newest-first order.
   ///

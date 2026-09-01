@@ -59,21 +59,30 @@ credentials and AES material held only in memory. URLs and logs never contain
 Matrix access tokens, keys, or IVs. Entries expire, are LRU bounded, and are
 removed when playback ends, on logout, and at shutdown.
 
-## Removed integrations
+## X/Twitter preview compatibility
 
-The old automatic FxTwitter/direct fallback is not used. Direct webpage preview
-traffic occurs only after the user enables the privacy setting described above.
+X/Twitter links use FxTwitter as their preview source by default because
+the original service frequently does not return usable OpenGraph metadata. The
+visible incoming link remains unchanged. Newly sent links are rewritten
+to FxTwitter while the setting is enabled. This behavior is configurable and
+does not bypass the homeserver-first preview policy; direct webpage traffic
+still requires the separate privacy opt-in.
 
 ## Android UnifiedPush
 
-Opt-in and user-triggered from Android notification settings. Deltiecord uses
-the standard external UnifiedPush distributor protocol and contains no Firebase
-dependency or shared ntfy credentials. The selected distributor supplies a
+Configured from Android notification settings. Deltiecord uses the standard
+UnifiedPush distributor protocol and contains no shared ntfy credentials. The
+selected distributor supplies a
 private, high-entropy endpoint. Deltiecord registers that complete endpoint as
 the Matrix pushkey through
 `https://push.deltie.net/_matrix/push/v1/notify` and keeps it in private Android
 preferences. The endpoint is a bearer capability and is never displayed in the
 UI or written to logs.
+
+External distributors such as ntfy are preferred. An optional embedded
+Firebase-compatible WebPush distributor is also available for Android devices
+that use Google delivery. It uses the same distributor-neutral Matrix pusher
+path and does not place a private Firebase project key in the application.
 
 The gateway and distributor receive Matrix push metadata sufficient to wake the
 application and display a generic activity notification. Deltiecord obtains
@@ -82,6 +91,6 @@ opened; the push path is not treated as a source of decrypted plaintext.
 
 ## Release update checks
 
-User-triggered only. The About page can fetch the bounded JSON release manifest
-from `https://deltie.net/cord/releases.json` and open the public releases page.
-No automatic update request is made during startup.
+The signed-in application performs one bounded advisory check per process
+against `https://deltie.net/cord/releases.json`; Settings also exposes an
+explicit retry. The checker does not download or install an update itself.

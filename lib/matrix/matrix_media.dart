@@ -41,10 +41,6 @@ extension _MatrixMedia on MatrixBackend {
     _attachmentBytesCacheSize = 0;
     _attachmentCacheGeneration++;
     _linkPreviews.clear();
-    _linkPreviewRetryAfter.clear();
-    _linkPreviewAttempts.clear();
-    _linkPreviewRetryTimer?.cancel();
-    _linkPreviewRetryTimer = null;
     _notifyBackendListeners();
     await _refreshStorageUsage();
   }

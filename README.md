@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: version 0.9.20 build 67 beta release**
+> **Current release: version 0.9.21 build 68 beta release**
 >
 > Deltiecord is a desktop and Android beta. It is usable for everyday testing,
 > but bugs and rough edges should still be expected while the project approaches
@@ -94,9 +94,10 @@ Notable features include:
 - Emoji reactions
 - Searchable emoji picker
 - `:emoji:` autocomplete
-- Rich link previews
+- Rich link previews for multiple links in one message
 - Privacy-preserving homeserver link previews, with an optional direct fallback
   that is disabled by default
+- Configurable FxTwitter compatibility for X/Twitter links
 - image and video embeds
 - image/video context menus
 - Fullscreen media viewer
@@ -108,6 +109,7 @@ Notable features include:
 - Per-room drafts
 - Desktop notifications
 - Drag-and-drop attachments
+- Android photo and video capture from the attachment menu
 - Clipboard image/file support
 - Configurable keyboard shortcuts
 - Multiple UI density and appearance settings
@@ -236,4 +238,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.20 build 67, beta release**
+**Current release: v0.9.21 build 68, beta release**

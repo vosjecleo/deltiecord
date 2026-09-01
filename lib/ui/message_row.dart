@@ -387,7 +387,7 @@ class _MessageRowState extends State<_MessageRow> {
                                     gallery: widget.mediaMessages,
                                   ),
                                 ),
-                              if (message.linkPreview case final preview?)
+                              for (final preview in message.linkPreviews)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
                                   child: _LinkPreviewCard(preview: preview),

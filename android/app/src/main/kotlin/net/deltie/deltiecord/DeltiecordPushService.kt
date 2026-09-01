@@ -39,6 +39,9 @@ class DeltiecordPushService : PushService() {
     override fun onMessage(message: PushMessage, instance: String) {
         // Matrix push payloads are wake-up hints, not a source of decrypted
         // message text. Deltiecord syncs Matrix after the user opens the alert.
+        preferences(this).edit()
+            .putLong("last_message_received_ms", System.currentTimeMillis())
+            .apply()
         showMatrixActivityNotification(this, message.content)
     }
 
@@ -80,6 +83,14 @@ class DeltiecordPushService : PushService() {
             "distributor" to org.unifiedpush.android.connector.UnifiedPush.getSavedDistributor(context),
             "endpoint" to preferences(context).getString(endpointKey(instance), null),
             "error" to preferences(context).getString(errorKey(instance), null),
+            "lastMessageReceived" to preferences(context)
+                .getLong("last_message_received_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
+            "lastNotificationPosted" to preferences(context)
+                .getLong("last_notification_posted_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
         )
 
         fun clear(context: Context, instance: String) {
@@ -136,13 +147,17 @@ class DeltiecordPushService : PushService() {
             }
             val notification = builder.build()
             manager.notify(9001, notification)
+            preferences(context).edit()
+                .putLong("last_notification_posted_ms", System.currentTimeMillis())
+                .apply()
         }
 
         private data class MatrixMetadata(val roomId: String?, val title: String)
 
         private fun parseMatrixMetadata(payload: ByteArray): MatrixMetadata = runCatching {
             if (payload.size > 256 * 1024) return@runCatching MatrixMetadata(null, "Deltiecord")
-            val json = JSONObject(payload.toString(Charsets.UTF_8))
+            val root = JSONObject(payload.toString(Charsets.UTF_8))
+            val json = root.optJSONObject("notification") ?: root
             val roomId = json.optString("room_id").takeIf { it.isNotBlank() }
             val title = json.optString("room_name").takeIf { it.isNotBlank() }
                 ?: json.optString("sender_display_name").takeIf { it.isNotBlank() }

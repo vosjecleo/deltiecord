@@ -57,6 +57,7 @@ class AppPreferences {
     this.sendTypingNotifications = true,
     this.sharePresence = true,
     this.fetchDirectLinkPreviews = false,
+    this.improveTwitterLinks = true,
     this.accentColor = 0xff6975d9,
     this.fontFamily = 'Liberation Sans',
     this.emojiFontFamily = systemEmojiFontFamily,
@@ -103,6 +104,7 @@ class AppPreferences {
   /// Homeserver-generated Matrix previews remain enabled regardless. New
   /// installations deliberately default this to false.
   final bool fetchDirectLinkPreviews;
+  final bool improveTwitterLinks;
   final int accentColor;
   final String fontFamily;
   final String emojiFontFamily;
@@ -144,6 +146,7 @@ class AppPreferences {
     bool? sendTypingNotifications,
     bool? sharePresence,
     bool? fetchDirectLinkPreviews,
+    bool? improveTwitterLinks,
     int? accentColor,
     String? fontFamily,
     String? emojiFontFamily,
@@ -186,6 +189,7 @@ class AppPreferences {
     sharePresence: sharePresence ?? this.sharePresence,
     fetchDirectLinkPreviews:
         fetchDirectLinkPreviews ?? this.fetchDirectLinkPreviews,
+    improveTwitterLinks: improveTwitterLinks ?? this.improveTwitterLinks,
     accentColor: accentColor ?? this.accentColor,
     fontFamily: fontFamily ?? this.fontFamily,
     emojiFontFamily: emojiFontFamily ?? this.emojiFontFamily,
@@ -487,6 +491,7 @@ class ChatMessage {
     this.reply,
     this.avatarBytes,
     this.linkPreview,
+    this.additionalLinkPreviews = const [],
     this.readBy = const [],
     this.senderId,
     this.blocked = false,
@@ -511,6 +516,12 @@ class ChatMessage {
   final ReplyPreview? reply;
   final Uint8List? avatarBytes;
   final LinkPreview? linkPreview;
+  final List<LinkPreview> additionalLinkPreviews;
+
+  List<LinkPreview> get linkPreviews => [
+    ?linkPreview,
+    ...additionalLinkPreviews,
+  ];
   final List<ReceiptReaderSummary> readBy;
   final String? senderId;
   final bool blocked;

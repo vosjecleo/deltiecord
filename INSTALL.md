@@ -1,9 +1,9 @@
 # Installing Deltiecord
 
-Deltiecord 0.9.20 build 67 is a beta release for Android, x86-64 Windows, and
+Deltiecord 0.9.21 build 68 is a beta release for Android, x86-64 Windows, and
 Linux.
 Download official builds from the [Deltiecord releases page](https://deltie.net/cord)
-or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.20-b67).
+or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.21-b68).
 
 Before installing a downloaded build, verify it against the included
 `SHA256SUMS` file:
@@ -14,20 +14,21 @@ sha256sum -c SHA256SUMS
 
 ## Android
 
-Download `deltiecord-0.9.20+67-android.apk` directly on the Android device. Verify
+Download the APK matching the device architecture. Most current phones use
+`deltiecord-0.9.21+68-android-arm64-v8a.apk`; older 32-bit phones use
+`armeabi-v7a`, while `x86_64` is primarily for emulators. Verify
 its checksum, allow installation from the browser or file manager when Android
-asks, then open the APK. The prerelease APK uses a development signing identity;
-v0.9.19 was the first build signed by Deltiecord's persistent prerelease identity.
+asks, then open the APK. The prerelease APK uses Deltiecord's persistent
+prerelease signing identity; v0.9.19 was the first build signed by this identity.
 The private keystore and passwords are stored outside the repository. APKs from
 builds 62 and 63 used ephemeral identities and require one uninstall before this
 first persistently signed build can be installed; later upgrades retain the same
 identity.
 
 Android may require microphone, camera, media, and notification permissions as
-the corresponding features are used. Deltiecord does not add Firebase or Google
-push infrastructure. Notifications can use a separately installed UnifiedPush
-distributor with Deltiecord's ntfy Matrix gateway; without one, delivery depends
-on the Matrix sync process remaining alive and vendors may suspend it.
+the corresponding features are used. Notifications can use a separately
+installed UnifiedPush distributor with Deltiecord's ntfy Matrix gateway, or the
+optional embedded Firebase-compatible WebPush distributor.
 
 The AAB produced by CI is intended for future repository/store distribution and
 is not directly installable. Android RTC, encrypted media, screen capture,
@@ -38,7 +39,7 @@ still require broader real-device testing.
 
 ### Installer
 
-Download `deltiecord-0.9.20+67-windows-x64-setup.exe`, run it, and follow the
+Download `deltiecord-0.9.21+68-windows-x64-setup.exe`, run it, and follow the
 installer. A normal per-user installation does not require administrator
 privileges. The installer creates a Start Menu entry and can optionally create
 a desktop shortcut.
@@ -52,7 +53,7 @@ per-user application data.
 
 ### Portable build
 
-Download `deltiecord-0.9.20+67-windows-x64-portable.zip`, extract the entire
+Download `deltiecord-0.9.21+68-windows-x64-portable.zip`, extract the entire
 archive, and run `deltiecord.exe` from the extracted directory. Do not move only
 the executable: its accompanying DLLs, plugins, data, and assets are required.
 
@@ -63,11 +64,11 @@ issues.
 
 ## Debian, Ubuntu, and Linux Mint
 
-Download `deltiecord-0.9.20+67-linux-debian-amd64.deb`, open a terminal in its directory, and
+Download `deltiecord-0.9.21+68-linux-debian-amd64.deb`, open a terminal in its directory, and
 install it with APT:
 
 ```sh
-sudo apt install ./deltiecord-0.9.20+67-linux-debian-amd64.deb
+sudo apt install ./deltiecord-0.9.21+68-linux-debian-amd64.deb
 ```
 
 APT installs the package and its declared runtime dependencies. Launch it from
@@ -88,10 +89,10 @@ data.
 
 ## Arch Linux
 
-Download `deltiecord-0.9.20+67-linux-arch-x86_64.pkg.tar.zst` and install it with pacman:
+Download `deltiecord-0.9.21+68-linux-arch-x86_64.pkg.tar.zst` and install it with pacman:
 
 ```sh
-sudo pacman -U ./deltiecord-0.9.20+67-linux-arch-x86_64.pkg.tar.zst
+sudo pacman -U ./deltiecord-0.9.21+68-linux-arch-x86_64.pkg.tar.zst
 ```
 
 Launch Deltiecord from the application menu or run `deltiecord`. Remove the
@@ -100,11 +101,11 @@ package with `sudo pacman -R deltiecord`; user data remains untouched.
 ## AppImage
 
 The AppImage is useful on other current x86-64 Linux distributions. Download
-`deltiecord-0.9.20+67-linux-appimage-x86_64.AppImage`, make it executable, and launch it:
+`deltiecord-0.9.21+68-linux-appimage-x86_64.AppImage`, make it executable, and launch it:
 
 ```sh
-chmod +x deltiecord-0.9.20+67-linux-appimage-x86_64.AppImage
-./deltiecord-0.9.20+67-linux-appimage-x86_64.AppImage
+chmod +x deltiecord-0.9.21+68-linux-appimage-x86_64.AppImage
+./deltiecord-0.9.21+68-linux-appimage-x86_64.AppImage
 ```
 
 The AppImage contains the Flutter application but deliberately relies on some
@@ -210,7 +211,7 @@ library, then run:
 
 ```sh
 flutter pub get
-flutter build apk --release
+flutter build apk --release --split-per-abi
 flutter build appbundle --release
 ```
 

@@ -73,7 +73,6 @@ class _ConversationState extends State<_Conversation> {
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _navigationGeneration = 0;
   int _timelineInputGeneration = 0;
-  int? _timelineLayoutFingerprint;
   String? _newestMessageId;
   String? _highlightedMessageId;
   VoidCallback? _dismissMessageActions;
@@ -178,17 +177,9 @@ class _ConversationState extends State<_Conversation> {
     try {
       await load();
       if (!mounted) return;
-      // Decryption and metadata can update row heights on adjacent frames.
-      // Correct against the same event until its global position settles,
-      // without letting those programmatic jumps recursively paginate.
-      for (var pass = 0; pass < 4; pass++) {
-        await WidgetsBinding.instance.endOfFrame;
-        if (!mounted) return;
-        if (inputGeneration != _timelineInputGeneration) return;
-        final before = _scrollController.position.pixels;
-        _restoreVisibleAnchor(anchor);
-        if ((_scrollController.position.pixels - before).abs() < 0.5) break;
-      }
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted || inputGeneration != _timelineInputGeneration) return;
+      _restoreVisibleAnchor(anchor);
     } catch (_) {
       // The backend reports its user-facing pagination error separately.
     } finally {
@@ -233,10 +224,6 @@ class _ConversationState extends State<_Conversation> {
   void didUpdateWidget(covariant _Conversation oldWidget) {
     super.didUpdateWidget(oldWidget);
     final roomId = widget.backend.selectedRoom?.id;
-    final layoutFingerprint = _messageLayoutFingerprint(
-      widget.backend.messages,
-    );
-    final layoutChanged = _timelineLayoutFingerprint != layoutFingerprint;
     final newestMessageId = widget.backend.messages.firstOrNull?.id;
     final receivedNewHead =
         _roomId == roomId &&
@@ -246,14 +233,6 @@ class _ConversationState extends State<_Conversation> {
     final wasAtPresent =
         !_scrolledAwayFromPresent &&
         (!_scrollController.hasClients || _scrollController.offset <= 48);
-    final passiveAnchor =
-        !_loadingAnchoredHistory &&
-            _roomId == roomId &&
-            layoutChanged &&
-            !wasAtPresent
-        ? _captureVisibleAnchor()
-        : null;
-    final inputGeneration = _timelineInputGeneration;
     if (_roomId != roomId) {
       _roomId = roomId;
       _scrolledAwayFromPresent = false;
@@ -261,14 +240,12 @@ class _ConversationState extends State<_Conversation> {
       _messageIdsByKey.clear();
       _navigationGeneration++;
       _highlightedMessageId = null;
-      _timelineLayoutFingerprint = layoutFingerprint;
       _newestMessageId = newestMessageId;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _focusComposerAfterBuild();
     } else if (oldWidget.sending && !widget.sending) {
       _focusComposerAfterBuild();
     }
-    _timelineLayoutFingerprint = layoutFingerprint;
     _newestMessageId = newestMessageId;
     if (receivedNewHead && wasAtPresent) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -281,32 +258,7 @@ class _ConversationState extends State<_Conversation> {
         _scrollController.jumpTo(0);
       });
     }
-    if (passiveAnchor != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted ||
-            _loadingAnchoredHistory ||
-            _roomId != roomId ||
-            inputGeneration != _timelineInputGeneration) {
-          return;
-        }
-        _restoreVisibleAnchor(passiveAnchor);
-      });
-    }
   }
-
-  int _messageLayoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
-    messages.map(
-      (message) => Object.hash(
-        message.id,
-        message.body,
-        message.formattedBody,
-        message.reply?.eventId,
-        message.attachment?.name,
-        message.linkPreview?.url,
-        message.reactions.length,
-      ),
-    ),
-  );
 
   GlobalKey _messageKeyFor(String eventId) {
     final key = _messageKeys.putIfAbsent(eventId, GlobalKey.new);

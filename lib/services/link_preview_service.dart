@@ -47,6 +47,36 @@ List<Uri> extractPreviewUrls(String text) {
   return result;
 }
 
+/// Returns the FxTwitter equivalent of an X/Twitter URL.
+Uri? fxTwitterUrl(Uri url) {
+  final host = url.host.toLowerCase();
+  if (host != 'x.com' &&
+      host != 'www.x.com' &&
+      host != 'twitter.com' &&
+      host != 'www.twitter.com' &&
+      host != 'mobile.twitter.com') {
+    return null;
+  }
+  return Uri(
+    scheme: 'https',
+    host: 'fxtwitter.com',
+    pathSegments: url.pathSegments,
+    query: url.hasQuery ? url.query : null,
+    fragment: url.hasFragment ? url.fragment : null,
+  );
+}
+
+String rewriteTwitterLinks(String text) {
+  var result = text;
+  for (final url in extractPreviewUrls(text)) {
+    final replacement = fxTwitterUrl(url);
+    if (replacement != null) {
+      result = result.replaceAll(url.toString(), replacement.toString());
+    }
+  }
+  return result;
+}
+
 /// Normalizes the inconsistent OpenGraph shapes returned by Matrix servers.
 ///
 /// Synapse-compatible servers commonly return numbers as either JSON numbers

@@ -665,8 +665,8 @@ class _PendingAttachmentTile extends StatelessWidget {
       child: Tooltip(
         message: '${attachment.name}\nRight-click for options',
         child: Container(
-          width: 92,
-          height: 68,
+          width: 72,
+          height: 72,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: context.deltiecord.elevated,

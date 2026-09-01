@@ -101,10 +101,13 @@ jobs:
           copy_unique "deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
           copy_unique "deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
           copy_unique "deltiecord-${release_id}-linux-debian-amd64.deb"
-          copy_unique "deltiecord-${release_id}-android.apk"
+          copy_unique "deltiecord-${release_id}-android-arm64-v8a.apk"
+          copy_unique "deltiecord-${release_id}-android-armeabi-v7a.apk"
+          copy_unique "deltiecord-${release_id}-android-x86_64.apk"
+          copy_unique "deltiecord-${release_id}-android.aab"
 
           (cd release-assets && sha256sum -- * >SHA256SUMS)
-          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 7
+          test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 10
 
       - name: Publish GitHub prerelease
         shell: bash

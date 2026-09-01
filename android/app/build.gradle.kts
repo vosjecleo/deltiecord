@@ -90,4 +90,7 @@ dependencies {
         // connector's JVM Tink dependency makes D8 reject the application.
         exclude(group = "com.google.crypto.tink", module = "tink")
     }
+    // Optional in-app Google/WebPush distributor. External distributors such
+    // as ntfy remain preferred, and no private Firebase key is bundled.
+    implementation("org.unifiedpush.android:embedded-fcm-distributor:3.1.0")
 }

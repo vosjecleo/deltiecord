@@ -1,20 +1,18 @@
 part of 'matrix_backend.dart';
 
 extension _MatrixLinkPreviews on MatrixBackend {
-  /// Hydrates preview metadata after timeline text is already available.
+  /// Hydrates up to three links per event after timeline text is usable.
   ///
-  /// The Matrix homeserver remains the primary and privacy-preserving fetcher.
-  /// Direct origin requests are made only after explicit user opt-in and only
-  /// by [DirectLinkPreviewFetcher], which pins public DNS results to sockets.
+  /// Homeserver previews remain the default. Direct origin requests happen
+  /// only after explicit opt-in; a local domain card provides a deterministic
+  /// non-network fallback so every HTTP(S) link still has an embed surface.
   Future<void> _hydrateLinkPreviews(Timeline timeline) async {
     final pending = <(Event, Event)>[];
     for (final event in timeline.events) {
-      final retryAfter = _linkPreviewRetryAfter[event.eventId];
       final displayEvent = event.type == EventTypes.Message
           ? event.getDisplayEvent(timeline)
           : event;
       if (_linkPreviews.containsKey(event.eventId) ||
-          (retryAfter != null && DateTime.now().isBefore(retryAfter)) ||
           displayEvent.type != EventTypes.Message ||
           displayEvent.hasAttachment ||
           event.relationshipType == RelationshipTypes.edit) {
@@ -23,15 +21,13 @@ extension _MatrixLinkPreviews on MatrixBackend {
       pending.add((event, displayEvent));
     }
 
-    // Limit parallel homeserver requests. This keeps an embed-heavy room from
-    // serially delaying previews while avoiding an unbounded request burst.
     for (var offset = 0; offset < pending.length; offset += 4) {
       final end = min(offset + 4, pending.length);
       await Future.wait(
         pending
             .sublist(offset, end)
             .map(
-              (candidate) => _hydrateEventPreview(
+              (candidate) => _hydrateEventPreviews(
                 sourceEvent: candidate.$1,
                 displayEvent: candidate.$2,
               ),
@@ -41,7 +37,7 @@ extension _MatrixLinkPreviews on MatrixBackend {
     }
   }
 
-  Future<void> _hydrateEventPreview({
+  Future<void> _hydrateEventPreviews({
     required Event sourceEvent,
     required Event displayEvent,
   }) async {
@@ -51,27 +47,25 @@ extension _MatrixLinkPreviews on MatrixBackend {
         hideEdit: true,
         plaintextBody: true,
       ),
+    ).toSet().take(3).toList(growable: false);
+    if (urls.isEmpty) return;
+    _linkPreviews[sourceEvent.eventId] = await Future.wait(
+      urls.map((url) => _resolveLinkPreview(url, sourceEvent)),
     );
-    if (urls.isEmpty) {
-      // Do not turn an event into a permanent miss. A late edit/replacement
-      // can add a URL without replacing the original event ID used by the UI.
-      return;
-    }
-    final url = urls.first;
-    final cached = _linkPreviewUrlCache.getEntry(url);
-    if (cached.$1) {
-      if (cached.$2 case final preview?) {
-        _linkPreviews[sourceEvent.eventId] = preview;
-      }
-      return;
-    }
+  }
 
+  Future<LinkPreview> _resolveLinkPreview(Uri original, Event source) async {
+    final cached = _linkPreviewUrlCache.getEntry(original);
+    if (cached.$1 && cached.$2 != null) return cached.$2!;
+
+    final requestUrl = _preferences.improveTwitterLinks
+        ? fxTwitterUrl(original) ?? original
+        : original;
     LinkPreview? result;
-    Object? homeserverFailure;
     try {
       final response = await _matrix.getUrlPreview(
-        url,
-        ts: sourceEvent.originServerTs.millisecondsSinceEpoch,
+        requestUrl,
+        ts: source.originServerTs.millisecondsSinceEpoch,
       );
       final properties = Map<String, Object?>.from(
         response.additionalProperties,
@@ -87,8 +81,6 @@ extension _MatrixLinkPreviews on MatrixBackend {
       if (image != null &&
           LinkPreviewNetworkPolicy.mayLoadMedia(image) &&
           (declaredImageSize == null || declaredImageSize <= 5 * 1024 * 1024)) {
-        // Preview media is optional. A stale/missing MXC thumbnail must not
-        // discard otherwise useful OpenGraph title and description metadata.
         try {
           imageBytes = await _previewImageBytes(image);
         } catch (exception) {
@@ -99,14 +91,17 @@ extension _MatrixLinkPreviews on MatrixBackend {
           );
         }
       }
-      result = parseHomeserverLinkPreview(
-        url: url,
+      final parsed = parseHomeserverLinkPreview(
+        url: original,
         properties: properties,
         imageBytes: imageBytes,
       );
-      if (!hasUsefulPreview(result)) result = null;
+      if (hasUsefulPreview(parsed)) result = parsed;
     } catch (exception) {
-      homeserverFailure = exception;
+      developer.log(
+        'Homeserver URL preview failed (${exception.runtimeType}).',
+        name: 'deltiecord.preview',
+      );
     }
 
     if (result == null &&
@@ -114,7 +109,8 @@ extension _MatrixLinkPreviews on MatrixBackend {
           _preferences.fetchDirectLinkPreviews,
         )) {
       try {
-        result = await _directPreviewFetcher.fetch(url);
+        final fetched = await _directPreviewFetcher.fetch(requestUrl);
+        if (fetched != null) result = _previewAtOriginalUrl(fetched, original);
       } catch (exception) {
         developer.log(
           'Opt-in direct URL preview failed (${exception.runtimeType}).',
@@ -123,46 +119,26 @@ extension _MatrixLinkPreviews on MatrixBackend {
       }
     }
 
-    if (result != null) {
-      _linkPreviews[sourceEvent.eventId] = result;
-      _linkPreviewUrlCache.put(url, result);
-      _linkPreviewRetryAfter.remove(sourceEvent.eventId);
-      _linkPreviewAttempts.remove(sourceEvent.eventId);
-      return;
-    }
-
-    if (homeserverFailure == null) {
-      // Keep a valid empty response only in the expiring URL cache. Storing a
-      // null event result made it impossible for the same timeline to recover
-      // when a server's preview cache populated later.
-      _linkPreviewUrlCache.put(url, null);
-      return;
-    }
-
-    final attempts = (_linkPreviewAttempts[sourceEvent.eventId] ?? 0) + 1;
-    _linkPreviewAttempts[sourceEvent.eventId] = attempts;
-    developer.log(
-      'Homeserver URL preview attempt failed '
-      '(${homeserverFailure.runtimeType}).',
-      name: 'deltiecord.preview',
+    result ??= LinkPreview(
+      url: original,
+      title: original.host,
+      siteName: original.host,
     );
-    if (attempts >= 3) {
-      // The homeserver can legitimately omit the preview API. Cache the URL
-      // miss briefly, but leave the event retryable and allow the opt-in
-      // direct fallback to work immediately after its preference is enabled.
-      _linkPreviewUrlCache.put(url, null);
-      _linkPreviewAttempts.remove(sourceEvent.eventId);
-      _linkPreviewRetryAfter[sourceEvent.eventId] = DateTime.now().add(
-        _linkPreviewUrlCache.failureLifetime,
-      );
-      return;
-    }
-    _linkPreviewRetryAfter[sourceEvent.eventId] = DateTime.now().add(
-      const Duration(seconds: 30),
-    );
-    final timeline = _timeline;
-    if (timeline != null) _scheduleLinkPreviewRetry(timeline);
+    _linkPreviewUrlCache.put(original, result);
+    return result;
   }
+
+  LinkPreview _previewAtOriginalUrl(LinkPreview preview, Uri original) =>
+      LinkPreview(
+        url: original,
+        title: preview.title,
+        description: preview.description,
+        siteName: preview.siteName,
+        imageBytes: preview.imageBytes,
+        videoUrl: preview.videoUrl,
+        width: preview.width,
+        height: preview.height,
+      );
 
   int? _previewPropertyInt(Map<String, Object?> properties, List<String> keys) {
     for (final key in keys) {
@@ -171,16 +147,6 @@ extension _MatrixLinkPreviews on MatrixBackend {
       if (parsed != null && parsed >= 0) return parsed;
     }
     return null;
-  }
-
-  void _scheduleLinkPreviewRetry(Timeline timeline) {
-    if (_linkPreviewRetryTimer?.isActive == true) return;
-    _linkPreviewRetryTimer = Timer(const Duration(seconds: 31), () async {
-      _linkPreviewRetryTimer = null;
-      if (!identical(timeline, _timeline)) return;
-      await _hydrateLinkPreviews(timeline);
-      if (identical(timeline, _timeline)) _notifyBackendListeners();
-    });
   }
 
   Future<Uint8List?> _previewImageBytes(Uri uri) async {

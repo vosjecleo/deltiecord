@@ -7,6 +7,32 @@ void main() {
     expect(TimelineWindowPolicy.hardCap(chunkSize: 50, chunkCap: 9), 120);
   });
 
+  test('presentation window never advances into a short older tail', () {
+    expect(
+      TimelineWindowPolicy.moveOlder(
+        currentStart: 60,
+        eventCount: 160,
+        capacity: 90,
+        pageSize: 30,
+      ),
+      70,
+    );
+    expect(
+      TimelineWindowPolicy.moveOlder(
+        currentStart: 70,
+        eventCount: 160,
+        capacity: 90,
+        pageSize: 30,
+      ),
+      70,
+    );
+  });
+
+  test('presentation window moves back toward present in bounded pages', () {
+    expect(TimelineWindowPolicy.moveNewer(currentStart: 70, pageSize: 30), 40);
+    expect(TimelineWindowPolicy.moveNewer(currentStart: 10, pageSize: 30), 0);
+  });
+
   test('loading older retains the oldest side of a newest-first window', () {
     final events = List.generate(150, (index) => index);
     final evicted = TimelineWindowPolicy.trimNewestFirst(

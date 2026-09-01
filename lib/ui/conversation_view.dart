@@ -73,6 +73,8 @@ class _ConversationState extends State<_Conversation> {
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _navigationGeneration = 0;
   int _timelineInputGeneration = 0;
+  int? _timelineLayoutFingerprint;
+  int _layoutAnchorGeneration = 0;
   String? _newestMessageId;
   String? _highlightedMessageId;
   VoidCallback? _dismissMessageActions;
@@ -130,7 +132,6 @@ class _ConversationState extends State<_Conversation> {
     if (viewport is! RenderBox || !viewport.attached) return null;
     final viewportTop = viewport.localToGlobal(Offset.zero).dy;
     final viewportBottom = viewportTop + viewport.size.height;
-    final viewportCenter = (viewportTop + viewportBottom) / 2;
     (String, double)? closest;
     var closestDistance = double.infinity;
     for (final entry in _messageKeys.entries) {
@@ -141,7 +142,10 @@ class _ConversationState extends State<_Conversation> {
       if (bottom < viewportTop || offset.dy > viewportBottom) {
         continue;
       }
-      final distance = (offset.dy - viewportCenter).abs();
+      // Anchor the row nearest the leading viewport edge. Unlike a centre
+      // heuristic this remains deterministic when very tall media spans most
+      // of the screen.
+      final distance = (offset.dy - viewportTop).abs();
       if (distance < closestDistance) {
         closestDistance = distance;
         closest = (entry.key, offset.dy);
@@ -166,7 +170,9 @@ class _ConversationState extends State<_Conversation> {
     _scrollController.jumpTo(corrected);
   }
 
-  Future<void> _loadPageAnchored(Future<void> Function() load) async {
+  Future<void> _loadPageAnchored(
+    Future<void> Function(String? anchorEventId) load,
+  ) async {
     if (_loadingAnchoredHistory || !_scrollController.hasClients) return;
     _loadingAnchoredHistory = true;
     _suppressPaginationUntil = DateTime.now().add(
@@ -175,7 +181,7 @@ class _ConversationState extends State<_Conversation> {
     final anchor = _captureVisibleAnchor();
     final inputGeneration = _timelineInputGeneration;
     try {
-      await load();
+      await load(anchor?.$1);
       if (!mounted) return;
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || inputGeneration != _timelineInputGeneration) return;
@@ -187,11 +193,48 @@ class _ConversationState extends State<_Conversation> {
     }
   }
 
-  Future<void> _loadOlderAnchored() =>
-      _loadPageAnchored(widget.backend.loadMoreHistory);
+  Future<void> _loadOlderAnchored() => _loadPageAnchored(
+    (anchorEventId) =>
+        widget.backend.loadMoreHistory(anchorEventId: anchorEventId),
+  );
 
-  Future<void> _loadNewerAnchored() =>
-      _loadPageAnchored(widget.backend.loadMoreFuture);
+  Future<void> _loadNewerAnchored() => _loadPageAnchored(
+    (anchorEventId) =>
+        widget.backend.loadMoreFuture(anchorEventId: anchorEventId),
+  );
+
+  int _layoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
+    messages.map(
+      (message) => Object.hash(
+        message.id,
+        message.reply?.eventId,
+        message.linkPreviews.length,
+        message.linkPreview?.width,
+        message.linkPreview?.height,
+        message.reactions.length,
+      ),
+    ),
+  );
+
+  void _preserveAnchorAcrossMetadataLayout(List<ChatMessage> messages) {
+    final next = _layoutFingerprint(messages);
+    final previous = _timelineLayoutFingerprint;
+    _timelineLayoutFingerprint = next;
+    if (previous == null ||
+        previous == next ||
+        _loadingAnchoredHistory ||
+        !_scrolledAwayFromPresent ||
+        DateTime.now().isBefore(_timelineUserInputUntil)) {
+      return;
+    }
+    final anchor = _captureVisibleAnchor();
+    if (anchor == null) return;
+    final generation = ++_layoutAnchorGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _layoutAnchorGeneration) return;
+      _restoreVisibleAnchor(anchor);
+    });
+  }
 
   Future<void> _jumpToFirstUnread() async {
     final eventId = widget.backend.firstUnreadMessageId;
@@ -465,6 +508,7 @@ class _ConversationState extends State<_Conversation> {
     final backend = widget.backend;
     final room = backend.selectedRoom!;
     final messages = backend.messages;
+    _preserveAnchorAcrossMetadataLayout(messages);
     final retainedIds = messages.map((message) => message.id).toSet();
     _messageKeys.removeWhere((eventId, _) => !retainedIds.contains(eventId));
     _messageIdsByKey
@@ -671,10 +715,8 @@ class _ConversationState extends State<_Conversation> {
                                     },
                                     itemBuilder: (context, index) {
                                       if (index == messages.length) {
-                                        return Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            vertical: 14,
-                                          ),
+                                        return SizedBox(
+                                          height: 64,
                                           child: Center(
                                             child: backend.historyLoading
                                                 ? const SizedBox.square(

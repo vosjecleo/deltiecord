@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.22" date="2026-09-01" type="development">
+      <description>
+        <p>Repairs ntfy distributor selection and stale registration cleanup, and preserves visible timeline anchors across bounded history windows and delayed preview hydration.</p>
+      </description>
+    </release>
     <release version="0.9.21" date="2026-09-01" type="development">
       <description>
         <p>Stabilizes timeline pagination, adds multi-link previews and optional FxTwitter rewriting, improves mobile media capture and actions, and repairs distributor-neutral Android push setup.</p>

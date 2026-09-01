@@ -972,6 +972,77 @@ void main() {
     await tester.pump();
 
     expect(tester.getTopLeft(anchor).dy, closeTo(before, 1));
+    expect(backend.lastHistoryAnchor, isNotNull);
+  });
+
+  testWidgets('delayed preview hydration preserves the visible event offset', (
+    tester,
+  ) async {
+    final messages = List.generate(
+      48,
+      (index) => ChatMessage(
+        id: '\$preview-$index',
+        sender: 'Alice',
+        body: 'Preview message $index',
+        timestamp: DateTime(2026, 8, 16, 12).subtract(Duration(minutes: index)),
+        pending: false,
+      ),
+    );
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!preview-anchor:example.org',
+          name: 'preview anchor',
+          lastMessage: 'Preview message 0',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = messages;
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('preview anchor'));
+    await tester.pump();
+    final timeline = tester.state<ScrollableState>(
+      find
+          .descendant(
+            of: find.byKey(const Key('message-timeline')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    timeline.position.jumpTo(timeline.position.maxScrollExtent * 0.72);
+    await tester.pump();
+    final anchor = find.textContaining('Preview message').first;
+    final anchorText = tester.widget<Text>(anchor).data!;
+    final before = tester.getTopLeft(find.text(anchorText)).dy;
+
+    backend.messageList = [
+      for (final message in messages)
+        if (message.id == r'$preview-20')
+          ChatMessage(
+            id: message.id,
+            sender: message.sender,
+            body: message.body,
+            timestamp: message.timestamp,
+            pending: false,
+            linkPreview: LinkPreview(
+              url: Uri.parse('https://example.org/article'),
+              title: 'Hydrated preview title',
+              description: 'Metadata arrived after the text timeline.',
+              siteName: 'example.org',
+              width: 640,
+              height: 360,
+            ),
+          )
+        else
+          message,
+    ];
+    backend.notifyListeners();
+    await tester.pump();
+    await tester.pump();
+
+    expect(tester.getTopLeft(find.text(anchorText)).dy, closeTo(before, 1));
   });
 
   testWidgets('live messages keep a present timeline pinned to the bottom', (
@@ -1097,6 +1168,7 @@ void main() {
     await tester.tap(find.byKey(const Key('load-newer-messages')));
     await tester.pump();
     expect(backend.futureRequests, 1);
+    expect(backend.lastFutureAnchor, r'$historical');
   });
 
   testWidgets('sends composer text and clears it after success', (
@@ -2772,6 +2844,8 @@ class FakeBackend extends ChatBackend {
   Completer<void>? sendGate;
   int historyRequests = 0;
   int futureRequests = 0;
+  String? lastHistoryAnchor;
+  String? lastFutureAnchor;
   int jumpPresentRequests = 0;
   int profileRefreshRequests = 0;
   Future<void> Function()? historyLoader;
@@ -3023,8 +3097,9 @@ class FakeBackend extends ChatBackend {
   }
 
   @override
-  Future<void> loadMoreFuture() async {
+  Future<void> loadMoreFuture({String? anchorEventId}) async {
     futureRequests++;
+    lastFutureAnchor = anchorEventId;
   }
 
   @override
@@ -3103,8 +3178,9 @@ class FakeBackend extends ChatBackend {
       searchMessages(query);
 
   @override
-  Future<void> loadMoreHistory() async {
+  Future<void> loadMoreHistory({String? anchorEventId}) async {
     historyRequests++;
+    lastHistoryAnchor = anchorEventId;
     await historyLoader?.call();
   }
 

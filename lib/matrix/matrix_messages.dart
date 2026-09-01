@@ -85,14 +85,14 @@ extension _MatrixMessages on MatrixBackend {
     avatarBytes: _senderAvatarBytes[event.senderId],
   );
 
-  Future<void> _loadMoreHistory() async {
+  Future<void> _loadMoreHistory({String? anchorEventId}) async {
     final timeline = _timeline;
     if (timeline == null || _historyLoading || !canLoadMoreHistory) {
       return;
     }
     final loadedWindowEnd = _timelineWindowStart + _timelineWindowCapacity;
     if (loadedWindowEnd < timeline.events.length) {
-      _setTimelineWindowStart(
+      _setTimelineWindowStartPreserving(
         timeline,
         TimelineWindowPolicy.moveOlder(
           currentStart: _timelineWindowStart,
@@ -100,6 +100,7 @@ extension _MatrixMessages on MatrixBackend {
           capacity: _timelineWindowCapacity,
           pageSize: _preferences.timelineChunkSize,
         ),
+        anchorEventId,
       );
       _notifyBackendListeners();
       return;
@@ -142,9 +143,10 @@ extension _MatrixMessages on MatrixBackend {
       // pagination state remains authoritative. Only Deltiecord's independent
       // presentation window moves; this avoids corrupting the SDK list while
       // retaining the configured widget/mapping cap.
-      _setTimelineWindowStart(
+      _setTimelineWindowStartPreserving(
         timeline,
         max(0, timeline.events.length - _timelineWindowCapacity),
+        anchorEventId,
       );
       await _decryptTimelineEvents(timeline);
       if (!identical(timeline, _timeline)) return;
@@ -215,7 +217,7 @@ extension _MatrixMessages on MatrixBackend {
     return loaded;
   }
 
-  Future<void> _loadMoreFuture() async {
+  Future<void> _loadMoreFuture({String? anchorEventId}) async {
     final timeline = _timeline;
     if (timeline == null ||
         _historyLoading ||
@@ -226,12 +228,13 @@ extension _MatrixMessages on MatrixBackend {
     _notifyBackendListeners();
     try {
       if (_timelineWindowStart > 0) {
-        _setTimelineWindowStart(
+        _setTimelineWindowStartPreserving(
           timeline,
           TimelineWindowPolicy.moveNewer(
             currentStart: _timelineWindowStart,
             pageSize: _preferences.timelineChunkSize,
           ),
+          anchorEventId,
         );
         unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
         return;

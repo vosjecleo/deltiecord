@@ -513,8 +513,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         Text('UnifiedPush', style: Theme.of(context).textTheme.titleMedium),
         const Text(
           'Uses a distributor app such as ntfy to wake Deltiecord for Matrix '
-          'activity. Configure ntfy with https://push.deltie.net, or choose '
-          'the optional embedded Firebase-compatible distributor.',
+          'activity. Install ntfy and configure it with '
+          'https://push.deltie.net.',
         ),
         if (_unifiedPushState case final stateFuture?)
           FutureBuilder<UnifiedPushState>(
@@ -1125,8 +1125,13 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           children: [
             for (final distributor in distributors)
               SimpleDialogOption(
-                onPressed: () => Navigator.pop(dialogContext, distributor),
-                child: Text(distributor),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, distributor.packageName),
+                child: Text(
+                  distributor.label == distributor.packageName
+                      ? distributor.label
+                      : '${distributor.label}\n${distributor.packageName}',
+                ),
               ),
           ],
         ),

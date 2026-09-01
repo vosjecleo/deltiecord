@@ -38,6 +38,30 @@ abstract final class TimelineWindowPolicy {
   static int moveNewer({required int currentStart, required int pageSize}) =>
       max(0, currentStart - max(1, pageSize));
 
+  /// Clamps a desired window so a visible anchor cannot be evicted.
+  ///
+  /// The SDK list is newest-first. Page changes therefore replace events at
+  /// one edge of the presentation window. Keeping the immutable anchor event
+  /// inside the replacement prevents Flutter from clamping to either extent
+  /// when rows at the opposite edge disappear.
+  static int preserveAnchor({
+    required int desiredStart,
+    required int eventCount,
+    required int capacity,
+    int? anchorIndex,
+  }) {
+    final maximum = maximumWindowStart(
+      eventCount: eventCount,
+      capacity: capacity,
+    );
+    if (anchorIndex == null || anchorIndex < 0 || anchorIndex >= eventCount) {
+      return desiredStart.clamp(0, maximum).toInt();
+    }
+    final minimumForAnchor = max(0, anchorIndex - max(1, capacity) + 1);
+    final maximumForAnchor = min(maximum, anchorIndex);
+    return desiredStart.clamp(minimumForAnchor, maximumForAnchor).toInt();
+  }
+
   /// Removes repeated identities while preserving newest-first order.
   ///
   /// Fragmented Matrix history pages may overlap at their boundary. Removing

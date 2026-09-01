@@ -100,6 +100,12 @@ class DeltiecordPushService : PushService() {
                 .apply()
         }
 
+        fun clearError(context: Context, instance: String) {
+            preferences(context).edit()
+                .remove(errorKey(instance))
+                .apply()
+        }
+
         private fun showMatrixActivityNotification(context: Context, payload: ByteArray) {
             val manager = context.getSystemService(NotificationManager::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -708,9 +708,11 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> setSelectedRoomMuted(bool muted) => _setSelectedRoomMuted(muted);
   @override
-  Future<void> loadMoreHistory() => _loadMoreHistory();
+  Future<void> loadMoreHistory({String? anchorEventId}) =>
+      _loadMoreHistory(anchorEventId: anchorEventId);
   @override
-  Future<void> loadMoreFuture() => _loadMoreFuture();
+  Future<void> loadMoreFuture({String? anchorEventId}) =>
+      _loadMoreFuture(anchorEventId: anchorEventId);
   @override
   Future<List<ChatMessage>> loadPinnedMessages() => _loadPinnedMessages();
   @override

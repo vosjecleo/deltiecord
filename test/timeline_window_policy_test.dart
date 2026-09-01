@@ -33,6 +33,27 @@ void main() {
     expect(TimelineWindowPolicy.moveNewer(currentStart: 10, pageSize: 30), 0);
   });
 
+  test('window movement cannot evict the visible anchor', () {
+    expect(
+      TimelineWindowPolicy.preserveAnchor(
+        desiredStart: 90,
+        eventCount: 180,
+        capacity: 90,
+        anchorIndex: 60,
+      ),
+      60,
+    );
+    expect(
+      TimelineWindowPolicy.preserveAnchor(
+        desiredStart: 0,
+        eventCount: 180,
+        capacity: 90,
+        anchorIndex: 120,
+      ),
+      31,
+    );
+  });
+
   test('loading older retains the oldest side of a newest-first window', () {
     final events = List.generate(150, (index) => index);
     final evicted = TimelineWindowPolicy.trimNewestFirst(

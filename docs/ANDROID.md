@@ -50,11 +50,10 @@ complete private distributor endpoint with the Matrix HTTP push gateway at
 `https://push.deltie.net/_matrix/push/v1/notify`. Neither distributor credentials
 nor generated endpoint capabilities are shipped or logged by Deltiecord.
 
-Deltiecord also includes UnifiedPush's optional embedded Firebase-compatible
-WebPush distributor. External distributors are preferred; the embedded option
-is available for testers who choose Google-backed delivery. It shares the same
-Matrix pusher implementation and does not require a private signing key in the
-client binary.
+The embedded Firebase-compatible distributor is not enabled in release builds.
+Matrix requires a WebPush-capable gateway and VAPID configuration for that
+route; silently falling back to an unconfigured embedded distributor would
+leave notifications registered but undeliverable.
 
 Release CI produces architecture-specific APKs for `arm64-v8a`,
 `armeabi-v7a`, and `x86_64`, plus an AAB. Most current physical phones should

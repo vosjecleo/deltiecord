@@ -29,6 +29,25 @@ extension _MatrixTimelineSupport on MatrixBackend {
         : timeline.events[_timelineWindowStart].eventId;
   }
 
+  void _setTimelineWindowStartPreserving(
+    Timeline timeline,
+    int start,
+    String? anchorEventId,
+  ) {
+    final anchorIndex = anchorEventId == null
+        ? null
+        : timeline.events.indexWhere((event) => event.eventId == anchorEventId);
+    _setTimelineWindowStart(
+      timeline,
+      TimelineWindowPolicy.preserveAnchor(
+        desiredStart: start,
+        eventCount: timeline.events.length,
+        capacity: _timelineWindowCapacity,
+        anchorIndex: anchorIndex == -1 ? null : anchorIndex,
+      ),
+    );
+  }
+
   void _stabilizeTimelineWindow(Timeline timeline) {
     if (!_timelineHasPrunedNewerEvents) return;
     final head = _timelineWindowHeadEventId;

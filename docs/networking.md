@@ -79,10 +79,10 @@ the Matrix pushkey through
 preferences. The endpoint is a bearer capability and is never displayed in the
 UI or written to logs.
 
-External distributors such as ntfy are preferred. An optional embedded
-Firebase-compatible WebPush distributor is also available for Android devices
-that use Google delivery. It uses the same distributor-neutral Matrix pusher
-path and does not place a private Firebase project key in the application.
+Release builds use an installed external distributor such as ntfy. Embedded
+Firebase-compatible WebPush is disabled until Deltiecord has a dedicated,
+VAPID-configured Matrix WebPush gateway; it cannot safely reuse the ntfy
+gateway contract.
 
 The gateway and distributor receive Matrix push metadata sufficient to wake the
 application and display a generic activity notification. Deltiecord obtains

@@ -191,8 +191,8 @@ abstract class ChatBackend extends ChangeNotifier {
 
   Future<void> removeUnifiedPushEndpoint(String endpoint) async {}
   Future<void> updatePreferences(AppPreferences preferences);
-  Future<void> loadMoreHistory();
-  Future<void> loadMoreFuture();
+  Future<void> loadMoreHistory({String? anchorEventId});
+  Future<void> loadMoreFuture({String? anchorEventId});
   Future<List<ChatMessage>> loadPinnedMessages();
   Future<void> jumpToPresent();
   Future<void> jumpToEvent(String eventId);

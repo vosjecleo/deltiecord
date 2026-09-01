@@ -61,6 +61,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _timelineInputGeneration = 0;
+  int? _timelineLayoutFingerprint;
+  int _layoutAnchorGeneration = 0;
   List<EmojiEntry> _emojiMatches = const [];
   int _emojiSelection = 0;
   int? _emojiStart;
@@ -207,9 +209,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     final inputGeneration = _timelineInputGeneration;
     try {
       if (older) {
-        await backend.loadMoreHistory();
+        await backend.loadMoreHistory(anchorEventId: anchor?.eventId);
       } else {
-        await backend.loadMoreFuture();
+        await backend.loadMoreFuture(anchorEventId: anchor?.eventId);
       }
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted || inputGeneration != _timelineInputGeneration) return;
@@ -261,6 +263,40 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _restoringScrollAnchor = false;
   }
 
+  int _layoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
+    messages.map(
+      (message) => Object.hash(
+        message.id,
+        message.reply?.eventId,
+        message.linkPreviews.length,
+        message.linkPreview?.width,
+        message.linkPreview?.height,
+        message.reactions.length,
+      ),
+    ),
+  );
+
+  void _preserveAnchorAcrossMetadataLayout(List<ChatMessage> messages) {
+    final next = _layoutFingerprint(messages);
+    final previous = _timelineLayoutFingerprint;
+    _timelineLayoutFingerprint = next;
+    final scrolledAway = _scroll.hasClients && _scroll.position.pixels > 48;
+    if (previous == null ||
+        previous == next ||
+        _pageLoadInFlight ||
+        !scrolledAway ||
+        DateTime.now().isBefore(_timelineUserInputUntil)) {
+      return;
+    }
+    final anchor = _captureScrollAnchor();
+    if (anchor == null) return;
+    final generation = ++_layoutAnchorGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || generation != _layoutAnchorGeneration) return;
+      _restoreScrollAnchor(anchor);
+    });
+  }
+
   @override
   void dispose() {
     _composer
@@ -275,6 +311,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    _preserveAnchorAcrossMetadataLayout(messages);
     final currentMessageIds = messages.map((message) => message.id).toSet();
     final staleMessageIds = _messageKeys.keys
         .where((messageId) => !currentMessageIds.contains(messageId))
@@ -422,20 +459,23 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             },
                             itemBuilder: (context, index) {
                               if (index == messages.length) {
-                                return Center(
-                                  child: backend.historyLoading
-                                      ? const Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: CircularProgressIndicator(),
-                                        )
-                                      : TextButton.icon(
-                                          onPressed: () =>
-                                              _loadTimelinePage(older: true),
-                                          icon: const Icon(Icons.history),
-                                          label: const Text(
-                                            'Load older messages',
+                                return SizedBox(
+                                  height: 64,
+                                  child: Center(
+                                    child: backend.historyLoading
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(16),
+                                            child: CircularProgressIndicator(),
+                                          )
+                                        : TextButton.icon(
+                                            onPressed: () =>
+                                                _loadTimelinePage(older: true),
+                                            icon: const Icon(Icons.history),
+                                            label: const Text(
+                                              'Load older messages',
+                                            ),
                                           ),
-                                        ),
+                                  ),
                                 );
                               }
                               final message = messages[index];

@@ -25,11 +25,22 @@ final class UnifiedPushState {
   bool get registered => endpoint?.isNotEmpty == true;
 }
 
+/// An installed external UnifiedPush distributor.
+final class UnifiedPushDistributor {
+  const UnifiedPushDistributor({
+    required this.packageName,
+    required this.label,
+  });
+
+  final String packageName;
+  final String label;
+}
+
 /// Platform boundary for the official Android UnifiedPush connector.
 ///
-/// External distributors such as ntfy and the optional embedded distributor
-/// both return a private capability endpoint through the Android connector
-/// protocol. Deltiecord never logs or exposes that bearer capability.
+/// External distributors such as ntfy return a private capability endpoint
+/// through the Android connector protocol. Deltiecord never logs or exposes
+/// that bearer capability.
 final class UnifiedPushPlatform {
   UnifiedPushPlatform._() {
     _channel.setMethodCallHandler((call) async {
@@ -59,10 +70,21 @@ final class UnifiedPushPlatform {
   bool get supported =>
       defaultTargetPlatform == TargetPlatform.android && !kIsWeb;
 
-  Future<List<String>> distributors() async {
+  Future<List<UnifiedPushDistributor>> distributors() async {
     if (!supported) return const [];
-    final result = await _channel.invokeListMethod<String>('getDistributors');
-    return result ?? const [];
+    final result = await _channel.invokeListMethod<Object?>('getDistributors');
+    return (result ?? const [])
+        .whereType<Map>()
+        .map((entry) {
+          final packageName = '${entry['packageName'] ?? ''}'.trim();
+          final label = '${entry['label'] ?? ''}'.trim();
+          return UnifiedPushDistributor(
+            packageName: packageName,
+            label: label.isEmpty ? packageName : label,
+          );
+        })
+        .where((entry) => entry.packageName.isNotEmpty)
+        .toList(growable: false);
   }
 
   Future<UnifiedPushState> state(String instance) async {
@@ -87,17 +109,23 @@ final class UnifiedPushPlatform {
   Future<void> unregister(String instance) =>
       _channel.invokeMethod<void>('unregister', {'instance': instance});
 
-  /// Selects the first installed distributor on a fresh installation.
+  /// Selects a known external distributor on a fresh installation.
   ///
-  /// An existing choice is never replaced. Distributor ordering is owned by
-  /// Android, so the first entry is the platform's preferred/default choice.
+  /// An existing choice is never replaced. Deltiecord deliberately does not
+  /// auto-select its own package: embedded WebPush requires a configured VAPID
+  /// gateway and cannot share the ntfy Matrix gateway contract.
   Future<bool> ensureDefaultDistributor(String instance) async {
     if (!supported) return false;
     final current = await state(instance);
     if (current.distributor?.isNotEmpty == true) return false;
     final available = await distributors();
     if (available.isEmpty) return false;
-    await selectDistributor(available.first, instance);
+    const preferredPackages = ['io.heckel.ntfy', 'foundation.e.ntfy'];
+    final preferred = available.where(
+      (entry) => preferredPackages.contains(entry.packageName),
+    );
+    final selected = preferred.firstOrNull ?? available.first;
+    await selectDistributor(selected.packageName, instance);
     return true;
   }
 

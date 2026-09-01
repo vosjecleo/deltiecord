@@ -2,6 +2,7 @@ package net.deltie.deltiecord
 
 import android.os.Handler
 import android.os.Looper
+import android.content.pm.PackageManager
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
@@ -26,7 +27,14 @@ class MainActivity : FlutterActivity() {
                 channel.setMethodCallHandler { call, result ->
                     val instance = call.argument<String>("instance") ?: "default"
                     when (call.method) {
-                        "getDistributors" -> result.success(UnifiedPush.getDistributors(this))
+                        "getDistributors" -> result.success(
+                            UnifiedPush.getDistributors(this).map { packageName ->
+                                mapOf(
+                                    "packageName" to packageName,
+                                    "label" to distributorLabel(packageName),
+                                )
+                            },
+                        )
                         "getState" -> result.success(DeltiecordPushService.state(this, instance))
                         "selectDistributor" -> {
                             val distributor = call.argument<String>("distributor")
@@ -48,7 +56,10 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                         "unregister" -> {
-                            UnifiedPush.unregister(this, instance)
+                            // Removing the distributor as well as its instance
+                            // prevents Refresh from silently reusing a rejected
+                            // or uninstalled provider.
+                            UnifiedPush.removeDistributor(this)
                             DeltiecordPushService.clear(this, instance)
                             result.success(null)
                         }
@@ -79,6 +90,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun registerUnifiedPush(instance: String, result: MethodChannel.Result) {
+        DeltiecordPushService.clearError(this, instance)
         val existingState = DeltiecordPushService.state(this, instance)
         val existingEndpoint = existingState["endpoint"]
         pendingRegistrations.remove(instance)?.error(
@@ -125,6 +137,13 @@ class MainActivity : FlutterActivity() {
             },
             REGISTRATION_TIMEOUT_MS,
         )
+    }
+
+    private fun distributorLabel(packageName: String): String = try {
+        val applicationInfo = packageManager.getApplicationInfo(packageName, 0)
+        packageManager.getApplicationLabel(applicationInfo).toString()
+    } catch (_: PackageManager.NameNotFoundException) {
+        packageName
     }
 
     private fun completeUnifiedPushRegistration(instance: String) {

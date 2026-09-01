@@ -66,6 +66,24 @@ abstract class ChatBackend extends ChangeNotifier {
   bool get storageLoading;
   List<String> get blockedUserIds;
 
+  /// Reports whether the process is foregrounded and able to display chat.
+  ///
+  /// Matrix read markers must not advance merely because a background sync
+  /// updated the selected room.
+  void setApplicationForeground(bool foreground) {}
+
+  /// Reports whether the selected conversation is actually visible.
+  ///
+  /// Mobile navigation/details layers keep the timeline mounted, so room
+  /// selection alone is not sufficient evidence that a message was read.
+  void setConversationVisible(bool visible) {}
+
+  /// Reports whether the selected timeline is displaying its newest edge.
+  ///
+  /// A mounted room that is browsing old history must not acknowledge a new
+  /// event that arrived outside the viewport.
+  void setConversationAtPresent(bool atPresent) {}
+
   Future<void> initialize();
   Future<void> login({
     required Uri homeserver,

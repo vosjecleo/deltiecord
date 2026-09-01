@@ -271,7 +271,7 @@ extension _MatrixTimelineSupport on MatrixBackend {
   }
 
   Future<void> _markSelectedRoomRead() async {
-    if (!_preferences.sendReadReceipts) return;
+    if (!_preferences.sendReadReceipts || !_mayAdvanceReadMarker) return;
     final initialTimeline = _timeline;
     if (initialTimeline == null || initialTimeline.room.id != _selectedRoomId) {
       return;
@@ -281,7 +281,8 @@ extension _MatrixTimelineSupport on MatrixBackend {
     _roomsMarkingRead.add(roomId);
     try {
       while (identical(initialTimeline, _timeline) &&
-          roomId == _selectedRoomId) {
+          roomId == _selectedRoomId &&
+          _mayAdvanceReadMarker) {
         String? newestSyncedEventId;
         for (final event in initialTimeline.events) {
           if (event.status.isSynced) {

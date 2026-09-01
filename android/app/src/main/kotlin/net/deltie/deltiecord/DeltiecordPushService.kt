@@ -137,7 +137,7 @@ class DeltiecordPushService : MessagingReceiver() {
             builder
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(metadata.title)
-                .setContentText("New Matrix activity")
+                .setContentText("New message")
                 .setAutoCancel(true)
                 .setContentIntent(pendingIntent)
                 .apply { if (avatar != null) setLargeIcon(avatar) }
@@ -148,7 +148,7 @@ class DeltiecordPushService : MessagingReceiver() {
                     .build()
                 builder.setStyle(
                     android.app.Notification.MessagingStyle(sender)
-                        .addMessage("New Matrix activity", System.currentTimeMillis(), sender),
+                        .addMessage("New message", System.currentTimeMillis(), sender),
                 )
             }
             val notification = builder.build()
@@ -165,9 +165,15 @@ class DeltiecordPushService : MessagingReceiver() {
             val root = JSONObject(payload.toString(Charsets.UTF_8))
             val json = root.optJSONObject("notification") ?: root
             val roomId = json.optString("room_id").takeIf { it.isNotBlank() }
-            val title = json.optString("room_name").takeIf { it.isNotBlank() }
-                ?: json.optString("sender_display_name").takeIf { it.isNotBlank() }
-                ?: "Deltiecord"
+            val roomName = json.optString("room_name").takeIf { it.isNotBlank() }
+            val senderName = json.optString("sender_display_name").takeIf { it.isNotBlank() }
+            val title = when {
+                senderName != null && roomName != null && senderName != roomName ->
+                    "$senderName in $roomName"
+                senderName != null -> senderName
+                roomName != null -> roomName
+                else -> "Deltiecord"
+            }
             MatrixMetadata(roomId, title.take(128))
         }.getOrDefault(MatrixMetadata(null, "Deltiecord"))
     }

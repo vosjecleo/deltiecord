@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -292,13 +293,19 @@ class DeltiecordApp extends StatelessWidget {
               ),
               SessionStatus.signedIn =>
                 mobile
-                    ? _EncryptionRecoveryPrompt(
+                    ? _ReadReceiptLifecycle(
                         backend: backend,
-                        child: MobileChatShell(backend: backend),
+                        child: _EncryptionRecoveryPrompt(
+                          backend: backend,
+                          child: MobileChatShell(backend: backend),
+                        ),
                       )
-                    : _EncryptionRecoveryPrompt(
+                    : _ReadReceiptLifecycle(
                         backend: backend,
-                        child: ChatShell(backend: backend),
+                        child: _EncryptionRecoveryPrompt(
+                          backend: backend,
+                          child: ChatShell(backend: backend),
+                        ),
                       ),
               SessionStatus.signedOut ||
               SessionStatus.signingIn => LoginScreen(backend: backend),
@@ -308,6 +315,68 @@ class DeltiecordApp extends StatelessWidget {
       },
     );
   }
+}
+
+class _ReadReceiptLifecycle extends StatefulWidget {
+  const _ReadReceiptLifecycle({required this.backend, required this.child});
+
+  final ChatBackend backend;
+  final Widget child;
+
+  @override
+  State<_ReadReceiptLifecycle> createState() => _ReadReceiptLifecycleState();
+}
+
+class _ReadReceiptLifecycleState extends State<_ReadReceiptLifecycle>
+    with WidgetsBindingObserver {
+  bool _lifecycleForeground = true;
+  bool _viewFocused = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _publish(WidgetsBinding.instance.lifecycleState);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReadReceiptLifecycle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.backend != widget.backend) {
+      oldWidget.backend.setApplicationForeground(false);
+      _publish(WidgetsBinding.instance.lifecycleState);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _publish(state);
+
+  @override
+  void didChangeViewFocus(ViewFocusEvent event) {
+    _viewFocused = event.state == ViewFocusState.focused;
+    _syncBackend();
+  }
+
+  void _publish(AppLifecycleState? state) {
+    // A null lifecycle is used by some Flutter test bindings before their
+    // first frame; the active widget tree is considered foregrounded there.
+    _lifecycleForeground = state == null || state == AppLifecycleState.resumed;
+    _syncBackend();
+  }
+
+  void _syncBackend() => widget.backend.setApplicationForeground(
+    _lifecycleForeground && _viewFocused,
+  );
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.backend.setApplicationForeground(false);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class _EncryptionRecoveryPrompt extends StatefulWidget {

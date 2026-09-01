@@ -2490,6 +2490,47 @@ void main() {
     expect(backend.selectedRoom?.id, '!dm:test');
   });
 
+  testWidgets('read receipts require a foreground visible conversation', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!receipt:test',
+          name: 'Receipt test',
+          lastMessage: 'hello',
+          unreadCount: 1,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+
+    expect(backend.applicationForegroundStates.last, isTrue);
+    expect(backend.conversationVisibilityStates.last, isFalse);
+
+    await tester.tap(find.text('Receipt test'));
+    await tester.pumpAndSettle();
+    expect(backend.conversationVisibilityStates.last, isTrue);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(backend.applicationForegroundStates.last, isFalse);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(backend.applicationForegroundStates.last, isTrue);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-open-navigation')));
+    await tester.pumpAndSettle();
+    expect(backend.conversationVisibilityStates.last, isFalse);
+  });
+
   testWidgets('Android header alone opens details and Back dismisses it', (
     tester,
   ) async {
@@ -2899,6 +2940,9 @@ class FakeBackend extends ChatBackend {
   final List<(String, bool)> categoryCollapseChanges = [];
   final List<(String, String?, String?)> roomMoves = [];
   final List<String> jumpedEventIds = [];
+  final List<bool> applicationForegroundStates = [];
+  final List<bool> conversationVisibilityStates = [];
+  final List<bool> conversationAtPresentStates = [];
   String? lastReplyToMessageId;
   String? lastEditMessageId;
   String? removedDeviceId;
@@ -2914,6 +2958,18 @@ class FakeBackend extends ChatBackend {
     crossSigningEnabled: true,
     deviceVerified: true,
   );
+
+  @override
+  void setApplicationForeground(bool foreground) =>
+      applicationForegroundStates.add(foreground);
+
+  @override
+  void setConversationVisible(bool visible) =>
+      conversationVisibilityStates.add(visible);
+
+  @override
+  void setConversationAtPresent(bool atPresent) =>
+      conversationAtPresentStates.add(atPresent);
 
   @override
   String? get error => null;

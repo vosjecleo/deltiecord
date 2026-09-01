@@ -107,6 +107,9 @@ class MatrixBackend extends ChatBackend {
   bool _roomMetadataRefreshRequested = false;
   final Set<String> _roomsMarkingRead = {};
   final Map<String, String> _lastMarkedReadEventIds = {};
+  bool _applicationForeground = true;
+  bool _conversationVisible = false;
+  bool _conversationAtPresent = false;
   final Map<String, String?> _firstUnreadEventIds = {};
   final Map<String, String> _lastNotificationEventIds = {};
   final Map<String, RoomPresentation> _roomPresentationOverrides = {};
@@ -435,6 +438,30 @@ class MatrixBackend extends ChatBackend {
   }
 
   void _notifyBackendListeners() => notifyListeners();
+
+  bool get _mayAdvanceReadMarker =>
+      _applicationForeground && _conversationVisible && _conversationAtPresent;
+
+  @override
+  void setApplicationForeground(bool foreground) {
+    if (_applicationForeground == foreground) return;
+    _applicationForeground = foreground;
+    if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
+  }
+
+  @override
+  void setConversationVisible(bool visible) {
+    if (_conversationVisible == visible) return;
+    _conversationVisible = visible;
+    if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
+  }
+
+  @override
+  void setConversationAtPresent(bool atPresent) {
+    if (_conversationAtPresent == atPresent) return;
+    _conversationAtPresent = atPresent;
+    if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
+  }
 
   @override
   Future<void> initialize() => _initializeSession();

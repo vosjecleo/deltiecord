@@ -35,6 +35,7 @@ class _MobileChatShellState extends State<MobileChatShell> {
   final Map<int, Offset> _pointerStarts = {};
   double? _navigationDragProgress;
   bool? _dragStartedWithNavigation;
+  bool? _reportedConversationVisible;
 
   ChatBackend get backend => widget.backend;
 
@@ -76,6 +77,7 @@ class _MobileChatShellState extends State<MobileChatShell> {
 
   @override
   void dispose() {
+    backend.setConversationVisible(false);
     backend.removeListener(_backendChanged);
     unawaited(_draftStore.dispose());
     super.dispose();
@@ -104,6 +106,12 @@ class _MobileChatShellState extends State<MobileChatShell> {
   @override
   Widget build(BuildContext context) {
     final room = backend.selectedRoom;
+    _reportConversationVisibility(
+      room != null &&
+          !room.isVoice &&
+          !_detailsVisible &&
+          _navigationProgress <= 0.001,
+    );
     final canSystemPop = _navigationVisible && !_detailsVisible;
     return PopScope(
       canPop: canSystemPop,
@@ -305,6 +313,15 @@ class _MobileChatShellState extends State<MobileChatShell> {
 
   double get _navigationProgress =>
       _navigationDragProgress ?? (_navigationVisible ? 1 : 0);
+
+  void _reportConversationVisibility(bool visible) {
+    if (_reportedConversationVisible == visible) return;
+    _reportedConversationVisible = visible;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _reportedConversationVisible != visible) return;
+      backend.setConversationVisible(visible);
+    });
+  }
 }
 
 class _NoRoomSelected extends StatelessWidget {

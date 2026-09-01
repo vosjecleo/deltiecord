@@ -77,12 +77,16 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _composer = TextEditingController(text: widget.initialDraft)
       ..addListener(_composerChanged);
     _scroll.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reportTimelineAtPresent(),
+    );
   }
 
   @override
   void didUpdateWidget(covariant MobileTimelineView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.room.id == widget.room.id) return;
+    backend.setConversationAtPresent(false);
     _composer
       ..removeListener(_composerChanged)
       ..text = widget.initialDraft
@@ -93,6 +97,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _messageKeys.clear();
     _messageIdsByKey.clear();
     if (_scroll.hasClients) _scroll.jumpTo(0);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reportTimelineAtPresent(),
+    );
   }
 
   void _composerChanged() {
@@ -178,6 +185,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   void _handleScroll() {
     if (!_scroll.hasClients || _restoringScrollAnchor) return;
     final position = _scroll.position;
+    backend.setConversationAtPresent(
+      position.pixels <= 48 && backend.atTimelinePresent,
+    );
     if (backend.historyLoading || _pageLoadInFlight) return;
     if (DateTime.now().isAfter(_timelineUserInputUntil) ||
         DateTime.now().isBefore(_suppressPaginationUntil)) {
@@ -299,6 +309,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
 
   @override
   void dispose() {
+    backend.setConversationAtPresent(false);
     _composer
       ..removeListener(_composerChanged)
       ..dispose();
@@ -311,6 +322,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reportTimelineAtPresent(),
+    );
     _preserveAnchorAcrossMetadataLayout(messages);
     final currentMessageIds = messages.map((message) => message.id).toSet();
     final staleMessageIds = _messageKeys.keys
@@ -564,6 +578,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             onPressed: () async {
                               await backend.jumpToPresent();
                               if (_scroll.hasClients) _scroll.jumpTo(0);
+                              backend.setConversationAtPresent(true);
                             },
                             icon: const Icon(Icons.arrow_downward),
                             label: const Text('Present'),
@@ -611,6 +626,14 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           ),
         ],
       ),
+    );
+  }
+
+  void _reportTimelineAtPresent() {
+    if (!mounted) return;
+    backend.setConversationAtPresent(
+      backend.atTimelinePresent &&
+          (!_scroll.hasClients || _scroll.position.pixels <= 48),
     );
   }
 

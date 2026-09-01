@@ -31,4 +31,16 @@ void main() {
     }
     expect(declaration, isNot(contains('PUSH_EVENT')));
   });
+
+  test('background push describes a message without claiming plaintext', () {
+    final receiver = File(
+      'android/app/src/main/kotlin/net/deltie/deltiecord/'
+      'DeltiecordPushService.kt',
+    ).readAsStringSync();
+
+    expect(receiver, contains('.setContentText("New message")'));
+    expect(receiver, isNot(contains('New Matrix activity')));
+    expect(receiver, contains('sender_display_name'));
+    expect(receiver, contains('room_name'));
+  });
 }

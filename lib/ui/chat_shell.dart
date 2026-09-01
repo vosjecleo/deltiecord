@@ -110,6 +110,7 @@ class _ChatShellState extends State<ChatShell> {
   bool _sidePanelAvailable = false;
   _SidePanelView _sidePanelView = _SidePanelView.profile;
   RoomMemberSummary? _sidePanelMember;
+  bool? _reportedConversationVisible;
 
   @override
   void initState() {
@@ -582,6 +583,7 @@ class _ChatShellState extends State<ChatShell> {
 
   @override
   void dispose() {
+    widget.backend.setConversationVisible(false);
     _storeCurrentDraft();
     widget.backend.removeListener(_handleBackendRoomChange);
     _message.removeListener(_updateMentionQuery);
@@ -628,6 +630,9 @@ class _ChatShellState extends State<ChatShell> {
                   builder: (context, constraints) {
                     final showSpaceRail = constraints.maxWidth >= 760;
                     final selectedRoom = widget.backend.selectedRoom;
+                    _reportConversationVisibility(
+                      selectedRoom != null && !selectedRoom.isVoice,
+                    );
                     final roomMembers = widget.backend.selectedRoomMembers;
                     final otherRoomMembers = roomMembers
                         .where(
@@ -831,6 +836,15 @@ class _ChatShellState extends State<ChatShell> {
         ),
       ),
     );
+  }
+
+  void _reportConversationVisibility(bool visible) {
+    if (_reportedConversationVisible == visible) return;
+    _reportedConversationVisible = visible;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _reportedConversationVisible != visible) return;
+      widget.backend.setConversationVisible(visible);
+    });
   }
 
   List<MentionSuggestion> get _mentionSuggestions {

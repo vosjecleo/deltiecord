@@ -85,6 +85,9 @@ class _ConversationState extends State<_Conversation> {
     _roomId = widget.backend.selectedRoom?.id;
     _newestMessageId = widget.backend.messages.firstOrNull?.id;
     _scrollController.addListener(_loadTimelineNearEdges);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reportTimelineAtPresent(),
+    );
     _focusComposerAfterBuild();
   }
 
@@ -97,6 +100,9 @@ class _ConversationState extends State<_Conversation> {
   void _loadTimelineNearEdges() {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
+    widget.backend.setConversationAtPresent(
+      position.pixels <= 48 && widget.backend.atTimelinePresent,
+    );
     final scrolledAway = position.pixels > _jumpToPresentScrollThreshold;
     if (scrolledAway != _scrolledAwayFromPresent && mounted) {
       setState(() => _scrolledAwayFromPresent = scrolledAway);
@@ -261,6 +267,7 @@ class _ConversationState extends State<_Conversation> {
     if (mounted && _scrolledAwayFromPresent) {
       setState(() => _scrolledAwayFromPresent = false);
     }
+    widget.backend.setConversationAtPresent(true);
   }
 
   @override
@@ -277,6 +284,7 @@ class _ConversationState extends State<_Conversation> {
         !_scrolledAwayFromPresent &&
         (!_scrollController.hasClients || _scrollController.offset <= 48);
     if (_roomId != roomId) {
+      widget.backend.setConversationAtPresent(false);
       _roomId = roomId;
       _scrolledAwayFromPresent = false;
       _messageKeys.clear();
@@ -286,6 +294,9 @@ class _ConversationState extends State<_Conversation> {
       _newestMessageId = newestMessageId;
       if (_scrollController.hasClients) _scrollController.jumpTo(0);
       _focusComposerAfterBuild();
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _reportTimelineAtPresent(),
+      );
     } else if (oldWidget.sending && !widget.sending) {
       _focusComposerAfterBuild();
     }
@@ -311,8 +322,17 @@ class _ConversationState extends State<_Conversation> {
 
   @override
   void dispose() {
+    widget.backend.setConversationAtPresent(false);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _reportTimelineAtPresent() {
+    if (!mounted) return;
+    widget.backend.setConversationAtPresent(
+      widget.backend.atTimelinePresent &&
+          (!_scrollController.hasClients || _scrollController.offset <= 48),
+    );
   }
 
   Future<void> _deleteMessage(ChatMessage message) async {
@@ -508,6 +528,9 @@ class _ConversationState extends State<_Conversation> {
     final backend = widget.backend;
     final room = backend.selectedRoom!;
     final messages = backend.messages;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _reportTimelineAtPresent(),
+    );
     _preserveAnchorAcrossMetadataLayout(messages);
     final retainedIds = messages.map((message) => message.id).toSet();
     _messageKeys.removeWhere((eventId, _) => !retainedIds.contains(eventId));

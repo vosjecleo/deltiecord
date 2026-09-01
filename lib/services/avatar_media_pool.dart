@@ -40,6 +40,7 @@ final class AvatarMediaPool {
   final int maximumEntryBytes;
   final LinkedHashMap<String, _AvatarMediaEntry> _memory = LinkedHashMap();
   final Map<String, Future<Uint8List?>> _requests = {};
+  final Set<Future<void>> _writes = {};
   Future<Directory?>? _directoryRequest;
   int _memoryBytes = 0;
   int _generation = 0;
@@ -109,7 +110,13 @@ final class AvatarMediaPool {
       return null;
     }
     seed(uri, bytes, minimumDimension);
-    Timer.run(() => unawaited(_writeDisk(uri, bytes, minimumDimension)));
+    final write = _writeDisk(uri, bytes, minimumDimension);
+    _writes.add(write);
+    unawaited(
+      write.whenComplete(() {
+        _writes.remove(write);
+      }),
+    );
     return bytes;
   }
 
@@ -118,6 +125,9 @@ final class AvatarMediaPool {
     _memory.clear();
     _requests.clear();
     _memoryBytes = 0;
+    if (_writes.isNotEmpty) {
+      await Future.wait(_writes.toList(growable: false));
+    }
     if (!disk) return;
     final directory = await _cacheDirectory();
     if (directory != null && await directory.exists()) {

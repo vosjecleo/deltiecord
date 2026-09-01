@@ -7,9 +7,11 @@ void main() {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',
     ).readAsStringSync();
-    final receiverStart = manifest.indexOf(
-      '<receiver\n            android:name=".DeltiecordPushService"',
-    );
+    final receiverStart =
+        RegExp(
+          r'<receiver\s+android:name="\.DeltiecordPushService"',
+        ).firstMatch(manifest)?.start ??
+        -1;
     expect(receiverStart, greaterThanOrEqualTo(0));
     final receiverEnd = manifest.indexOf('</receiver>', receiverStart);
     expect(receiverEnd, greaterThan(receiverStart));

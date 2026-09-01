@@ -37,9 +37,10 @@ void main() {
     expect(loads, 1);
     expect(results[0], [1, 2, 3]);
     expect(results[1], [1, 2, 3]);
+    await pool.clear();
   });
 
-  test('larger cached avatars satisfy smaller surfaces', () {
+  test('larger cached avatars satisfy smaller surfaces', () async {
     final pool = AvatarMediaPool(directory: cacheDirectory);
     final uri = Uri.parse('mxc://example.org/alice');
     final bytes = Uint8List.fromList([4, 5, 6]);
@@ -48,6 +49,7 @@ void main() {
 
     expect(pool.peek(uri, AvatarMediaPool.rowDimension), same(bytes));
     expect(pool.peek(uri, AvatarMediaPool.profileDimension), same(bytes));
+    await pool.clear();
   });
 
   test('disk cache survives a new pool without another network load', () async {
@@ -76,5 +78,6 @@ void main() {
 
     expect(result, [7, 8, 9]);
     expect(networkLoads, 0);
+    await second.clear();
   });
 }

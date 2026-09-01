@@ -72,6 +72,12 @@ abstract class ChatBackend extends ChangeNotifier {
   /// updated the selected room.
   void setApplicationForeground(bool foreground) {}
 
+  /// Publishes this desktop device's best-effort active/idle lease.
+  ///
+  /// Mobile push uses the expiring lease to avoid alerting while another
+  /// Deltiecord desktop is actively being used.
+  void setDesktopIdle(bool idle) {}
+
   /// Reports whether the selected conversation is actually visible.
   ///
   /// Mobile navigation/details layers keep the timeline mounted, so room

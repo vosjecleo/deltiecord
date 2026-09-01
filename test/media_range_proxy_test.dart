@@ -8,6 +8,107 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test(
+    'non-range GET streams the complete representation as HTTP 200',
+    () async {
+      final plaintext = Uint8List.fromList(
+        List.generate(1024 * 1024 + 31, (index) => index % 251),
+      );
+      final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstream.listen((request) async {
+        final match = RegExp(
+          r'bytes=(\d+)-(\d+)',
+        ).firstMatch(request.headers.value(HttpHeaders.rangeHeader)!)!;
+        final start = int.parse(match.group(1)!);
+        final end = int.parse(match.group(2)!);
+        request.response
+          ..statusCode = HttpStatus.partialContent
+          ..headers.set(
+            HttpHeaders.contentRangeHeader,
+            'bytes $start-$end/${plaintext.length}',
+          )
+          ..add(plaintext.sublist(start, end + 1));
+        await request.response.close();
+      });
+      final proxy = MediaRangeProxy(decryptor: (input, _, _, _) => input);
+      addTearDown(() async {
+        await proxy.close();
+        await upstream.close(force: true);
+      });
+      final local = await proxy.register(
+        upstream: Uri.parse('http://127.0.0.1:${upstream.port}/media'),
+        accessToken: 'token',
+        key: Uint8List(32),
+        iv: Uint8List(16),
+        size: plaintext.length,
+        mimeType: 'video/mp4',
+      );
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final response = await (await client.getUrl(local)).close();
+      final body = await response.fold<BytesBuilder>(
+        BytesBuilder(copy: false),
+        (builder, chunk) => builder..add(chunk),
+      );
+      expect(response.statusCode, HttpStatus.ok);
+      expect(response.headers.value(HttpHeaders.contentRangeHeader), isNull);
+      expect(response.contentLength, plaintext.length);
+      expect(body.takeBytes(), plaintext);
+    },
+  );
+
+  test(
+    'open-ended ranges are not truncated at an artificial chunk boundary',
+    () async {
+      const size = 17 * 1024 * 1024 + 19;
+      final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstream.listen((request) async {
+        final match = RegExp(
+          r'bytes=(\d+)-(\d+)',
+        ).firstMatch(request.headers.value(HttpHeaders.rangeHeader)!)!;
+        final start = int.parse(match.group(1)!);
+        final end = int.parse(match.group(2)!);
+        request.response
+          ..statusCode = HttpStatus.partialContent
+          ..headers.set(
+            HttpHeaders.contentRangeHeader,
+            'bytes $start-$end/$size',
+          );
+        const chunkSize = 64 * 1024;
+        var remaining = end - start + 1;
+        while (remaining > 0) {
+          final count = remaining < chunkSize ? remaining : chunkSize;
+          request.response.add(Uint8List(count));
+          remaining -= count;
+        }
+        await request.response.close();
+      });
+      final proxy = MediaRangeProxy(decryptor: (input, _, _, _) => input);
+      addTearDown(() async {
+        await proxy.close();
+        await upstream.close(force: true);
+      });
+      final local = await proxy.register(
+        upstream: Uri.parse('http://127.0.0.1:${upstream.port}/media'),
+        accessToken: 'token',
+        key: Uint8List(32),
+        iv: Uint8List(16),
+        size: size,
+        mimeType: 'video/mp4',
+      );
+      final client = HttpClient();
+      addTearDown(() => client.close(force: true));
+      final request = await client.getUrl(local);
+      request.headers.set(HttpHeaders.rangeHeader, 'bytes=0-');
+      final response = await request.close();
+      expect(response.contentLength, size);
+      expect(
+        await response.fold<int>(0, (sum, chunk) => sum + chunk.length),
+        size,
+      );
+    },
+  );
+
+  test(
     'serves a non-aligned decrypted byte range without full download',
     () async {
       final plaintext = Uint8List.fromList(

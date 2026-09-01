@@ -34,6 +34,21 @@ enum _SettingsPage {
   about,
 }
 
+enum _SettingPlatform { cross, desktop, mobile }
+
+_SettingPlatform _availabilityFor(_SettingsPage page) => switch (page) {
+  _SettingsPage.shortcuts => _SettingPlatform.desktop,
+  _ => _SettingPlatform.cross,
+};
+
+bool _availableOnCurrentPlatform(
+  _SettingsPage page,
+) => switch (_availabilityFor(page)) {
+  _SettingPlatform.cross => true,
+  _SettingPlatform.desktop => defaultTargetPlatform != TargetPlatform.android,
+  _SettingPlatform.mobile => defaultTargetPlatform == TargetPlatform.android,
+};
+
 Future<void> showDeltiecordSettings(
   BuildContext context,
   ChatBackend backend,
@@ -200,8 +215,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             padding: const EdgeInsets.all(10),
             children: [
               for (final page in _SettingsPage.values)
-                if (!(defaultTargetPlatform == TargetPlatform.android &&
-                    page == _SettingsPage.shortcuts))
+                if (_availableOnCurrentPlatform(page))
                   ListTile(
                     selected: !mobile && _page == page,
                     leading: Icon(_iconFor(page), size: 21),
@@ -476,7 +490,11 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     _SettingsPage.notifications => _section('Notifications', [
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Desktop notifications'),
+        title: Text(
+          defaultTargetPlatform == TargetPlatform.android
+              ? 'System notifications'
+              : 'Desktop notifications',
+        ),
         subtitle: const Text('Notify for new Matrix messages.'),
         value: backend.preferences.notificationsEnabled,
         onChanged: (value) => backend.updatePreferences(
@@ -497,11 +515,48 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         value: backend.notificationPreviewsEnabled,
         onChanged: backend.setNotificationPreviewsEnabled,
       ),
+      if (defaultTargetPlatform == TargetPlatform.android)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Notification vibration'),
+          subtitle: const Text('Allow message alerts to vibrate the device.'),
+          value: backend.preferences.notificationVibration,
+          onChanged: (value) => backend.updatePreferences(
+            backend.preferences.copyWith(notificationVibration: value),
+          ),
+        ),
+      const SizedBox(height: 8),
+      DropdownButtonFormField<NotificationAlertCadence>(
+        initialValue: backend.preferences.notificationAlertCadence,
+        decoration: const InputDecoration(labelText: 'Alert cadence'),
+        items: const [
+          DropdownMenuItem(
+            value: NotificationAlertCadence.fiveMinuteCooldown,
+            child: Text('Once every 5 minutes per conversation'),
+          ),
+          DropdownMenuItem(
+            value: NotificationAlertCadence.everyMessage,
+            child: Text('Every message'),
+          ),
+          DropdownMenuItem(
+            value: NotificationAlertCadence.silent,
+            child: Text('Silent'),
+          ),
+        ],
+        onChanged: (value) {
+          if (value == null) return;
+          backend.updatePreferences(
+            backend.preferences.copyWith(notificationAlertCadence: value),
+          );
+        },
+      ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Notification sound'),
-        subtitle: const Text(
-          'Allow the desktop notification service to play sound.',
+        subtitle: Text(
+          defaultTargetPlatform == TargetPlatform.android
+              ? 'Allow Android message alerts to play sound.'
+              : 'Allow the desktop notification service to play sound.',
         ),
         value: backend.preferences.notificationSound,
         onChanged: (value) => backend.updatePreferences(
@@ -697,9 +752,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       ),
     ]),
     _SettingsPage.about => _section('About Deltiecord', [
-      const Text(
+      Text(
         'Deltiecord v$deltiecordVersion\n'
-        'A compact, old-school desktop Matrix client built with Flutter.',
+        'A compact, old-school ${defaultTargetPlatform == TargetPlatform.android ? 'mobile' : 'desktop'} Matrix client built with Flutter.',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -914,26 +969,28 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         'values fit more information on screen.',
       ),
       const SizedBox(height: 20),
-      Text('Room panel — ${preferences.roomPanelWidth.round()} px'),
-      Slider(
-        value: preferences.roomPanelWidth,
-        min: 220,
-        max: 420,
-        divisions: 10,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(roomPanelWidth: value),
+      if (defaultTargetPlatform != TargetPlatform.android) ...[
+        Text('Room panel — ${preferences.roomPanelWidth.round()} px'),
+        Slider(
+          value: preferences.roomPanelWidth,
+          min: 220,
+          max: 420,
+          divisions: 10,
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(roomPanelWidth: value),
+          ),
         ),
-      ),
-      Text('Side panel — ${preferences.sidePanelWidth.round()} px'),
-      Slider(
-        value: preferences.sidePanelWidth,
-        min: 260,
-        max: 460,
-        divisions: 10,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(sidePanelWidth: value),
+        Text('Side panel — ${preferences.sidePanelWidth.round()} px'),
+        Slider(
+          value: preferences.sidePanelWidth,
+          min: 260,
+          max: 460,
+          divisions: 10,
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(sidePanelWidth: value),
+          ),
         ),
-      ),
+      ],
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Autoplay GIFs'),

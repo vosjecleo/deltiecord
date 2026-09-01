@@ -26,6 +26,9 @@ object DeltiecordEngineRegistry {
 
     @Volatile
     var pushBridgeReady: Boolean = false
+
+    @Volatile
+    var appInForeground: Boolean = false
 }
 
 /**
@@ -52,6 +55,10 @@ class DeltiecordPushWorker(
             ?: return Result.failure()
         val eventId = inputData.getString(KEY_EVENT_ID)?.takeIf { it.isNotBlank() }
             ?: return Result.failure()
+        // The live Dart session emits its own in-app banner. Posting an Android
+        // notification as well duplicates the alert and can mark a visible
+        // conversation as externally notified.
+        if (DeltiecordEngineRegistry.appInForeground) return Result.success()
         var ownsEngine = false
         var engine = DeltiecordEngineRegistry.engine
         try {
@@ -74,6 +81,9 @@ class DeltiecordPushWorker(
             // so transient sync/key-delivery races can still enrich it.
             return if (runAttemptCount < 1) Result.retry() else Result.success()
         } finally {
+            DeltiecordNotificationPublisher.cancelBackgroundWorkNotification(
+                applicationContext,
+            )
             if (ownsEngine && engine != null) {
                 withContext(Dispatchers.Main) { engine.destroy() }
             }

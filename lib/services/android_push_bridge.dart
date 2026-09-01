@@ -102,6 +102,7 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
   }
 
   final settings = client.accountData['net.deltiecord.settings']?.content;
+  if (_activeDesktopLeasePresent(client)) return null;
   final previewsEnabled =
       settings?.tryGet<bool>('notification_previews') ?? true;
   final sender = displayEvent.senderFromMemoryOrFallback;
@@ -181,7 +182,35 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
     'senderAvatar': ?avatar,
     'image': ?image,
     'imageMimeType': ?imageMimeType,
+    'sound': settings?.tryGet<bool>('notification_sound') ?? true,
+    'vibrate': settings?.tryGet<bool>('notification_vibration') ?? true,
+    'alertCadence':
+        settings?.tryGet<String>('notification_alert_cadence') ??
+        'fiveMinuteCooldown',
   };
+}
+
+bool _activeDesktopLeasePresent(Client client) {
+  final content = client.accountData['net.deltiecord.device_activity']?.content;
+  final devices = content?.tryGetMap<String, Object?>('devices');
+  if (devices == null) return false;
+  final cutoff = DateTime.now()
+      .subtract(const Duration(minutes: 2))
+      .millisecondsSinceEpoch;
+  for (final entry in devices.entries) {
+    if (entry.key == client.deviceID || entry.value is! Map) continue;
+    final lease = entry.value as Map;
+    final platform = lease['platform'];
+    final updatedAt = lease['updated_at'];
+    final idle = lease['idle'];
+    if ((platform == 'linux' || platform == 'windows' || platform == 'macos') &&
+        updatedAt is num &&
+        updatedAt.toInt() >= cutoff &&
+        idle == false) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /// Entry-point state for Android workers that run without an Activity.

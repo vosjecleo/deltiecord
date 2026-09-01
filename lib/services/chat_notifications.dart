@@ -6,6 +6,39 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'desktop_window_service.dart';
+import '../models/chat_models.dart';
+
+class InAppChatNotification {
+  const InAppChatNotification({
+    required this.title,
+    required this.body,
+    required this.onTap,
+    this.avatar,
+  });
+
+  final String title;
+  final String body;
+  final Uint8List? avatar;
+  final VoidCallback onTap;
+}
+
+/// Foreground-only notification surface shared by mobile and desktop shells.
+abstract final class InAppNotificationCenter {
+  static final current = ValueNotifier<InAppChatNotification?>(null);
+  static Timer? _dismissTimer;
+
+  static void show(InAppChatNotification notification) {
+    current.value = notification;
+    _dismissTimer?.cancel();
+    _dismissTimer = Timer(const Duration(seconds: 5), dismiss);
+  }
+
+  static void dismiss() {
+    _dismissTimer?.cancel();
+    _dismissTimer = null;
+    current.value = null;
+  }
+}
 
 /// Safe, bounded navigation data carried by a desktop notification.
 class NotificationTarget {
@@ -54,6 +87,9 @@ abstract interface class ChatNotificationSink {
     String? imageMimeType,
     DateTime? timestamp,
     bool sound = true,
+    bool vibrate = true,
+    NotificationAlertCadence alertCadence =
+        NotificationAlertCadence.fiveMinuteCooldown,
   });
 
   /// Warms the native background-notification avatar cache for [roomId].
@@ -140,6 +176,9 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
     String? imageMimeType,
     DateTime? timestamp,
     bool sound = true,
+    bool vibrate = true,
+    NotificationAlertCadence alertCadence =
+        NotificationAlertCadence.fiveMinuteCooldown,
   }) async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       try {
@@ -155,6 +194,8 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
           'image': ?image,
           'imageMimeType': ?imageMimeType,
           'sound': sound,
+          'vibrate': vibrate,
+          'alertCadence': alertCadence.name,
         });
         return;
       } on MissingPluginException {
@@ -179,6 +220,7 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
           priority: Priority.high,
           category: AndroidNotificationCategory.message,
           playSound: sound,
+          enableVibration: vibrate,
           largeIcon: senderAvatar == null
               ? null
               : ByteArrayAndroidBitmap(senderAvatar),
@@ -238,6 +280,9 @@ class SilentChatNotificationSink implements ChatNotificationSink {
     String? imageMimeType,
     DateTime? timestamp,
     bool sound = true,
+    bool vibrate = true,
+    NotificationAlertCadence alertCadence =
+        NotificationAlertCadence.fiveMinuteCooldown,
   }) async {}
 
   @override

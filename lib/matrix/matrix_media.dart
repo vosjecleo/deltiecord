@@ -76,30 +76,43 @@ extension _MatrixMedia on MatrixBackend {
               mimeType: attachment.mimeType,
             );
       final transactionId = _matrix.generateUniqueTransactionId();
-      final operation = room.sendFileEvent(
-        file,
-        txid: transactionId,
-        inReplyTo: replyEvent,
-        // Re-encoding large images here is CPU-heavy and stalls Flutter's UI
-        // isolate. The SDK still generates a thumbnail, but uploads the
-        // original image without a redundant full-resolution shrink pass.
-        shrinkImageMaxDimension: null,
-        extraContent:
-            attachment.spoiler || attachment.caption?.trim().isNotEmpty == true
-            ? {
-                if (attachment.caption?.trim().isNotEmpty == true) ...{
-                  'body': attachment.caption!.trim(),
-                  'filename': attachment.name,
-                },
-                // MSC4193's unstable key is used by existing clients. Keep the
-                // stable-looking key too so migration does not require a resend.
-                if (attachment.spoiler) ...{
-                  'page.codeberg.everypizza.msc4193.spoiler': true,
-                  'm.spoiler': true,
-                },
-              }
-            : null,
-      );
+      final operation = attachment.voiceMessage
+          ? room.sendAudioEvent(
+              MatrixAudioFile(
+                bytes: attachment.bytes,
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                duration: attachment.durationMilliseconds,
+              ),
+              replyTo: replyEvent,
+              durationInMs: attachment.durationMilliseconds,
+              waveform: attachment.waveform,
+            )
+          : room.sendFileEvent(
+              file,
+              txid: transactionId,
+              inReplyTo: replyEvent,
+              // Re-encoding large images here is CPU-heavy and stalls Flutter's UI
+              // isolate. The SDK still generates a thumbnail, but uploads the
+              // original image without a redundant full-resolution shrink pass.
+              shrinkImageMaxDimension: null,
+              extraContent:
+                  attachment.spoiler ||
+                      attachment.caption?.trim().isNotEmpty == true
+                  ? {
+                      if (attachment.caption?.trim().isNotEmpty == true) ...{
+                        'body': attachment.caption!.trim(),
+                        'filename': attachment.name,
+                      },
+                      // MSC4193's unstable key is used by existing clients. Keep the
+                      // stable-looking key too so migration does not require a resend.
+                      if (attachment.spoiler) ...{
+                        'page.codeberg.everypizza.msc4193.spoiler': true,
+                        'm.spoiler': true,
+                      },
+                    }
+                  : null,
+            );
       if (_connectionStatus != ConnectionStatus.online) {
         _offlineSendRooms[transactionId] = room.id;
         _notifyBackendListeners();

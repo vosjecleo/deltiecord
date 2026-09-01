@@ -1,6 +1,6 @@
 pkgname=deltiecord
-pkgver=0.9.22
-pkgrel=72
+pkgver=0.9.23
+pkgrel=73
 pkgdesc='Compact Matrix desktop client'
 arch=('x86_64')
 url='https://deltie.net/cord'

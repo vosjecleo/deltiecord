@@ -6,6 +6,8 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ShortcutInfo
+import android.content.pm.ShortcutManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.BitmapShader
@@ -17,6 +19,7 @@ import android.graphics.Shader
 import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
@@ -32,12 +35,13 @@ import java.security.MessageDigest
  * while Android's MessagingStyle expansion reveals recent messages/media.
  */
 object DeltiecordNotificationPublisher {
-    private const val CHANNEL_ID = "deltiecord_messages"
+    private const val CHANNEL_ID = "deltiecord_messages_73"
     private const val BACKGROUND_CHANNEL_ID = "deltiecord_background_sync"
     private const val PREFS = "deltiecord_notification_history"
     private const val MAX_MESSAGES = 6
     private const val MAX_MEDIA_BYTES = 3 * 1024 * 1024
     private const val MAX_AVATAR_BYTES = 1024 * 1024
+    private const val ALERT_COOLDOWN_MS = 5L * 60 * 1000
 
     data class MessageData(
         val roomId: String,
@@ -51,6 +55,8 @@ object DeltiecordNotificationPublisher {
         val image: ByteArray? = null,
         val imageMimeType: String? = null,
         val sound: Boolean = true,
+        val vibrate: Boolean = true,
+        val alertCadence: String = "fiveMinuteCooldown",
     )
 
     fun fromMap(arguments: Map<*, *>): MessageData? {
@@ -69,27 +75,11 @@ object DeltiecordNotificationPublisher {
             image = (arguments["image"] as? ByteArray)?.takeIf { it.size <= MAX_MEDIA_BYTES },
             imageMimeType = (arguments["imageMimeType"] as? String)?.takeIf { it.startsWith("image/") },
             sound = arguments["sound"] as? Boolean ?: true,
+            vibrate = arguments["vibrate"] as? Boolean ?: true,
+            alertCadence = (arguments["alertCadence"] as? String)
+                ?.takeIf { it in setOf("fiveMinuteCooldown", "everyMessage", "silent") }
+                ?: "fiveMinuteCooldown",
         )
-    }
-
-    fun showPlaceholder(
-        context: Context,
-        roomId: String?,
-        eventId: String?,
-        title: String,
-    ) {
-        ensureBackgroundChannel(context)
-        val targetRoom = roomId?.takeIf { it.isNotBlank() } ?: "unknown"
-        val intent = contentIntent(context, targetRoom, eventId.orEmpty())
-        val builder = builder(context, BACKGROUND_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(title.take(160))
-            .setContentText("New message")
-            .setCategory(Notification.CATEGORY_MESSAGE)
-            .setOnlyAlertOnce(true)
-            .setAutoCancel(true)
-            .setContentIntent(intent)
-        manager(context).notify(targetRoom, 9001, builder.build())
     }
 
     fun backgroundWorkNotification(context: Context): Notification {
@@ -104,8 +94,14 @@ object DeltiecordNotificationPublisher {
             .build()
     }
 
+    fun cancelBackgroundWorkNotification(context: Context) {
+        manager(context).cancel(9002)
+    }
+
     fun publish(context: Context, data: MessageData) {
-        ensureChannel(context)
+        val shouldAlert = shouldAlert(context, data)
+        val channelId = channelId(data, shouldAlert)
+        ensureChannel(context, channelId, data.sound && shouldAlert, data.vibrate && shouldAlert)
         val avatarPath = data.senderAvatar?.let {
             writeBoundedFile(context, "avatar", data.eventId, it, ".png")
         }
@@ -131,13 +127,20 @@ object DeltiecordNotificationPublisher {
 
         val latest = history.last()
         val latestAvatar = bitmapFromPath(latest.optString("avatarPath"))
-        val decoratedAvatar = latestAvatar?.let { decorateAvatar(context, it) }
+        val conversationAvatar = NotificationAvatarCache.get(context, data.roomId)
+            ?: latestAvatar
+        val decoratedAvatar = conversationAvatar?.let { decorateAvatar(context, it) }
         val contentIntent = contentIntent(
             context,
             data.roomId,
             latest.optString("eventId"),
         )
-        val notification = builder(context)
+        val shortcutId = ensureConversationShortcut(
+            context,
+            data,
+            decoratedAvatar,
+        )
+        val notificationBuilder = builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(latest.optString("roomName", "Deltiecord"))
             .setContentText(latest.optString("body", "New message"))
@@ -147,11 +150,65 @@ object DeltiecordNotificationPublisher {
             .setContentIntent(contentIntent)
             .setWhen(latest.optLong("timestamp", System.currentTimeMillis()))
             .setShowWhen(true)
-            .setOnlyAlertOnce(false)
+            .setOnlyAlertOnce(!shouldAlert)
             .setStyle(messagingStyle(context, history, decoratedAvatar))
-            .build()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            notificationBuilder.setShortcutId(shortcutId)
+        } else if (!shouldAlert) {
+            @Suppress("DEPRECATION")
+            notificationBuilder.setSound(null).setVibrate(longArrayOf())
+        }
+        val notification = notificationBuilder.build()
         manager(context).notify(data.roomId, 9001, notification)
+        context.getSharedPreferences("deltiecord_unified_push", Context.MODE_PRIVATE)
+            .edit()
+            .putLong("last_notification_posted_ms", System.currentTimeMillis())
+            .apply()
         cleanupFiles(context, history)
+    }
+
+    private fun shouldAlert(context: Context, data: MessageData): Boolean {
+        if ((!data.sound && !data.vibrate) || data.alertCadence == "silent") return false
+        if (data.alertCadence == "everyMessage") return true
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val key = "alert:${digest(data.roomId)}"
+        val now = System.currentTimeMillis()
+        val previous = preferences.getLong(key, 0)
+        if (now - previous < ALERT_COOLDOWN_MS) return false
+        preferences.edit().putLong(key, now).apply()
+        return true
+    }
+
+    private fun channelId(data: MessageData, alert: Boolean): String = when {
+        !alert -> "${CHANNEL_ID}_silent"
+        data.sound && data.vibrate -> "${CHANNEL_ID}_sound_vibrate"
+        data.sound -> "${CHANNEL_ID}_sound"
+        else -> "${CHANNEL_ID}_vibrate"
+    }
+
+    private fun ensureConversationShortcut(
+        context: Context,
+        data: MessageData,
+        avatar: Bitmap?,
+    ): String {
+        val shortcutId = "room-${digest(data.roomId)}"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return shortcutId
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = Intent.ACTION_VIEW
+            putExtra("notification_room_id", data.roomId)
+            putExtra("notification_event_id", data.eventId)
+        }
+        val builder = ShortcutInfo.Builder(context, shortcutId)
+            .setShortLabel(data.roomName.take(40))
+            .setLongLabel(data.roomName.take(80))
+            .setIntent(intent)
+        if (avatar != null) builder.setIcon(Icon.createWithBitmap(avatar))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setLongLived(true)
+        runCatching {
+            context.getSystemService(ShortcutManager::class.java)
+                .addDynamicShortcuts(listOf(builder.build()))
+        }
+        return shortcutId
     }
 
     private fun messagingStyle(
@@ -166,7 +223,7 @@ object DeltiecordNotificationPublisher {
                 .setGroupConversation(history.last().optBoolean("groupConversation", false))
             for (entry in history) {
                 val bitmap = bitmapFromPath(entry.optString("avatarPath"))
-                    ?.let { decorateAvatar(context, it) }
+                    ?.let(::circleAvatar)
                     ?: fallbackAvatar
                 val personBuilder = android.app.Person.Builder()
                     .setName(entry.optString("senderName", "Matrix user"))
@@ -232,23 +289,9 @@ object DeltiecordNotificationPublisher {
     }
 
     private fun decorateAvatar(context: Context, source: Bitmap): Bitmap {
-        val size = 192
-        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val output = circleAvatar(source)
         val canvas = Canvas(output)
-        val scale = maxOf(size.toFloat() / source.width, size.toFloat() / source.height)
-        val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
-        val matrix = android.graphics.Matrix().apply {
-            setScale(scale, scale)
-            postTranslate(
-                (size - source.width * scale) / 2f,
-                (size - source.height * scale) / 2f,
-            )
-        }
-        shader.setLocalMatrix(matrix)
-        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.shader = shader
-        })
-
+        val size = output.width
         val badgeRadius = 37f
         val badgeCenter = size - badgeRadius
         canvas.drawCircle(
@@ -271,6 +314,27 @@ object DeltiecordNotificationPublisher {
                 Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
             )
         }
+        return output
+    }
+
+    private fun circleAvatar(source: Bitmap): Bitmap {
+        val size = 192
+        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(output)
+        val scale = maxOf(size.toFloat() / source.width, size.toFloat() / source.height)
+        val shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+        val matrix = android.graphics.Matrix().apply {
+            setScale(scale, scale)
+            postTranslate(
+                (size - source.width * scale) / 2f,
+                (size - source.height * scale) / 2f,
+            )
+        }
+        shader.setLocalMatrix(matrix)
+        canvas.drawCircle(size / 2f, size / 2f, size / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.shader = shader
+        })
+
         return output
     }
 
@@ -336,14 +400,25 @@ object DeltiecordNotificationPublisher {
         )
     }
 
-    private fun ensureChannel(context: Context) {
+    private fun ensureChannel(
+        context: Context,
+        channelId: String,
+        sound: Boolean,
+        vibrate: Boolean,
+    ) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         manager(context).createNotificationChannel(
             NotificationChannel(
-                CHANNEL_ID,
+                channelId,
                 "Messages",
-                NotificationManager.IMPORTANCE_HIGH,
-            ).apply { description = "Encrypted Matrix message notifications" },
+                if (sound || vibrate) NotificationManager.IMPORTANCE_HIGH
+                else NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = "Encrypted Matrix message notifications"
+                enableVibration(vibrate)
+                if (!sound) setSound(null, null)
+                else setSound(Settings.System.DEFAULT_NOTIFICATION_URI, null)
+            },
         )
     }
 

@@ -13,6 +13,7 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
 import '../services/avatar_media_pool.dart';
+import '../services/app_sounds.dart';
 import '../services/android_push_bridge.dart';
 import '../services/font_preferences.dart';
 import '../services/message_search.dart';
@@ -46,6 +47,8 @@ class MatrixBackend extends ChatBackend {
   static const _maximumCachedAttachmentBytes = 64 * 1024 * 1024;
   static const _maximumCachedAttachments = 64;
   static const _settingsAccountDataType = 'net.deltiecord.settings';
+  static const _deviceActivityAccountDataType =
+      'net.deltiecord.device_activity';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
   static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
 
@@ -109,10 +112,13 @@ class MatrixBackend extends ChatBackend {
   final Set<String> _roomsMarkingRead = {};
   final Map<String, String> _lastMarkedReadEventIds = {};
   bool _applicationForeground = true;
+  bool _desktopIdle = true;
+  Timer? _desktopActivityLeaseTimer;
   bool _conversationVisible = false;
   bool _conversationAtPresent = false;
   final Map<String, String?> _firstUnreadEventIds = {};
   final Map<String, String> _lastNotificationEventIds = {};
+  final Map<String, DateTime> _lastForegroundAlertAt = {};
   final Map<String, RoomPresentation> _roomPresentationOverrides = {};
   final Map<String, Map<String, dynamic>> _spaceChannelLayoutOverrides = {};
   final Map<String, List<String>> _spaceRoomOrderOverrides = {};
@@ -449,6 +455,9 @@ class MatrixBackend extends ChatBackend {
     _applicationForeground = foreground;
     if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
   }
+
+  @override
+  void setDesktopIdle(bool idle) => _setDesktopIdle(idle);
 
   @override
   void setConversationVisible(bool visible) {
@@ -856,6 +865,7 @@ class MatrixBackend extends ChatBackend {
   void dispose() {
     _typingStopTimer?.cancel();
     _settingsSaveTimer?.cancel();
+    _desktopActivityLeaseTimer?.cancel();
     _stopProfileRefreshTimer();
     _profileCache.clear();
     _profileRequests.clear();

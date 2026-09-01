@@ -2726,6 +2726,51 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
   });
 
+  testWidgets('Android reply previews jump by event id and truncate', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!reply:test',
+          name: 'Replies',
+          lastMessage: 'reply',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$reply',
+          sender: 'Alice',
+          senderId: '@alice:test',
+          body: 'reply',
+          timestamp: DateTime(2026),
+          pending: false,
+          reply: const ReplyPreview(
+            eventId: r'$older',
+            sender: 'Bob',
+            body: 'A reply body that is deliberately too long for one line',
+          ),
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Replies'));
+    await tester.pumpAndSettle();
+
+    final preview = find.byKey(const ValueKey(r'mobile-reply-$reply'));
+    expect(preview, findsOneWidget);
+    final rich = tester.widget<Text>(
+      find.descendant(of: preview, matching: find.byType(Text)).first,
+    );
+    expect(rich.maxLines, 1);
+    expect(rich.overflow, TextOverflow.ellipsis);
+    await tester.tap(preview);
+    await tester.pumpAndSettle();
+    expect(backend.jumpedEventIds, contains(r'$older'));
+  });
+
   testWidgets('Android can discard a failed local echo', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn

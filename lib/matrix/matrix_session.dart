@@ -12,6 +12,9 @@ extension _MatrixSession on MatrixBackend {
       await _loginSubscription?.cancel();
       await _syncStatusSubscription?.cancel();
       _stopProfileRefreshTimer();
+      _desktopActivityLeaseTimer?.cancel();
+      _desktopActivityLeaseTimer = null;
+      _desktopIdle = true;
       await _disposeVoice();
       _client?.dispose();
       _client = await createMatrixClient();
@@ -428,7 +431,7 @@ extension _MatrixSession on MatrixBackend {
         continue;
       }
       _lastNotificationEventIds[room.id] = event.eventId;
-      if (room.id == _selectedRoomId ||
+      if ((room.id == _selectedRoomId && _conversationVisible) ||
           event.senderId == _matrix.userID ||
           room.pushRuleState == PushRuleState.dontNotify ||
           (room.pushRuleState == PushRuleState.mentionsOnly &&
@@ -459,6 +462,40 @@ extension _MatrixSession on MatrixBackend {
       if (notificationAvatar != null) {
         unawaited(_notifications.cacheRoomAvatar(room.id, notificationAvatar));
       }
+      if (_applicationForeground) {
+        InAppNotificationCenter.show(
+          InAppChatNotification(
+            title: room.isDirectChat
+                ? sender
+                : '$sender in ${room.getLocalizedDisplayname()}',
+            body: notificationBody,
+            avatar: notificationAvatar,
+            onTap: () {
+              InAppNotificationCenter.dismiss();
+              unawaited(
+                _openNotificationTarget(
+                  NotificationTarget(roomId: room.id, eventId: event.eventId),
+                ),
+              );
+            },
+          ),
+        );
+        final cadence = _preferences.notificationAlertCadence;
+        final now = DateTime.now();
+        final previous = _lastForegroundAlertAt[room.id];
+        final shouldAlert =
+            cadence == NotificationAlertCadence.everyMessage ||
+            (cadence == NotificationAlertCadence.fiveMinuteCooldown &&
+                (previous == null ||
+                    now.difference(previous) >= const Duration(minutes: 5)));
+        if (shouldAlert) {
+          _lastForegroundAlertAt[room.id] = now;
+          if (_preferences.notificationSound) {
+            unawaited(AppSounds.notification());
+          }
+        }
+        continue;
+      }
       await _notifications.show(
         title: '$sender in ${room.getLocalizedDisplayname()}',
         body: notificationBody,
@@ -472,6 +509,8 @@ extension _MatrixSession on MatrixBackend {
         imageMimeType: notificationImage?.$2,
         timestamp: event.originServerTs,
         sound: _preferences.notificationSound,
+        vibrate: _preferences.notificationVibration,
+        alertCadence: _preferences.notificationAlertCadence,
       );
     }
   }
@@ -578,6 +617,17 @@ extension _MatrixSession on MatrixBackend {
       notificationsEnabled:
           content?.tryGet<bool>('notifications_enabled') ?? true,
       notificationSound: content?.tryGet<bool>('notification_sound') ?? true,
+      notificationVibration:
+          content?.tryGet<bool>('notification_vibration') ?? true,
+      notificationAlertCadence:
+          NotificationAlertCadence.values
+              .where(
+                (value) =>
+                    value.name ==
+                    content?.tryGet<String>('notification_alert_cadence'),
+              )
+              .firstOrNull ??
+          NotificationAlertCadence.fiveMinuteCooldown,
       sendReadReceipts: content?.tryGet<bool>('send_read_receipts') ?? true,
       sendTypingNotifications:
           content?.tryGet<bool>('send_typing_notifications') ?? true,
@@ -725,6 +775,9 @@ extension _MatrixSession on MatrixBackend {
           'autoplay_gifs': preferences.autoplayGifs,
           'notifications_enabled': preferences.notificationsEnabled,
           'notification_sound': preferences.notificationSound,
+          'notification_vibration': preferences.notificationVibration,
+          'notification_alert_cadence':
+              preferences.notificationAlertCadence.name,
           'send_read_receipts': preferences.sendReadReceipts,
           'send_typing_notifications': preferences.sendTypingNotifications,
           'share_presence': preferences.sharePresence,
@@ -764,6 +817,53 @@ extension _MatrixSession on MatrixBackend {
     } catch (exception) {
       _error = _friendlyError(exception);
       _notifyBackendListeners();
+    }
+  }
+
+  void _setDesktopIdle(bool idle) {
+    if (Platform.isAndroid || _desktopIdle == idle) return;
+    _desktopIdle = idle;
+    _desktopActivityLeaseTimer?.cancel();
+    unawaited(_publishDesktopActivityLease(idle));
+    if (!idle) {
+      _desktopActivityLeaseTimer = Timer.periodic(
+        const Duration(minutes: 1),
+        (_) => unawaited(_publishDesktopActivityLease(false)),
+      );
+    }
+  }
+
+  Future<void> _publishDesktopActivityLease(bool idle) async {
+    final userId = _matrix.userID;
+    final deviceId = _matrix.deviceID;
+    if (userId == null || deviceId == null) return;
+    final existing = _matrix
+        .accountData[MatrixBackend._deviceActivityAccountDataType]
+        ?.content;
+    final devices = <String, Object?>{
+      ...?existing?.tryGetMap<String, Object?>('devices'),
+    };
+    final cutoff = DateTime.now()
+        .subtract(const Duration(minutes: 10))
+        .millisecondsSinceEpoch;
+    devices.removeWhere((_, value) {
+      if (value is! Map) return true;
+      final updatedAt = value['updated_at'] as int?;
+      return updatedAt == null || updatedAt < cutoff;
+    });
+    devices[deviceId] = {
+      'platform': Platform.operatingSystem,
+      'idle': idle,
+      'updated_at': DateTime.now().millisecondsSinceEpoch,
+    };
+    try {
+      await _matrix.setAccountData(
+        userId,
+        MatrixBackend._deviceActivityAccountDataType,
+        {'devices': devices},
+      );
+    } catch (_) {
+      // Device activity is advisory. Failure must not interrupt the session.
     }
   }
 

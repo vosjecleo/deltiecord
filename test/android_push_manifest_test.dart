@@ -46,8 +46,12 @@ void main() {
       'DeltiecordPushWorker.kt',
     ).readAsStringSync();
 
-    expect(publisher, contains('.setContentText("New message")'));
+    expect(
+      publisher,
+      contains('.setContentText(latest.optString("body", "New message"))'),
+    );
     expect(receiver, isNot(contains('New Matrix activity')));
+    expect(receiver, isNot(contains('showPlaceholder')));
     expect(receiver, contains('sender_display_name'));
     expect(receiver, contains('room_name'));
     expect(receiver, contains('event_id'));
@@ -61,5 +65,8 @@ void main() {
       contains('Build.VERSION.SDK_INT < Build.VERSION_CODES.P'),
     );
     expect(publisher, contains('R.mipmap.ic_launcher_round'));
+    expect(publisher, contains('ALERT_COOLDOWN_MS'));
+    expect(publisher, contains('setShortcutId(shortcutId)'));
+    expect(worker, contains('cancelBackgroundWorkNotification'));
   });
 }

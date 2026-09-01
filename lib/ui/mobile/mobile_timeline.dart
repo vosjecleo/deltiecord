@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
@@ -7,6 +8,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
@@ -63,11 +66,17 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   int _timelineInputGeneration = 0;
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
+  int _navigationGeneration = 0;
+  String? _highlightedMessageId;
+  Timer? _highlightTimer;
+  Completer<void>? _highlightWaiter;
   List<EmojiEntry> _emojiMatches = const [];
   int _emojiSelection = 0;
   int? _emojiStart;
   int _emojiGeneration = 0;
   bool _replacingEmoji = false;
+  MediaRecorder? _voiceRecorder;
+  String? _voiceRecordingPath;
 
   ChatBackend get backend => widget.backend;
 
@@ -273,6 +282,66 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _restoringScrollAnchor = false;
   }
 
+  Future<void> _jumpToEvent(String eventId) async {
+    final generation = ++_navigationGeneration;
+    _suppressPaginationUntil = DateTime.now().add(const Duration(seconds: 1));
+    if (!await _scrollToMessage(eventId, generation)) {
+      await backend.jumpToEvent(eventId);
+      if (!mounted || generation != _navigationGeneration) return;
+      await _scrollToMessage(eventId, generation, waitForBuild: true);
+    }
+    if (!mounted || generation != _navigationGeneration) return;
+    for (var pulse = 0; pulse < 2; pulse++) {
+      setState(() => _highlightedMessageId = eventId);
+      await _waitForHighlight(const Duration(milliseconds: 180));
+      if (!mounted || generation != _navigationGeneration) return;
+      setState(() => _highlightedMessageId = null);
+      if (pulse == 0) {
+        await _waitForHighlight(const Duration(milliseconds: 110));
+      }
+    }
+  }
+
+  Future<void> _waitForHighlight(Duration duration) {
+    _highlightTimer?.cancel();
+    final previous = _highlightWaiter;
+    if (previous != null && !previous.isCompleted) previous.complete();
+    final waiter = Completer<void>();
+    _highlightWaiter = waiter;
+    _highlightTimer = Timer(duration, () {
+      if (!waiter.isCompleted) waiter.complete();
+      if (identical(_highlightWaiter, waiter)) {
+        _highlightWaiter = null;
+        _highlightTimer = null;
+      }
+    });
+    return waiter.future;
+  }
+
+  Future<bool> _scrollToMessage(
+    String eventId,
+    int generation, {
+    bool waitForBuild = false,
+  }) async {
+    final attempts = waitForBuild ? 8 : 1;
+    for (var attempt = 0; attempt < attempts; attempt++) {
+      if (!mounted || generation != _navigationGeneration) return false;
+      final target = _messageKeys[eventId]?.currentContext;
+      if (target != null && target.mounted) {
+        await Scrollable.ensureVisible(
+          target,
+          alignment: 0.5,
+          duration: backend.preferences.reducedMotion
+              ? Duration.zero
+              : const Duration(milliseconds: 160),
+        );
+        return true;
+      }
+      await WidgetsBinding.instance.endOfFrame;
+    }
+    return false;
+  }
+
   int _layoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
     messages.map(
       (message) => Object.hash(
@@ -309,6 +378,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
 
   @override
   void dispose() {
+    _highlightTimer?.cancel();
+    final waiter = _highlightWaiter;
+    if (waiter != null && !waiter.isCompleted) waiter.complete();
     backend.setConversationAtPresent(false);
     _composer
       ..removeListener(_composerChanged)
@@ -316,6 +388,14 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _focus.dispose();
     _scroll.dispose();
     _giphy.dispose();
+    final recorder = _voiceRecorder;
+    if (recorder != null) unawaited(recorder.stop());
+    final recordingPath = _voiceRecordingPath;
+    if (recordingPath != null) {
+      unawaited(
+        File(recordingPath).delete().then<void>((_) {}, onError: (_) {}),
+      );
+    }
     super.dispose();
   }
 
@@ -535,6 +615,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                                       backend: backend,
                                       message: message,
                                       grouped: grouped,
+                                      highlighted:
+                                          _highlightedMessageId == message.id,
+                                      onJumpToReply: _jumpToEvent,
                                       onReply: () => setState(() {
                                         _reply = message;
                                         _edit = null;
@@ -670,7 +753,18 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     final submittedAttachments = List<AttachmentDraft>.from(_attachments);
     final reply = _reply;
     final edit = _edit;
-    _composer.clear();
+    _composer.value = const TextEditingValue(
+      text: '',
+      selection: TextSelection.collapsed(offset: 0),
+      composing: TextRange.empty,
+    );
+    // Android IMEs can retain a latched Shift/Caps composing state after the
+    // controller is merely cleared. Reconnecting the field on the next frame
+    // starts the next message with a fresh editing session.
+    _focus.unfocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focus.requestFocus();
+    });
     setState(() {
       _sending = true;
       _attachments.clear();
@@ -697,6 +791,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               caption: index == 0 && submittedText.isNotEmpty
                   ? submittedText
                   : null,
+              voiceMessage: item.voiceMessage,
+              durationMilliseconds: item.durationMilliseconds,
+              waveform: item.waveform,
             ),
             roomId: roomId,
             replyToMessageId: index == 0 ? reply?.id : null,
@@ -747,6 +844,14 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               onTap: () => Navigator.pop(context, 'camera-video'),
             ),
             ListTile(
+              leading: const Icon(Icons.mic_none),
+              title: const Text('Record voice message'),
+              subtitle: const Text(
+                'Transcription requires an on-device recognizer',
+              ),
+              onTap: () => Navigator.pop(context, 'voice'),
+            ),
+            ListTile(
               leading: const Icon(Icons.gif_box_outlined),
               title: const Text('GIF'),
               onTap: () => Navigator.pop(context, 'gif'),
@@ -757,6 +862,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     );
     if (choice == 'gif') return _showGifPicker();
     if (choice == null) return;
+    if (choice == 'voice') {
+      await _recordVoiceMessage();
+      return;
+    }
     if (choice == 'camera-photo' || choice == 'camera-video') {
       await _captureMedia(video: choice == 'camera-video');
       return;
@@ -780,6 +889,86 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           ),
         );
     setState(() => _attachments.addAll(drafts));
+  }
+
+  Future<void> _recordVoiceMessage() async {
+    final directory = await getTemporaryDirectory();
+    final path =
+        '${directory.path}/deltiecord-voice-${DateTime.now().microsecondsSinceEpoch}.m4a';
+    final recorder = MediaRecorder(albumName: 'Deltiecord');
+    _voiceRecorder = recorder;
+    _voiceRecordingPath = path;
+    final startedAt = DateTime.now();
+    try {
+      await recorder.start(path, audioChannel: RecorderAudioChannel.INPUT);
+      if (!mounted) {
+        await recorder.stop();
+        return;
+      }
+      final send = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Recording voice message'),
+          content: const Row(
+            children: [
+              Icon(Icons.mic, color: Colors.redAccent),
+              SizedBox(width: 10),
+              Expanded(child: Text('Speak now. Stop to attach the recording.')),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.stop),
+              label: const Text('Stop'),
+            ),
+          ],
+        ),
+      );
+      await recorder.stop();
+      _voiceRecorder = null;
+      _voiceRecordingPath = null;
+      final file = File(path);
+      if (send != true || !await file.exists()) {
+        if (await file.exists()) await file.delete();
+        return;
+      }
+      final bytes = await file.readAsBytes();
+      await file.delete();
+      if (!mounted || bytes.isEmpty) return;
+      setState(() {
+        _attachments.add(
+          AttachmentDraft(
+            bytes: bytes,
+            name: 'voice-message.m4a',
+            mimeType: 'audio/mp4',
+            spoiler: false,
+            voiceMessage: true,
+            durationMilliseconds: DateTime.now()
+                .difference(startedAt)
+                .inMilliseconds,
+          ),
+        );
+      });
+    } catch (exception) {
+      try {
+        await recorder.stop();
+      } catch (_) {}
+      _voiceRecorder = null;
+      _voiceRecordingPath = null;
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not record audio: $exception')),
+        );
+      }
+    }
   }
 
   Future<void> _captureMedia({required bool video}) async {
@@ -952,6 +1141,8 @@ class _MobileMessageRow extends StatelessWidget {
     required this.backend,
     required this.message,
     required this.grouped,
+    required this.highlighted,
+    required this.onJumpToReply,
     required this.onReply,
     required this.onEdit,
     required this.onProfile,
@@ -959,6 +1150,8 @@ class _MobileMessageRow extends StatelessWidget {
   final ChatBackend backend;
   final ChatMessage message;
   final bool grouped;
+  final bool highlighted;
+  final ValueChanged<String> onJumpToReply;
   final VoidCallback onReply;
   final VoidCallback? onEdit;
   final VoidCallback? onProfile;
@@ -996,160 +1189,188 @@ class _MobileMessageRow extends StatelessWidget {
       ),
       child: InkWell(
         onLongPress: () => _showActions(context),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(8, grouped ? 1 : 7, 8, grouped ? 1 : 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 40,
-                child: grouped
-                    ? null
-                    : GestureDetector(
-                        onTap: onProfile,
-                        child: MobileAvatar(
-                          bytes: message.avatarBytes,
-                          fallback: message.sender,
-                          size: 40,
+        child: ColoredBox(
+          color: highlighted ? context.deltiecord.hover : Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 40,
+                  child: grouped
+                      ? null
+                      : GestureDetector(
+                          onTap: onProfile,
+                          child: MobileAvatar(
+                            bytes: message.avatarBytes,
+                            fallback: message.sender,
+                            size: 40,
+                          ),
                         ),
-                      ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (!grouped)
-                      GestureDetector(
-                        onTap: onProfile,
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                message.sender,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (!grouped)
+                        GestureDetector(
+                          onTap: onProfile,
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  message.sender,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              _mobileMessageTimestamp(
-                                context,
-                                message.timestamp,
-                                use24HourTime:
-                                    backend.preferences.use24HourTime,
-                              ),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: context.deltiecord.muted,
-                              ),
-                            ),
-                            if (message.edited) ...[
-                              const SizedBox(width: 5),
+                              const SizedBox(width: 7),
                               Text(
-                                '(edited)',
+                                _mobileMessageTimestamp(
+                                  context,
+                                  message.timestamp,
+                                  use24HourTime:
+                                      backend.preferences.use24HourTime,
+                                ),
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: context.deltiecord.muted,
                                 ),
                               ),
-                            ],
-                            if (message.own &&
-                                !message.failed &&
-                                !message.pending) ...[
-                              const SizedBox(width: 5),
-                              GestureDetector(
-                                onTap: message.readBy.isEmpty
-                                    ? null
-                                    : () => _showReaders(context),
-                                child: Icon(
-                                  message.readBy.isEmpty
-                                      ? Icons.check
-                                      : Icons.done_all,
-                                  size: 12,
-                                  color: context.deltiecord.muted,
+                              if (message.edited) ...[
+                                const SizedBox(width: 5),
+                                Text(
+                                  '(edited)',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: context.deltiecord.muted,
+                                  ),
                                 ),
-                              ),
-                            ],
-                            if (message.pending) ...[
-                              const SizedBox(width: 5),
-                              const SizedBox.square(
-                                dimension: 10,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.5,
+                              ],
+                              if (message.own &&
+                                  !message.failed &&
+                                  !message.pending) ...[
+                                const SizedBox(width: 5),
+                                GestureDetector(
+                                  onTap: message.readBy.isEmpty
+                                      ? null
+                                      : () => _showReaders(context),
+                                  child: Icon(
+                                    message.readBy.isEmpty
+                                        ? Icons.check
+                                        : Icons.done_all,
+                                    size: 12,
+                                    color: context.deltiecord.muted,
+                                  ),
                                 ),
-                              ),
+                              ],
+                              if (message.pending) ...[
+                                const SizedBox(width: 5),
+                                const SizedBox.square(
+                                  dimension: 10,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                  ),
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    if (message.reply case final reply?)
-                      Container(
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 3),
-                        padding: const EdgeInsets.all(7),
-                        decoration: BoxDecoration(
-                          color: context.deltiecord.elevated,
-                          border: Border(
-                            left: BorderSide(
-                              color: Theme.of(context).colorScheme.primary,
-                              width: 3,
+                      if (message.reply case final reply?)
+                        InkWell(
+                          key: ValueKey('mobile-reply-${message.id}'),
+                          onTap: () => onJumpToReply(reply.eventId),
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Row(
+                              children: [
+                                CustomPaint(
+                                  size: const Size(18, 18),
+                                  painter: _MobileReplyConnector(
+                                    color: context.deltiecord.muted,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text.rich(
+                                    TextSpan(
+                                      children: [
+                                        TextSpan(
+                                          text: '${reply.sender}  ',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        TextSpan(
+                                          text: reply.body,
+                                          style: TextStyle(
+                                            color: context.deltiecord.muted,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        child: Text(
-                          '${reply.sender}: ${reply.body}',
-                          maxLines: 2,
+                      if (!message.redacted)
+                        message.formattedBody != null
+                            ? MatrixHtmlText(
+                                html: message.formattedBody!,
+                                fallback: message.body,
+                                selectable: false,
+                              )
+                            : MatrixPlainText(
+                                text: message.body,
+                                selectable: false,
+                              )
+                      else
+                        const Text(
+                          'Message deleted',
+                          style: TextStyle(fontStyle: FontStyle.italic),
                         ),
-                      ),
-                    if (!message.redacted)
-                      message.formattedBody != null
-                          ? MatrixHtmlText(
-                              html: message.formattedBody!,
-                              fallback: message.body,
-                              selectable: false,
-                            )
-                          : MatrixPlainText(
-                              text: message.body,
-                              selectable: false,
-                            )
-                    else
-                      const Text(
-                        'Message deleted',
-                        style: TextStyle(fontStyle: FontStyle.italic),
-                      ),
-                    if (message.attachment != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: MobileAttachmentView(
-                          backend: backend,
-                          message: message,
+                      if (message.attachment != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: MobileAttachmentView(
+                            backend: backend,
+                            message: message,
+                          ),
                         ),
-                      ),
-                    for (final preview in message.linkPreviews)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 5),
-                        child: MobileLinkPreviewCard(preview: preview),
-                      ),
-                    if (message.reactions.isNotEmpty)
-                      Wrap(
-                        spacing: 4,
-                        children: [
-                          for (final reaction in message.reactions)
-                            ActionChip(
-                              label: Text('${reaction.key} ${reaction.count}'),
-                              onPressed: () => backend.toggleReaction(
-                                message.id,
-                                reaction.key,
+                      for (final preview in message.linkPreviews)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: MobileLinkPreviewCard(preview: preview),
+                        ),
+                      if (message.reactions.isNotEmpty)
+                        Wrap(
+                          spacing: 4,
+                          children: [
+                            for (final reaction in message.reactions)
+                              ActionChip(
+                                label: Text(
+                                  '${reaction.key} ${reaction.count}',
+                                ),
+                                onPressed: () => backend.toggleReaction(
+                                  message.id,
+                                  reaction.key,
+                                ),
                               ),
-                            ),
-                        ],
-                      ),
-                  ],
+                          ],
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1261,6 +1482,35 @@ class _MobileMessageRow extends StatelessWidget {
       ),
     ),
   );
+}
+
+class _MobileReplyConnector extends CustomPainter {
+  const _MobileReplyConnector({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    final path = Path()
+      ..moveTo(size.width, size.height * 0.75)
+      ..lineTo(size.width * 0.45, size.height * 0.75)
+      ..quadraticBezierTo(
+        size.width * 0.15,
+        size.height * 0.75,
+        size.width * 0.15,
+        size.height * 0.45,
+      )
+      ..lineTo(size.width * 0.15, 0);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MobileReplyConnector oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 String _mobileMessageTimestamp(
@@ -1632,7 +1882,12 @@ class _PendingAttachmentPreview extends StatelessWidget {
                 tooltip: 'Remove attachment',
                 visualDensity: VisualDensity.compact,
                 onPressed: onRemove,
-                icon: const _CloseGlyph(size: 14),
+                icon: _CloseGlyph(
+                  size: 14,
+                  color: deltiecordContrastingForeground(
+                    Theme.of(context).colorScheme.primary,
+                  ),
+                ),
               ),
             ),
           ],
@@ -1643,16 +1898,17 @@ class _PendingAttachmentPreview extends StatelessWidget {
 }
 
 class _CloseGlyph extends StatelessWidget {
-  const _CloseGlyph({this.size = 18});
+  const _CloseGlyph({this.size = 18, this.color});
 
   final double size;
+  final Color? color;
 
   @override
   Widget build(BuildContext context) => SizedBox.square(
     dimension: size,
     child: CustomPaint(
       painter: _CloseGlyphPainter(
-        color: IconTheme.of(context).color ?? Colors.white,
+        color: color ?? IconTheme.of(context).color ?? Colors.white,
       ),
     ),
   );

@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
@@ -9,6 +11,7 @@ import 'backend/chat_backend.dart';
 import 'models/chat_models.dart';
 import 'services/desktop_window_service.dart';
 import 'services/font_preferences.dart';
+import 'services/chat_notifications.dart';
 import 'ui/chat_shell.dart';
 import 'ui/deltiecord_theme.dart';
 import 'ui/login_screen.dart';
@@ -221,7 +224,15 @@ class DeltiecordApp extends StatelessWidget {
               filled: true,
               fillColor: palette.input,
               border: OutlineInputBorder(
-                borderSide: BorderSide(color: palette.divider),
+                borderSide: BorderSide.none,
+                borderRadius: DeltiecordCorners.borderRadius,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide.none,
+                borderRadius: DeltiecordCorners.borderRadius,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: colorScheme.primary, width: 1),
                 borderRadius: DeltiecordCorners.borderRadius,
               ),
             ),
@@ -270,7 +281,10 @@ class DeltiecordApp extends StatelessWidget {
               disableAnimations: preferences.reducedMotion,
               highContrast: preferences.highContrast,
             );
-            final content = MediaQuery(data: scaledMedia, child: child!);
+            final content = MediaQuery(
+              data: scaledMedia,
+              child: _InAppNotificationOverlay(child: child!),
+            );
             if (interfaceScale == 1) return content;
             return ClipRect(
               child: FittedBox(
@@ -284,37 +298,193 @@ class DeltiecordApp extends StatelessWidget {
               ),
             );
           },
-          home: StartupUpdateGate(
-            child: switch (backend.status) {
-              SessionStatus.starting => const _StartupScreen(),
-              SessionStatus.failed => _StartupFailure(
-                message: backend.error ?? 'Deltiecord could not start.',
-                onRetry: backend.initialize,
-              ),
-              SessionStatus.signedIn =>
-                mobile
-                    ? _ReadReceiptLifecycle(
+          home: switch (backend.status) {
+            SessionStatus.starting => const _StartupScreen(),
+            SessionStatus.failed => _StartupFailure(
+              message: backend.error ?? 'Deltiecord could not start.',
+              onRetry: backend.initialize,
+            ),
+            SessionStatus.signedIn =>
+              mobile
+                  ? StartupUpdateGate(
+                      child: _ReadReceiptLifecycle(
                         backend: backend,
                         child: _EncryptionRecoveryPrompt(
                           backend: backend,
                           child: MobileChatShell(backend: backend),
                         ),
-                      )
-                    : _ReadReceiptLifecycle(
+                      ),
+                    )
+                  : StartupUpdateGate(
+                      child: _ReadReceiptLifecycle(
                         backend: backend,
                         child: _EncryptionRecoveryPrompt(
                           backend: backend,
-                          child: ChatShell(backend: backend),
+                          child: _DesktopActivityReporter(
+                            backend: backend,
+                            child: ChatShell(backend: backend),
+                          ),
                         ),
                       ),
-              SessionStatus.signedOut ||
-              SessionStatus.signingIn => LoginScreen(backend: backend),
-            },
-          ),
+                    ),
+            SessionStatus.signedOut ||
+            SessionStatus.signingIn => LoginScreen(backend: backend),
+          },
         );
       },
     );
   }
+}
+
+class _DesktopActivityReporter extends StatefulWidget {
+  const _DesktopActivityReporter({required this.backend, required this.child});
+
+  final ChatBackend backend;
+  final Widget child;
+
+  @override
+  State<_DesktopActivityReporter> createState() =>
+      _DesktopActivityReporterState();
+}
+
+class _DesktopActivityReporterState extends State<_DesktopActivityReporter>
+    with WidgetsBindingObserver {
+  Timer? _idleTimer;
+  bool _foreground = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _activity();
+  }
+
+  void _activity() {
+    if (!_foreground) return;
+    widget.backend.setDesktopIdle(false);
+    _idleTimer?.cancel();
+    _idleTimer = Timer(
+      const Duration(minutes: 5),
+      () => widget.backend.setDesktopIdle(true),
+    );
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _foreground = state == AppLifecycleState.resumed;
+    if (_foreground) {
+      _activity();
+    } else {
+      _idleTimer?.cancel();
+      widget.backend.setDesktopIdle(true);
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _idleTimer?.cancel();
+    widget.backend.setDesktopIdle(true);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Focus(
+    onKeyEvent: (_, event) {
+      if (event is KeyDownEvent) _activity();
+      return KeyEventResult.ignored;
+    },
+    child: Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _activity(),
+      onPointerMove: (_) => _activity(),
+      onPointerSignal: (_) => _activity(),
+      child: widget.child,
+    ),
+  );
+}
+
+class _InAppNotificationOverlay extends StatelessWidget {
+  const _InAppNotificationOverlay({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      child,
+      ValueListenableBuilder<InAppChatNotification?>(
+        valueListenable: InAppNotificationCenter.current,
+        builder: (context, notification, _) {
+          if (notification == null) return const SizedBox.shrink();
+          return Positioned(
+            left: 12,
+            right: 12,
+            top: MediaQuery.paddingOf(context).top + 10,
+            child: SafeArea(
+              bottom: false,
+              child: Material(
+                elevation: 12,
+                color: context.deltiecord.elevated,
+                shape: RoundedRectangleBorder(
+                  borderRadius: DeltiecordCorners.borderRadius,
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: notification.onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 21,
+                          foregroundImage: notification.avatar == null
+                              ? null
+                              : MemoryImage(notification.avatar!),
+                          child: notification.avatar == null
+                              ? Text(notification.title.characters.first)
+                              : null,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                notification.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                notification.body,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: context.deltiecord.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: InAppNotificationCenter.dismiss,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ],
+  );
 }
 
 class _ReadReceiptLifecycle extends StatefulWidget {

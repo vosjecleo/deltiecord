@@ -56,12 +56,12 @@ class MobileAttachmentView extends StatefulWidget {
 
 class _MobileAttachmentViewState extends State<MobileAttachmentView> {
   bool _revealed = false;
+  final _videoKey = GlobalKey<_MobilePlayerState>();
 
   @override
   Widget build(BuildContext context) {
     final attachment = widget.message.attachment!;
     final image = attachment.kind == AttachmentKind.image;
-    final video = attachment.kind == AttachmentKind.video;
     final hidden = attachment.spoiler && !_revealed;
     final media = switch (attachment.kind) {
       AttachmentKind.image => _MobileImage(
@@ -69,6 +69,7 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
         message: widget.message,
       ),
       AttachmentKind.video || AttachmentKind.audio => _MobilePlayer(
+        key: attachment.kind == AttachmentKind.video ? _videoKey : null,
         backend: widget.backend,
         message: widget.message,
         audioOnly: attachment.kind == AttachmentKind.audio,
@@ -100,20 +101,6 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
             const Chip(
               avatar: Icon(Icons.visibility_off, size: 17),
               label: Text('Spoiler — tap to reveal'),
-            ),
-          if (!hidden && (image || video))
-            Positioned(
-              right: 6,
-              top: 6,
-              child: IconButton.filled(
-                tooltip: 'Media actions',
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.black87,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: _showMediaActions,
-                icon: const Icon(Icons.more_vert),
-              ),
             ),
         ],
       ),
@@ -231,25 +218,8 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
             _showImageFullscreen(context, bytes, onActions: _showMediaActions);
           }
         } else if (video) {
-          await showDialog<void>(
-            context: context,
-            barrierColor: Colors.black,
-            builder: (context) => Dialog.fullscreen(
-              backgroundColor: Colors.black,
-              child: Stack(
-                children: [
-                  Center(
-                    child: _MobilePlayer(
-                      backend: widget.backend,
-                      message: widget.message,
-                      audioOnly: false,
-                    ),
-                  ),
-                  _fullscreenCloseButton(context),
-                  _fullscreenActionsButton(context, _showMediaActions),
-                ],
-              ),
-            ),
+          await _videoKey.currentState?.showFullscreen(
+            onActions: _showMediaActions,
           );
         }
     }
@@ -353,23 +323,24 @@ void _showImageFullscreen(
   );
 }
 
-Widget _fullscreenCloseButton(BuildContext context) => Positioned(
-  right: 12,
-  top: 12,
-  child: SafeArea(
-    child: IconButton(
-      style: IconButton.styleFrom(
-        backgroundColor: Colors.black87,
-        foregroundColor: Colors.white,
+Widget _fullscreenCloseButton(BuildContext context, {VoidCallback? onClose}) =>
+    Positioned(
+      right: 12,
+      top: 12,
+      child: SafeArea(
+        child: IconButton(
+          style: IconButton.styleFrom(
+            backgroundColor: Colors.black87,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: onClose ?? () => Navigator.pop(context),
+          icon: const SizedBox.square(
+            dimension: 22,
+            child: CustomPaint(painter: _MediaClosePainter()),
+          ),
+        ),
       ),
-      onPressed: () => Navigator.pop(context),
-      icon: const SizedBox.square(
-        dimension: 22,
-        child: CustomPaint(painter: _MediaClosePainter()),
-      ),
-    ),
-  ),
-);
+    );
 
 Widget _fullscreenActionsButton(BuildContext context, VoidCallback onPressed) =>
     Positioned(
@@ -418,6 +389,7 @@ class _MobilePlayer extends StatefulWidget {
     required this.backend,
     required this.message,
     required this.audioOnly,
+    super.key,
   });
   final ChatBackend backend;
   final ChatMessage message;
@@ -431,6 +403,8 @@ class _MobilePlayerState extends State<_MobilePlayer> {
   Player? _player;
   VideoController? _video;
   Object? _error;
+  bool _fullscreenOpen = false;
+  bool _sourceRetained = false;
 
   @override
   void initState() {
@@ -443,7 +417,13 @@ class _MobilePlayerState extends State<_MobilePlayer> {
       final source = await widget.backend.getMediaPlaybackSource(
         widget.message.id,
       );
-      if (source == null || !mounted) return;
+      if (source == null) return;
+      _sourceRetained = true;
+      if (!mounted) {
+        await widget.backend.releaseMediaPlaybackSource(widget.message.id);
+        _sourceRetained = false;
+        return;
+      }
       final player = Player();
       final video = VideoController(player);
       await player.open(
@@ -463,11 +443,36 @@ class _MobilePlayerState extends State<_MobilePlayer> {
     }
   }
 
+  Future<void> showFullscreen({VoidCallback? onActions}) async {
+    final player = _player;
+    final video = _video;
+    if (player == null || video == null || _fullscreenOpen || !mounted) return;
+    setState(() => _fullscreenOpen = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: _MobileFullscreenVideo(
+          player: player,
+          controller: video,
+          onClose: () => Navigator.pop(dialogContext),
+          onActions: onActions,
+        ),
+      ),
+    );
+    if (mounted) setState(() => _fullscreenOpen = false);
+  }
+
   @override
   void dispose() {
     final player = _player;
     if (player != null) unawaited(player.dispose());
-    unawaited(widget.backend.releaseMediaPlaybackSource(widget.message.id));
+    if (_sourceRetained) {
+      unawaited(widget.backend.releaseMediaPlaybackSource(widget.message.id));
+    }
     super.dispose();
   }
 
@@ -495,50 +500,161 @@ class _MobilePlayerState extends State<_MobilePlayer> {
         ),
       );
     }
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
-      child: AspectRatio(
-        aspectRatio: _aspectRatio(widget.message.attachment),
-        child: ClipRRect(
-          borderRadius: DeltiecordCorners.borderRadius,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              Video(
-                controller: _video!,
-                controls: AdaptiveVideoControls,
-                fit: BoxFit.contain,
-              ),
-              StreamBuilder<bool>(
-                stream: player.stream.playing,
-                initialData: player.state.playing,
-                builder: (context, snapshot) {
-                  if (snapshot.data ?? false) return const SizedBox.shrink();
-                  return Center(
-                    child: IconButton.filled(
-                      key: const ValueKey('mobile-media-play'),
-                      tooltip: 'Play video',
-                      onPressed: player.play,
-                      icon: const _PlayGlyph(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+    final screen = MediaQuery.sizeOf(context);
+    final attachment = widget.message.attachment;
+    final frame = mobileMediaFrameSize(
+      maxWidth: min(420, max(120, screen.width - 76)),
+      maxHeight: min(520, max(180, screen.height * 0.52)),
+      width: attachment?.width,
+      height: attachment?.height,
+      fallbackAspectRatio: 16 / 9,
+    );
+    return SizedBox(
+      width: frame.width,
+      height: frame.height,
+      child: ClipRRect(
+        borderRadius: DeltiecordCorners.borderRadius,
+        child: ColoredBox(
+          color: Colors.black,
+          child: _fullscreenOpen
+              ? const SizedBox.expand()
+              : GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onDoubleTap: () => showFullscreen(),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Video(
+                        controller: _video!,
+                        controls: NoVideoControls,
+                        fit: BoxFit.contain,
+                      ),
+                      StreamBuilder<bool>(
+                        stream: player.stream.playing,
+                        initialData: player.state.playing,
+                        builder: (context, snapshot) {
+                          if (snapshot.data ?? false) {
+                            return const SizedBox.shrink();
+                          }
+                          return Center(
+                            child: IconButton.filled(
+                              key: const ValueKey('mobile-media-play'),
+                              tooltip: 'Play video',
+                              onPressed: player.play,
+                              icon: const _PlayGlyph(),
+                            ),
+                          );
+                        },
+                      ),
+                      Positioned(
+                        right: 6,
+                        bottom: 6,
+                        child: IconButton(
+                          tooltip: 'Fullscreen',
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () => showFullscreen(),
+                          icon: const Icon(Icons.fullscreen),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
         ),
       ),
     );
   }
+}
 
-  double _aspectRatio(ChatAttachment? attachment) {
-    final width = attachment?.width;
-    final height = attachment?.height;
-    if (width == null || height == null || width <= 0 || height <= 0) {
-      return 16 / 9;
-    }
-    return (width / height).clamp(0.5, 2.0);
-  }
+class _MobileFullscreenVideo extends StatelessWidget {
+  const _MobileFullscreenVideo({
+    required this.player,
+    required this.controller,
+    required this.onClose,
+    this.onActions,
+  });
+
+  final Player player;
+  final VideoController controller;
+  final VoidCallback onClose;
+  final VoidCallback? onActions;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Positioned.fill(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: player.playOrPause,
+          child: Video(
+            controller: controller,
+            controls: NoVideoControls,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
+      Positioned(
+        left: 16,
+        right: 16,
+        bottom: MediaQuery.paddingOf(context).bottom + 18,
+        child: _MobileVideoControls(player: player),
+      ),
+      _fullscreenCloseButton(context, onClose: onClose),
+      if (onActions != null) _fullscreenActionsButton(context, onActions!),
+    ],
+  );
+}
+
+class _MobileVideoControls extends StatelessWidget {
+  const _MobileVideoControls({required this.player});
+
+  final Player player;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Colors.black54,
+      borderRadius: DeltiecordCorners.borderRadius,
+    ),
+    child: Row(
+      children: [
+        StreamBuilder<bool>(
+          stream: player.stream.playing,
+          initialData: player.state.playing,
+          builder: (context, snapshot) => IconButton(
+            color: Colors.white,
+            onPressed: player.playOrPause,
+            icon: Icon(snapshot.data == true ? Icons.pause : Icons.play_arrow),
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<Duration>(
+            stream: player.stream.position,
+            initialData: player.state.position,
+            builder: (context, positionSnapshot) => StreamBuilder<Duration>(
+              stream: player.stream.duration,
+              initialData: player.state.duration,
+              builder: (context, durationSnapshot) {
+                final duration = durationSnapshot.data ?? Duration.zero;
+                final position = positionSnapshot.data ?? Duration.zero;
+                final maximum = max(1, duration.inMilliseconds).toDouble();
+                return Slider(
+                  value: min(position.inMilliseconds.toDouble(), maximum),
+                  max: maximum,
+                  onChanged: duration == Duration.zero
+                      ? null
+                      : (value) =>
+                            player.seek(Duration(milliseconds: value.round())),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _MobileFile extends StatelessWidget {
@@ -572,35 +688,6 @@ class MobileLinkPreviewCard extends StatelessWidget {
   const MobileLinkPreviewCard({required this.preview, super.key});
   final LinkPreview preview;
 
-  Future<void> _showVideoFullscreen(BuildContext context, Uri video) =>
-      showDialog<void>(
-        context: context,
-        barrierColor: Colors.black,
-        builder: (context) => Dialog.fullscreen(
-          backgroundColor: Colors.black,
-          child: Stack(
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.sizeOf(context).width,
-                    maxHeight: MediaQuery.sizeOf(context).height,
-                  ),
-                  child: MobileLinkPreviewVideo(
-                    uri: video,
-                    thumbnail: preview.imageBytes,
-                    width: preview.width,
-                    height: preview.height,
-                    autoplay: true,
-                  ),
-                ),
-              ),
-              _fullscreenCloseButton(context),
-            ],
-          ),
-        ),
-      );
-
   @override
   Widget build(BuildContext context) {
     final screen = MediaQuery.sizeOf(context);
@@ -628,7 +715,6 @@ class MobileLinkPreviewCard extends StatelessWidget {
                   thumbnail: preview.imageBytes,
                   width: preview.width,
                   height: preview.height,
-                  onDoubleTap: () => _showVideoFullscreen(context, video),
                 ),
               )
             else if (preview.imageBytes case final image?)
@@ -703,6 +789,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
   VideoController? _controller;
   bool _opening = false;
   String? _error;
+  bool _fullscreenOpen = false;
 
   @override
   void initState() {
@@ -743,6 +830,30 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
     }
   }
 
+  Future<void> _showFullscreen() async {
+    final player = _player;
+    final controller = _controller;
+    if (player == null || controller == null || _fullscreenOpen || !mounted) {
+      return;
+    }
+    setState(() => _fullscreenOpen = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black,
+      builder: (dialogContext) => Dialog.fullscreen(
+        backgroundColor: Colors.black,
+        child: _MobileFullscreenVideo(
+          player: player,
+          controller: controller,
+          onClose: () => Navigator.pop(dialogContext),
+        ),
+      ),
+    );
+    if (mounted) setState(() => _fullscreenOpen = false);
+  }
+
   @override
   void dispose() {
     final player = _player;
@@ -761,10 +872,12 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
     final controller = _controller;
     final surface = AspectRatio(
       aspectRatio: ratio.toDouble(),
-      child: player != null && controller != null
+      child: _fullscreenOpen
+          ? const ColoredBox(color: Colors.black)
+          : player != null && controller != null
           ? Video(
               controller: controller,
-              controls: AdaptiveVideoControls,
+              controls: NoVideoControls,
               fit: BoxFit.contain,
             )
           : Stack(
@@ -801,9 +914,28 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
     );
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: player == null ? _play : null,
-      onDoubleTap: widget.onDoubleTap,
-      child: surface,
+      onTap: _play,
+      onDoubleTap: widget.onDoubleTap ?? _showFullscreen,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          surface,
+          if (player != null && !_fullscreenOpen)
+            Positioned(
+              right: 6,
+              bottom: 6,
+              child: IconButton(
+                tooltip: 'Fullscreen',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.black54,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: _showFullscreen,
+                icon: const Icon(Icons.fullscreen),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

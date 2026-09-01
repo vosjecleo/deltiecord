@@ -16,7 +16,7 @@ KEY_FILE = os.environ.get("GIPHY_API_KEY_FILE", "/etc/deltiecord/giphy-api-key")
 RATE_LIMIT = int(os.environ.get("RATE_LIMIT", "60"))
 RATE_WINDOW_SECONDS = 60
 MAX_UPSTREAM_BYTES = 2 * 1024 * 1024
-VERSION = os.environ.get("DELTIECORD_VERSION", "0.9.22")
+VERSION = os.environ.get("DELTIECORD_VERSION", "0.9.23")
 _requests = defaultdict(deque)
 _requests_lock = threading.Lock()
 

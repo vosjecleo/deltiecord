@@ -128,6 +128,7 @@ class MediaRangeProxy {
       final requested = _parseRange(rangeHeader, media.size);
       final start = requested.$1;
       final end = requested.$2;
+      final partial = requested.$3;
       final length = end - start + 1;
       final alignedStart = start - (start % 16);
       final upstreamResponse = request.method == 'HEAD'
@@ -139,14 +140,16 @@ class MediaRangeProxy {
             );
       final response = request.response
         ..bufferOutput = false
-        ..statusCode = HttpStatus.partialContent
+        ..statusCode = partial ? HttpStatus.partialContent : HttpStatus.ok
         ..headers.set(HttpHeaders.acceptRangesHeader, 'bytes')
         ..headers.set(HttpHeaders.contentTypeHeader, media.mimeType)
-        ..headers.set(HttpHeaders.contentLengthHeader, length)
-        ..headers.set(
+        ..headers.set(HttpHeaders.contentLengthHeader, length);
+      if (partial) {
+        response.headers.set(
           HttpHeaders.contentRangeHeader,
           'bytes $start-$end/${media.size}',
         );
+      }
       if (request.method == 'HEAD') {
         await response.close();
         return;
@@ -184,13 +187,17 @@ class MediaRangeProxy {
     }
   }
 
-  (int, int) _parseRange(String? header, int size) {
-    // Larger sequential ranges substantially reduce proxy/upstream round trips
-    // for high-bitrate video while remaining bounded for encrypted playback.
-    const maxChunk = 16 * 1024 * 1024;
+  (int, int, bool) _parseRange(String? header, int size) {
     if (size <= 0) throw const FormatException('Empty media');
-    if (header == null || !header.startsWith('bytes=')) {
-      return (0, min(size, maxChunk) - 1);
+    if (header == null) {
+      // A response to a non-range GET must describe and stream the complete
+      // representation. Returning a synthetic 206 for only the first chunk
+      // made libmpv treat that chunk as EOF on desktop and confused Android's
+      // duration/seek probing. The body is streamed, never buffered in full.
+      return (0, size - 1, false);
+    }
+    if (!header.startsWith('bytes=')) {
+      throw const FormatException('Invalid media range');
     }
     final parts = header.substring(6).split('-');
     if (parts.length != 2) {
@@ -204,14 +211,11 @@ class MediaRangeProxy {
       throw const FormatException('Invalid media range');
     }
     final requestedEnd = suffixLength == null ? int.tryParse(parts[1]) : null;
-    final end = min(
-      size - 1,
-      min(requestedEnd ?? size - 1, start + maxChunk - 1),
-    );
+    final end = min(size - 1, requestedEnd ?? size - 1);
     if (start < 0 || start >= size || end < start) {
       throw const FormatException('Invalid media range');
     }
-    return (start, end);
+    return (start, end, true);
   }
 
   /// Streams an independently decryptable AES-CTR range to the player.

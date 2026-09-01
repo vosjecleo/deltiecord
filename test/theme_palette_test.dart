@@ -45,10 +45,13 @@ void main() {
 
   test('dark mode distinguishes floating control islands', () {
     final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.dark);
-    expect(palette.background, const Color(0xff26272c));
-    expect(palette.panel, const Color(0xff202125));
-    expect(palette.input, const Color(0xff1e1f22));
-    expect(palette.island, const Color(0xff2b2d31));
+    expect(palette.background, const Color(0xff22231f));
+    expect(palette.rail, const Color(0xff191a17));
+    expect(palette.panel, const Color(0xff191a17));
+    expect(palette.input, const Color(0xff292a26));
+    expect(palette.island, const Color(0xff292a26));
+    expect(palette.hover, const Color(0xff30312c));
+    expect(palette.divider, const Color(0xff373832));
     expect(palette.island, isNot(palette.background));
   });
 

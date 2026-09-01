@@ -33,23 +33,16 @@ class DeltiecordPushService : MessagingReceiver() {
 
     override fun onMessage(context: Context, message: PushMessage, instance: String) {
         // Matrix push payloads are wake-up hints, not a source of decrypted
-        // message text. Deltiecord syncs Matrix after the user opens the alert.
+        // message text. Do not post an intermediate generic notification: if
+        // local decryption is slow or fails that placeholder otherwise becomes
+        // a permanent, content-free "silent" alert.
         preferences(context).edit()
             .putLong("last_message_received_ms", System.currentTimeMillis())
             .apply()
         val metadata = parseMatrixMetadata(message.content)
-        DeltiecordNotificationPublisher.showPlaceholder(
-            context,
-            metadata.roomId,
-            metadata.eventId,
-            metadata.title,
-        )
         if (metadata.roomId != null && metadata.eventId != null) {
             DeltiecordPushWorker.enqueue(context, metadata.roomId, metadata.eventId)
         }
-        preferences(context).edit()
-            .putLong("last_notification_posted_ms", System.currentTimeMillis())
-            .apply()
     }
 
     override fun onRegistrationFailed(context: Context, reason: FailedReason, instance: String) {

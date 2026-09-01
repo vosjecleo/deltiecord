@@ -128,6 +128,16 @@ class MainActivity : FlutterActivity() {
         backgroundPushChannel?.invokeMethod("onNotificationActivated", target)
     }
 
+    override fun onResume() {
+        super.onResume()
+        DeltiecordEngineRegistry.appInForeground = true
+    }
+
+    override fun onPause() {
+        DeltiecordEngineRegistry.appInForeground = false
+        super.onPause()
+    }
+
     private fun notificationTarget(intent: Intent?, clear: Boolean): Map<String, String>? {
         val roomId = intent?.getStringExtra("notification_room_id")
         val eventId = intent?.getStringExtra("notification_event_id")
@@ -216,6 +226,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        DeltiecordEngineRegistry.appInForeground = false
         if (DeltiecordPushService.stateChangedListener != null) {
             DeltiecordPushService.stateChangedListener = null
         }

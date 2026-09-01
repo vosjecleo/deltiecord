@@ -12,6 +12,8 @@ enum InterfaceDensity { compact, cozy }
 
 enum DeltiecordThemeMode { light, dark, oled }
 
+enum NotificationAlertCadence { fiveMinuteCooldown, everyMessage, silent }
+
 enum AppShortcutAction {
   openSettings,
   toggleMicrophone,
@@ -53,6 +55,8 @@ class AppPreferences {
     this.autoplayGifs = true,
     this.notificationsEnabled = true,
     this.notificationSound = true,
+    this.notificationVibration = true,
+    this.notificationAlertCadence = NotificationAlertCadence.fiveMinuteCooldown,
     this.sendReadReceipts = true,
     this.sendTypingNotifications = true,
     this.sharePresence = true,
@@ -95,6 +99,8 @@ class AppPreferences {
   final bool autoplayGifs;
   final bool notificationsEnabled;
   final bool notificationSound;
+  final bool notificationVibration;
+  final NotificationAlertCadence notificationAlertCadence;
   final bool sendReadReceipts;
   final bool sendTypingNotifications;
   final bool sharePresence;
@@ -142,6 +148,8 @@ class AppPreferences {
     bool? autoplayGifs,
     bool? notificationsEnabled,
     bool? notificationSound,
+    bool? notificationVibration,
+    NotificationAlertCadence? notificationAlertCadence,
     bool? sendReadReceipts,
     bool? sendTypingNotifications,
     bool? sharePresence,
@@ -183,6 +191,9 @@ class AppPreferences {
     autoplayGifs: autoplayGifs ?? this.autoplayGifs,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
     notificationSound: notificationSound ?? this.notificationSound,
+    notificationVibration: notificationVibration ?? this.notificationVibration,
+    notificationAlertCadence:
+        notificationAlertCadence ?? this.notificationAlertCadence,
     sendReadReceipts: sendReadReceipts ?? this.sendReadReceipts,
     sendTypingNotifications:
         sendTypingNotifications ?? this.sendTypingNotifications,
@@ -594,6 +605,9 @@ class AttachmentDraft {
     required this.mimeType,
     required this.spoiler,
     this.caption,
+    this.voiceMessage = false,
+    this.durationMilliseconds,
+    this.waveform,
   });
 
   final Uint8List bytes;
@@ -601,6 +615,9 @@ class AttachmentDraft {
   final String mimeType;
   final bool spoiler;
   final String? caption;
+  final bool voiceMessage;
+  final int? durationMilliseconds;
+  final List<int>? waveform;
 }
 
 class MediaPlaybackSource {

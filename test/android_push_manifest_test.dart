@@ -32,7 +32,7 @@ void main() {
     expect(declaration, isNot(contains('PUSH_EVENT')));
   });
 
-  test('background push describes a message without claiming plaintext', () {
+  test('background push decrypts locally into bounded rich notifications', () {
     final receiver = File(
       'android/app/src/main/kotlin/net/deltie/deltiecord/'
       'DeltiecordPushService.kt',
@@ -56,6 +56,10 @@ void main() {
     expect(worker, contains('resolveNotification'));
     expect(publisher, contains('Notification.MessagingStyle'));
     expect(publisher, contains('setData(mime, uri)'));
+    expect(
+      publisher,
+      contains('Build.VERSION.SDK_INT < Build.VERSION_CODES.P'),
+    );
     expect(publisher, contains('R.mipmap.ic_launcher_round'));
   });
 }

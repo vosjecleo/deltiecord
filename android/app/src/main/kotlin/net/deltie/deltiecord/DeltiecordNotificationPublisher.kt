@@ -202,6 +202,10 @@ object DeltiecordNotificationPublisher {
         message: Notification.MessagingStyle.Message,
         entry: JSONObject,
     ) {
+        // MessagingStyle.Message.setData was added in API 28. Older Android
+        // versions still receive the text conversation without risking a
+        // verifier/runtime failure in the background receiver process.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return
         val path = entry.optString("imagePath").takeIf { it.isNotBlank() } ?: return
         val mime = entry.optString("imageMimeType").takeIf { it.startsWith("image/") } ?: return
         val file = File(path)

@@ -1,11 +1,6 @@
 package net.deltie.deltiecord
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
-import android.content.Intent
-import android.os.Build
 import org.unifiedpush.android.connector.FailedReason
 import org.unifiedpush.android.connector.MessagingReceiver
 import org.unifiedpush.android.connector.data.PushEndpoint
@@ -42,7 +37,19 @@ class DeltiecordPushService : MessagingReceiver() {
         preferences(context).edit()
             .putLong("last_message_received_ms", System.currentTimeMillis())
             .apply()
-        showMatrixActivityNotification(context, message.content)
+        val metadata = parseMatrixMetadata(message.content)
+        DeltiecordNotificationPublisher.showPlaceholder(
+            context,
+            metadata.roomId,
+            metadata.eventId,
+            metadata.title,
+        )
+        if (metadata.roomId != null && metadata.eventId != null) {
+            DeltiecordPushWorker.enqueue(context, metadata.roomId, metadata.eventId)
+        }
+        preferences(context).edit()
+            .putLong("last_notification_posted_ms", System.currentTimeMillis())
+            .apply()
     }
 
     override fun onRegistrationFailed(context: Context, reason: FailedReason, instance: String) {
@@ -59,7 +66,6 @@ class DeltiecordPushService : MessagingReceiver() {
 
     companion object {
         private const val PREFS = "deltiecord_unified_push"
-        private const val CHANNEL_ID = "matrix_activity"
 
         /**
          * Completes an in-flight registration while Flutter is alive.
@@ -106,65 +112,20 @@ class DeltiecordPushService : MessagingReceiver() {
                 .apply()
         }
 
-        private fun showMatrixActivityNotification(context: Context, payload: ByteArray) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                manager.createNotificationChannel(
-                    NotificationChannel(
-                        CHANNEL_ID,
-                        "Matrix activity",
-                        NotificationManager.IMPORTANCE_DEFAULT,
-                    ),
-                )
-            }
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context,
-                0,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
-            val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                android.app.Notification.Builder(context, CHANNEL_ID)
-            } else {
-                @Suppress("DEPRECATION")
-                android.app.Notification.Builder(context)
-            }
-            val metadata = parseMatrixMetadata(payload)
-            val avatar = NotificationAvatarCache.get(context, metadata.roomId)
-            builder
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(metadata.title)
-                .setContentText("New message")
-                .setAutoCancel(true)
-                .setContentIntent(pendingIntent)
-                .apply { if (avatar != null) setLargeIcon(avatar) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && avatar != null) {
-                val sender = android.app.Person.Builder()
-                    .setName(metadata.title)
-                    .setIcon(android.graphics.drawable.Icon.createWithBitmap(avatar))
-                    .build()
-                builder.setStyle(
-                    android.app.Notification.MessagingStyle(sender)
-                        .addMessage("New message", System.currentTimeMillis(), sender),
-                )
-            }
-            val notification = builder.build()
-            manager.notify(9001, notification)
-            preferences(context).edit()
-                .putLong("last_notification_posted_ms", System.currentTimeMillis())
-                .apply()
-        }
-
-        private data class MatrixMetadata(val roomId: String?, val title: String)
+        private data class MatrixMetadata(
+            val roomId: String?,
+            val eventId: String?,
+            val title: String,
+        )
 
         private fun parseMatrixMetadata(payload: ByteArray): MatrixMetadata = runCatching {
-            if (payload.size > 256 * 1024) return@runCatching MatrixMetadata(null, "Deltiecord")
+            if (payload.size > 256 * 1024) {
+                return@runCatching MatrixMetadata(null, null, "Deltiecord")
+            }
             val root = JSONObject(payload.toString(Charsets.UTF_8))
             val json = root.optJSONObject("notification") ?: root
             val roomId = json.optString("room_id").takeIf { it.isNotBlank() }
+            val eventId = json.optString("event_id").takeIf { it.isNotBlank() }
             val roomName = json.optString("room_name").takeIf { it.isNotBlank() }
             val senderName = json.optString("sender_display_name").takeIf { it.isNotBlank() }
             val title = when {
@@ -174,7 +135,7 @@ class DeltiecordPushService : MessagingReceiver() {
                 roomName != null -> roomName
                 else -> "Deltiecord"
             }
-            MatrixMetadata(roomId, title.take(128))
-        }.getOrDefault(MatrixMetadata(null, "Deltiecord"))
+            MatrixMetadata(roomId, eventId, title.take(128))
+        }.getOrDefault(MatrixMetadata(null, null, "Deltiecord"))
     }
 }

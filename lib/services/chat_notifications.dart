@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'desktop_window_service.dart';
@@ -45,7 +46,13 @@ abstract interface class ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    String? senderName,
+    String? roomName,
+    bool groupConversation = false,
     Uint8List? senderAvatar,
+    Uint8List? image,
+    String? imageMimeType,
+    DateTime? timestamp,
     bool sound = true,
   });
 
@@ -125,38 +132,68 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    String? senderName,
+    String? roomName,
+    bool groupConversation = false,
     Uint8List? senderAvatar,
+    Uint8List? image,
+    String? imageMimeType,
+    DateTime? timestamp,
     bool sound = true,
-  }) => _plugin.show(
-    id: _nextId++,
-    title: title,
-    body: body,
-    payload: encodeNotificationTarget(
-      NotificationTarget(roomId: roomId, eventId: eventId),
-    ),
-    notificationDetails: NotificationDetails(
-      android: AndroidNotificationDetails(
-        'deltiecord_messages',
-        'Messages',
-        channelDescription: 'Encrypted Matrix message notifications',
-        importance: Importance.high,
-        priority: Priority.high,
-        category: AndroidNotificationCategory.message,
-        playSound: sound,
-        largeIcon: senderAvatar == null
-            ? null
-            : ByteArrayAndroidBitmap(senderAvatar),
+  }) async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        await _nativeAssets.invokeMethod<void>('showRichNotification', {
+          'roomId': roomId,
+          'eventId': eventId,
+          'roomName': roomName ?? title,
+          'senderName': senderName ?? title.split(' in ').first,
+          'groupConversation': groupConversation,
+          'body': body,
+          'timestamp': (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
+          'senderAvatar': ?senderAvatar,
+          'image': ?image,
+          'imageMimeType': ?imageMimeType,
+          'sound': sound,
+        });
+        return;
+      } on MissingPluginException {
+        // Fall through for old/debug Android runners.
+      } on PlatformException {
+        // Native notification enrichment is optional.
+      }
+    }
+    await _plugin.show(
+      id: _nextId++,
+      title: title,
+      body: body,
+      payload: encodeNotificationTarget(
+        NotificationTarget(roomId: roomId, eventId: eventId),
       ),
-      linux: LinuxNotificationDetails(
-        category: LinuxNotificationCategory.imReceived,
-        urgency: LinuxNotificationUrgency.normal,
-        suppressSound: !sound,
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          'deltiecord_messages',
+          'Messages',
+          channelDescription: 'Encrypted Matrix message notifications',
+          importance: Importance.high,
+          priority: Priority.high,
+          category: AndroidNotificationCategory.message,
+          playSound: sound,
+          largeIcon: senderAvatar == null
+              ? null
+              : ByteArrayAndroidBitmap(senderAvatar),
+        ),
+        linux: LinuxNotificationDetails(
+          category: LinuxNotificationCategory.imReceived,
+          urgency: LinuxNotificationUrgency.normal,
+          suppressSound: !sound,
+        ),
+        windows: WindowsNotificationDetails(
+          audio: sound ? null : WindowsNotificationAudio.silent(),
+        ),
       ),
-      windows: WindowsNotificationDetails(
-        audio: sound ? null : WindowsNotificationAudio.silent(),
-      ),
-    ),
-  );
+    );
+  }
 
   @override
   Future<void> cacheRoomAvatar(String roomId, Uint8List avatar) async {
@@ -193,7 +230,13 @@ class SilentChatNotificationSink implements ChatNotificationSink {
     required String body,
     required String roomId,
     required String eventId,
+    String? senderName,
+    String? roomName,
+    bool groupConversation = false,
     Uint8List? senderAvatar,
+    Uint8List? image,
+    String? imageMimeType,
+    DateTime? timestamp,
     bool sound = true,
   }) async {}
 

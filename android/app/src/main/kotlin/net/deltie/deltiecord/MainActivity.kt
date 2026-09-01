@@ -2,6 +2,7 @@ package net.deltie.deltiecord
 
 import android.os.Handler
 import android.os.Looper
+import android.content.Intent
 import android.content.pm.PackageManager
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
@@ -13,15 +14,21 @@ class MainActivity : FlutterActivity() {
         private const val CHANNEL = "net.deltie.deltiecord/unified_push"
         private const val NOTIFICATION_ASSETS_CHANNEL =
             "net.deltie.deltiecord/notification_assets"
+        private const val BACKGROUND_PUSH_CHANNEL =
+            "net.deltie.deltiecord/background_push"
         private const val REGISTRATION_TIMEOUT_MS = 30_000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val pendingRegistrations = mutableMapOf<String, MethodChannel.Result>()
     private var unifiedPushChannel: MethodChannel? = null
+    private var backgroundPushChannel: MethodChannel? = null
+    private var configuredEngine: FlutterEngine? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        configuredEngine = flutterEngine
+        DeltiecordEngineRegistry.engine = flutterEngine
         unifiedPushChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .also { channel ->
                 channel.setMethodCallHandler { call, result ->
@@ -84,9 +91,52 @@ class MainActivity : FlutterActivity() {
                         result.success(NotificationAvatarCache.put(this, roomId, avatar))
                     }
                 }
+                "showRichNotification" -> {
+                    val arguments = call.arguments as? Map<*, *>
+                    val message = arguments?.let(DeltiecordNotificationPublisher::fromMap)
+                    if (message == null) {
+                        result.error("invalid_notification", "Missing notification data.", null)
+                    } else {
+                        DeltiecordNotificationPublisher.publish(this, message)
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
+        backgroundPushChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            BACKGROUND_PUSH_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "ready" -> {
+                        DeltiecordEngineRegistry.pushBridgeReady = true
+                        result.success(null)
+                    }
+                    "getInitialTarget" -> result.success(notificationTarget(intent, clear = true))
+                    else -> result.notImplemented()
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val target = notificationTarget(intent, clear = true) ?: return
+        backgroundPushChannel?.invokeMethod("onNotificationActivated", target)
+    }
+
+    private fun notificationTarget(intent: Intent?, clear: Boolean): Map<String, String>? {
+        val roomId = intent?.getStringExtra("notification_room_id")
+        val eventId = intent?.getStringExtra("notification_event_id")
+        if (roomId.isNullOrBlank() || eventId.isNullOrBlank()) return null
+        if (clear) {
+            intent.removeExtra("notification_room_id")
+            intent.removeExtra("notification_event_id")
+        }
+        return mapOf("roomId" to roomId, "eventId" to eventId)
     }
 
     private fun registerUnifiedPush(instance: String, result: MethodChannel.Result) {
@@ -174,6 +224,12 @@ class MainActivity : FlutterActivity() {
         }
         pendingRegistrations.clear()
         unifiedPushChannel = null
+        backgroundPushChannel = null
+        if (DeltiecordEngineRegistry.engine === configuredEngine) {
+            DeltiecordEngineRegistry.engine = null
+            DeltiecordEngineRegistry.pushBridgeReady = false
+        }
+        configuredEngine = null
         super.onDestroy()
     }
 }

@@ -59,10 +59,14 @@ Release CI produces architecture-specific APKs for `arm64-v8a`,
 `armeabi-v7a`, and `x86_64`, plus an AAB. Most current physical phones should
 use the smaller `arm64-v8a` APK.
 
-Push payloads are treated as generic Matrix activity wake-ups, not as trusted
-plaintext message content. Opening a push resumes normal authenticated Matrix
-sync. The distributor and gateway therefore improve suspended-app delivery
-without making them a source for decrypted message text.
+Push payloads are treated as generic Matrix room/event wake-ups, never as
+trusted plaintext. A bounded Android worker restores Deltiecord's local Matrix
+session, synchronizes the named event and any room key, then decrypts the
+notification locally. The distributor and gateway never receive decrypted
+text, access tokens, or room keys. Android conversation notifications show the
+latest message when collapsed and up to six recent messages when expanded;
+bounded image attachments can appear in the expanded view. If local resolution
+fails, the generic wake-up notification remains visible.
 
 An active MatrixRTC session may also be constrained by vendor background policy.
 The in-app persistent call island is implemented, but a production Android

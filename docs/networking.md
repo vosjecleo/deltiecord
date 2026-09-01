@@ -85,10 +85,14 @@ Firebase-compatible WebPush is disabled until Deltiecord has a dedicated,
 VAPID-configured Matrix WebPush gateway; it cannot safely reuse the ntfy
 gateway contract.
 
-The gateway and distributor receive Matrix push metadata sufficient to wake the
-application and display a generic activity notification. Deltiecord obtains
-room contents through normal authenticated Matrix sync after the notification is
-opened; the push path is not treated as a source of decrypted plaintext.
+The gateway and distributor receive Matrix room/event metadata sufficient to
+wake the application. The push path is not trusted as a source of plaintext.
+After delivery, a bounded Android worker contacts the configured homeserver,
+restores the existing local crypto store, synchronizes the event and decrypts
+its body on-device. Only bounded renderable notification fields cross the local
+Flutter/Android method channel; access tokens, room keys, and crypto material do
+not. If that local resolution cannot complete, Deltiecord retains a generic
+notification instead.
 
 ## Release update checks
 

@@ -13,6 +13,7 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
 import '../services/avatar_media_pool.dart';
+import '../services/android_push_bridge.dart';
 import '../services/font_preferences.dart';
 import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
@@ -465,6 +466,21 @@ class MatrixBackend extends ChatBackend {
 
   @override
   Future<void> initialize() => _initializeSession();
+
+  /// Resolves a privacy-preserving Matrix push hint inside the logged-in
+  /// client, after the event and any room key have reached the local store.
+  Future<Map<String, Object?>?> resolveAndroidPush(
+    String roomId,
+    String eventId,
+  ) => resolveAndroidPushNotification(
+    _matrix,
+    roomId,
+    eventId,
+    avatarPool: _avatarMediaPool,
+  );
+
+  Future<void> openAndroidPushTarget(NotificationTarget target) =>
+      _openNotificationTarget(target);
 
   @override
   Future<void> login({

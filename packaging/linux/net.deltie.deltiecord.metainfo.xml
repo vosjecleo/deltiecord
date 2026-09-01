@@ -22,7 +22,7 @@
   <releases>
     <release version="0.9.22" date="2026-09-01" type="development">
       <description>
-        <p>Repairs ntfy distributor selection, stale registration cleanup, and endpoint-to-gateway pairing, and preserves visible timeline anchors across bounded history windows and delayed preview hydration.</p>
+        <p>Decrypts UnifiedPush events locally for rich private notifications with sender avatars, recent-message expansion, and bounded inline image previews.</p>
       </description>
     </release>
     <release version="0.9.21" date="2026-09-01" type="development">

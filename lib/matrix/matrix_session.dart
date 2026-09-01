@@ -455,6 +455,7 @@ extension _MatrixSession on MatrixBackend {
             )
           : 'New room activity';
       final notificationAvatar = await _notificationAvatarFor(room, event);
+      final notificationImage = await _notificationImageFor(displayEvent);
       if (notificationAvatar != null) {
         unawaited(_notifications.cacheRoomAvatar(room.id, notificationAvatar));
       }
@@ -463,34 +464,19 @@ extension _MatrixSession on MatrixBackend {
         body: notificationBody,
         roomId: room.id,
         eventId: event.eventId,
+        senderName: sender,
+        roomName: room.getLocalizedDisplayname(),
+        groupConversation: !room.isDirectChat,
         senderAvatar: notificationAvatar,
+        image: notificationImage?.$1,
+        imageMimeType: notificationImage?.$2,
+        timestamp: event.originServerTs,
         sound: _preferences.notificationSound,
       );
     }
   }
 
   Future<Uint8List?> _notificationAvatarFor(Room room, Event event) async {
-    // Discord-style server notifications are visually grouped by their Space;
-    // DMs and standalone group chats use the sender instead.
-    final parentSpace = _joinedRooms
-        .where((candidate) => candidate.isSpace)
-        .cast<Room?>()
-        .firstWhere(
-          (space) =>
-              space!.spaceChildren.any((child) => child.roomId == room.id),
-          orElse: () => null,
-        );
-    if (parentSpace != null) {
-      if (_avatarBytes[parentSpace.id] == null) {
-        try {
-          await _refreshAvatar(parentSpace);
-        } catch (_) {
-          // Native notifications fall back to the app icon when media fails.
-        }
-      }
-      return _avatarBytes[parentSpace.id];
-    }
-
     final cached = _senderAvatarBytes[event.senderId];
     if (cached != null) return cached;
     final avatar = event.senderFromMemoryOrFallback.avatarUrl;
@@ -501,6 +487,28 @@ extension _MatrixSession on MatrixBackend {
       _senderAvatarUris[event.senderId] = avatar;
       _senderAvatarBytes[event.senderId] = bytes;
       return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<(Uint8List, String)?> _notificationImageFor(Event event) async {
+    if (!_notificationPreviewsEnabled ||
+        !event.hasAttachment ||
+        !event.attachmentMimetype.startsWith('image/')) {
+      return null;
+    }
+    final useThumbnail = event.hasThumbnail;
+    final declaredSize = useThumbnail
+        ? event.thumbnailInfoMap.tryGet<int>('size')
+        : event.infoMap.tryGet<int>('size');
+    if (declaredSize != null && declaredSize > 3 * 1024 * 1024) return null;
+    try {
+      final file = await event.downloadAndDecryptAttachment(
+        getThumbnail: useThumbnail,
+      );
+      if (file.bytes.length > 3 * 1024 * 1024) return null;
+      return (file.bytes, file.mimeType);
     } catch (_) {
       return null;
     }

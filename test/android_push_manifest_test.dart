@@ -37,10 +37,25 @@ void main() {
       'android/app/src/main/kotlin/net/deltie/deltiecord/'
       'DeltiecordPushService.kt',
     ).readAsStringSync();
+    final publisher = File(
+      'android/app/src/main/kotlin/net/deltie/deltiecord/'
+      'DeltiecordNotificationPublisher.kt',
+    ).readAsStringSync();
+    final worker = File(
+      'android/app/src/main/kotlin/net/deltie/deltiecord/'
+      'DeltiecordPushWorker.kt',
+    ).readAsStringSync();
 
-    expect(receiver, contains('.setContentText("New message")'));
+    expect(publisher, contains('.setContentText("New message")'));
     expect(receiver, isNot(contains('New Matrix activity')));
     expect(receiver, contains('sender_display_name'));
     expect(receiver, contains('room_name'));
+    expect(receiver, contains('event_id'));
+    expect(receiver, contains('DeltiecordPushWorker.enqueue'));
+    expect(worker, contains('deltiecordPushBackgroundMain'));
+    expect(worker, contains('resolveNotification'));
+    expect(publisher, contains('Notification.MessagingStyle'));
+    expect(publisher, contains('setData(mime, uri)'));
+    expect(publisher, contains('R.mipmap.ic_launcher_round'));
   });
 }

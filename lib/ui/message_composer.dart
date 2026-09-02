@@ -61,7 +61,6 @@ class _MentionPicker extends StatelessWidget {
     child: Material(
       color: context.deltiecord.surface,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: context.deltiecord.divider),
         borderRadius: const BorderRadius.vertical(
           top: DeltiecordCorners.corner,
         ),
@@ -274,7 +273,6 @@ class _RichComposerState extends State<_RichComposer> {
                 elevation: 8,
                 color: context.deltiecord.surface,
                 shape: RoundedRectangleBorder(
-                  side: BorderSide(color: context.deltiecord.divider),
                   borderRadius: DeltiecordCorners.borderRadius,
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -340,13 +338,10 @@ class _RichComposerState extends State<_RichComposer> {
                 key: const Key('message-composer-island'),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 4,
-                  // The one-pixel outline replaces one pixel of the existing
-                  // inset on each edge, preserving shared bottom geometry.
-                  vertical: _composerIslandVerticalInset - 1,
+                  vertical: _composerIslandVerticalInset,
                 ),
                 decoration: BoxDecoration(
                   color: context.deltiecord.island,
-                  border: Border.all(color: Colors.black, width: 1),
                   borderRadius: DeltiecordCorners.borderRadius,
                 ),
                 child: Row(
@@ -669,12 +664,14 @@ class _PendingAttachmentTile extends StatelessWidget {
           height: 72,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: context.deltiecord.elevated,
-            border: Border.all(
-              color: attachment.spoiler
-                  ? Theme.of(context).colorScheme.primary
-                  : context.deltiecord.divider,
-            ),
+            color: attachment.spoiler
+                ? Color.alphaBlend(
+                    Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.22),
+                    context.deltiecord.elevated,
+                  )
+                : context.deltiecord.elevated,
             borderRadius: DeltiecordCorners.borderRadius,
           ),
           child: Stack(

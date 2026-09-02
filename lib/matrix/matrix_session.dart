@@ -416,6 +416,15 @@ extension _MatrixSession on MatrixBackend {
   Future<void> _notifyNewMessages() async {
     if (!_matrix.isLogged() || !_preferences.notificationsEnabled) return;
     final rooms = _joinedRooms.where((room) => !room.isSpace);
+    final activeDesktopOwnsExternalNotifications =
+        Platform.isAndroid &&
+        !_applicationForeground &&
+        hasActiveDesktopLease(
+          _matrix
+              .accountData[MatrixBackend._deviceActivityAccountDataType]
+              ?.content,
+          currentDeviceId: _matrix.deviceID,
+        );
     if (!_notificationsPrimed) {
       for (final room in rooms) {
         final eventId = room.lastEvent?.eventId;
@@ -431,7 +440,8 @@ extension _MatrixSession on MatrixBackend {
         continue;
       }
       _lastNotificationEventIds[room.id] = event.eventId;
-      if ((room.id == _selectedRoomId && _conversationVisible) ||
+      if (activeDesktopOwnsExternalNotifications ||
+          (room.id == _selectedRoomId && _conversationVisible) ||
           event.senderId == _matrix.userID ||
           room.pushRuleState == PushRuleState.dontNotify ||
           (room.pushRuleState == PushRuleState.mentionsOnly &&
@@ -462,7 +472,7 @@ extension _MatrixSession on MatrixBackend {
       if (notificationAvatar != null) {
         unawaited(_notifications.cacheRoomAvatar(room.id, notificationAvatar));
       }
-      if (_applicationForeground) {
+      if (_applicationForeground && Platform.isAndroid) {
         InAppNotificationCenter.show(
           InAppChatNotification(
             title: room.isDirectChat

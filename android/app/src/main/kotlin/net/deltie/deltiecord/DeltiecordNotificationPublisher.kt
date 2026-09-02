@@ -35,7 +35,7 @@ import java.security.MessageDigest
  * while Android's MessagingStyle expansion reveals recent messages/media.
  */
 object DeltiecordNotificationPublisher {
-    private const val CHANNEL_ID = "deltiecord_messages_73"
+    private const val CHANNEL_ID = "deltiecord_messages_stable"
     private const val BACKGROUND_CHANNEL_ID = "deltiecord_background_sync"
     private const val PREFS = "deltiecord_notification_history"
     private const val MAX_MESSAGES = 6

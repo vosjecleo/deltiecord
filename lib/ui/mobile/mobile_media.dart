@@ -709,7 +709,6 @@ class MobileLinkPreviewCard extends StatelessWidget {
             if (preview.videoUrl case final video?)
               SizedBox(
                 width: mediaFrame.width,
-                height: mediaFrame.height,
                 child: MobileLinkPreviewVideo(
                   uri: video,
                   thumbnail: preview.imageBytes,
@@ -787,6 +786,10 @@ class MobileLinkPreviewVideo extends StatefulWidget {
 class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
   Player? _player;
   VideoController? _controller;
+  StreamSubscription<int?>? _widthSubscription;
+  StreamSubscription<int?>? _heightSubscription;
+  int? _naturalWidth;
+  int? _naturalHeight;
   bool _opening = false;
   String? _error;
   bool _fullscreenOpen = false;
@@ -812,6 +815,16 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
       configuration: const PlayerConfiguration(bufferSize: 64 * 1024 * 1024),
     );
     final controller = VideoController(player);
+    _widthSubscription = player.stream.width.listen((value) {
+      if (mounted && value != null && value > 0) {
+        setState(() => _naturalWidth = value);
+      }
+    });
+    _heightSubscription = player.stream.height.listen((value) {
+      if (mounted && value != null && value > 0) {
+        setState(() => _naturalHeight = value);
+      }
+    });
     try {
       await player.open(Media(widget.uri.toString()), play: true);
       if (!mounted) {
@@ -856,6 +869,8 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
 
   @override
   void dispose() {
+    _widthSubscription?.cancel();
+    _heightSubscription?.cancel();
     final player = _player;
     if (player != null) unawaited(player.dispose());
     super.dispose();
@@ -863,8 +878,8 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
 
   @override
   Widget build(BuildContext context) {
-    final width = widget.width?.toDouble() ?? 16;
-    final height = widget.height?.toDouble() ?? 9;
+    final width = (_naturalWidth ?? widget.width)?.toDouble() ?? 16;
+    final height = (_naturalHeight ?? widget.height)?.toDouble() ?? 9;
     final ratio = width > 0 && height > 0
         ? (width / height).clamp(0.25, 4.0)
         : 16 / 9;
@@ -917,7 +932,6 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
       onTap: _play,
       onDoubleTap: widget.onDoubleTap ?? _showFullscreen,
       child: Stack(
-        fit: StackFit.expand,
         children: [
           surface,
           if (player != null && !_fullscreenOpen)

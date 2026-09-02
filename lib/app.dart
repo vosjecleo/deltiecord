@@ -189,6 +189,8 @@ class DeltiecordApp extends StatelessWidget {
             ),
             outlinedButtonTheme: OutlinedButtonThemeData(
               style: OutlinedButton.styleFrom(
+                backgroundColor: palette.elevated,
+                side: BorderSide.none,
                 shape: RoundedRectangleBorder(
                   borderRadius: DeltiecordCorners.borderRadius,
                 ),
@@ -210,7 +212,6 @@ class DeltiecordApp extends StatelessWidget {
               backgroundColor: palette.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: DeltiecordCorners.borderRadius,
-                side: BorderSide(color: palette.divider),
               ),
             ),
             appBarTheme: AppBarTheme(
@@ -232,7 +233,7 @@ class DeltiecordApp extends StatelessWidget {
                 borderRadius: DeltiecordCorners.borderRadius,
               ),
               focusedBorder: OutlineInputBorder(
-                borderSide: BorderSide(color: colorScheme.primary, width: 1),
+                borderSide: BorderSide.none,
                 borderRadius: DeltiecordCorners.borderRadius,
               ),
             ),
@@ -242,7 +243,6 @@ class DeltiecordApp extends StatelessWidget {
                 shape: WidgetStatePropertyAll(
                   RoundedRectangleBorder(
                     borderRadius: DeltiecordCorners.borderRadius,
-                    side: BorderSide(color: palette.divider),
                   ),
                 ),
                 padding: const WidgetStatePropertyAll(
@@ -254,7 +254,6 @@ class DeltiecordApp extends StatelessWidget {
               color: palette.elevated,
               shape: RoundedRectangleBorder(
                 borderRadius: DeltiecordCorners.borderRadius,
-                side: BorderSide(color: palette.divider),
               ),
             ),
             tooltipTheme: TooltipThemeData(
@@ -262,9 +261,7 @@ class DeltiecordApp extends StatelessWidget {
               showDuration: const Duration(seconds: 4),
               decoration: BoxDecoration(
                 color: palette.elevated,
-                border: Border.fromBorderSide(
-                  BorderSide(color: palette.divider),
-                ),
+                borderRadius: DeltiecordCorners.borderRadius,
               ),
               textStyle: TextStyle(
                 color: palette.text,
@@ -283,7 +280,7 @@ class DeltiecordApp extends StatelessWidget {
             );
             final content = MediaQuery(
               data: scaledMedia,
-              child: _InAppNotificationOverlay(child: child!),
+              child: mobile ? _InAppNotificationOverlay(child: child!) : child!,
             );
             if (interfaceScale == 1) return content;
             return ClipRect(

@@ -359,16 +359,18 @@ void main() {
     expect(received.takeBytes(), plaintext);
   });
 
-  test('fails a nonzero seek when upstream ignores Range', () async {
+  test('caches one bounded copy when upstream ignores Range', () async {
+    final plaintext = Uint8List.fromList(
+      List.generate(1024 * 1024, (index) => index % 251),
+    );
+    var upstreamRequests = 0;
     final upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     upstream.listen((request) async {
+      upstreamRequests++;
       request.response
         ..statusCode = HttpStatus.ok
-        ..headers.contentLength = 1024 * 1024;
-      for (var index = 0; index < 1024; index++) {
-        request.response.add(Uint8List(1024));
-        await request.response.flush();
-      }
+        ..headers.contentLength = plaintext.length
+        ..add(plaintext);
       await request.response.close();
     });
     final proxy = MediaRangeProxy(decryptor: (input, _, _, _) => input);
@@ -389,8 +391,22 @@ void main() {
     final request = await client.getUrl(local);
     request.headers.set(HttpHeaders.rangeHeader, 'bytes=524288-525311');
     final response = await request.close();
-    expect(response.statusCode, HttpStatus.badGateway);
-    expect(await response.fold<int>(0, (sum, chunk) => sum + chunk.length), 0);
+    final first = await response.fold<BytesBuilder>(
+      BytesBuilder(copy: false),
+      (builder, chunk) => builder..add(chunk),
+    );
+    expect(response.statusCode, HttpStatus.partialContent);
+    expect(first.takeBytes(), plaintext.sublist(524288, 525312));
+
+    final repeatedRequest = await client.getUrl(local);
+    repeatedRequest.headers.set(HttpHeaders.rangeHeader, 'bytes=800003-801026');
+    final repeatedResponse = await repeatedRequest.close();
+    final repeated = await repeatedResponse.fold<BytesBuilder>(
+      BytesBuilder(copy: false),
+      (builder, chunk) => builder..add(chunk),
+    );
+    expect(repeated.takeBytes(), plaintext.sublist(800003, 801027));
+    expect(upstreamRequests, 1);
   });
 
   test('rejects malformed Content-Range and truncated upstream data', () async {

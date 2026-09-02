@@ -694,8 +694,7 @@ class _MobileUserIsland extends StatelessWidget {
       margin: const EdgeInsets.all(8),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: context.deltiecord.elevated,
-        border: Border.all(color: Colors.black, width: 1),
+        color: context.deltiecord.island,
         borderRadius: BorderRadius.circular(12),
       ),
       child: InkWell(

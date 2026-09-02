@@ -180,7 +180,6 @@ class _MessageRowState extends State<_MessageRow> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: context.deltiecord.elevated,
-                border: Border.all(color: context.deltiecord.divider),
                 borderRadius: DeltiecordCorners.borderRadius,
               ),
               child: _MessageActions(
@@ -250,6 +249,57 @@ class _MessageRowState extends State<_MessageRow> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (message.reply case final reply?)
+                                Transform.translate(
+                                  offset: const Offset(-50, 0),
+                                  child: InkWell(
+                                    key: Key('reply-preview-${message.id}'),
+                                    onTap: () =>
+                                        widget.onJumpToReply(reply.eventId),
+                                    child: Row(
+                                      children: [
+                                        CustomPaint(
+                                          size: const Size(42, 20),
+                                          painter: _ReplyConnectorPainter(
+                                            color: context.deltiecord.muted,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Flexible(
+                                          child: Text.rich(
+                                            TextSpan(
+                                              children: [
+                                                TextSpan(
+                                                  text: '${reply.sender}  ',
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                                TextSpan(
+                                                  text: reply.body.replaceAll(
+                                                    '\n',
+                                                    ' ',
+                                                  ),
+                                                  style: TextStyle(
+                                                    color: context
+                                                        .deltiecord
+                                                        .muted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize:
+                                                  DeltiecordTypeScale.normal,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               if (widget.startsGroup)
                                 Row(
                                   children: [
@@ -303,61 +353,6 @@ class _MessageRowState extends State<_MessageRow> {
                                       ),
                                     ],
                                   ],
-                                ),
-                              if (message.reply case final reply?)
-                                InkWell(
-                                  key: Key('reply-preview-${message.id}'),
-                                  onTap: () =>
-                                      widget.onJumpToReply(reply.eventId),
-                                  child: Container(
-                                    margin: const EdgeInsets.only(
-                                      top: 3,
-                                      bottom: 2,
-                                    ),
-                                    padding: const EdgeInsets.fromLTRB(
-                                      9,
-                                      5,
-                                      9,
-                                      6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: context.deltiecord.elevated,
-                                      border: Border(
-                                        left: BorderSide(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
-                                          width: 3,
-                                        ),
-                                      ),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          reply.sender,
-                                          style: TextStyle(
-                                            fontSize:
-                                                DeltiecordTypeScale.normal,
-                                            fontWeight: FontWeight.w600,
-                                            color: Theme.of(
-                                              context,
-                                            ).colorScheme.primary,
-                                          ),
-                                        ),
-                                        Text(
-                                          reply.body.replaceAll('\n', ' '),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
-                                            fontSize:
-                                                DeltiecordTypeScale.normal,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
                                 ),
                               if (message.body.isNotEmpty)
                                 message.formattedBody != null
@@ -478,7 +473,7 @@ class _MessageRowState extends State<_MessageRow> {
                       // The 40px avatar remains centred in the 60px author
                       // gutter while the text column stays close to the edge.
                       left: 10,
-                      top: groupTop,
+                      top: groupTop + (message.reply == null ? 0 : 22),
                       child: GestureDetector(
                         key: ValueKey('message-avatar-${message.id}'),
                         onTap: _showSenderProfile,
@@ -513,6 +508,36 @@ class _MessageRowState extends State<_MessageRow> {
       ),
     );
   }
+}
+
+class _ReplyConnectorPainter extends CustomPainter {
+  const _ReplyConnectorPainter({required this.color});
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    final path = Path()
+      ..moveTo(size.width * 0.48, size.height)
+      ..lineTo(size.width * 0.48, size.height * 0.52)
+      ..quadraticBezierTo(
+        size.width * 0.48,
+        size.height * 0.28,
+        size.width * 0.70,
+        size.height * 0.28,
+      )
+      ..lineTo(size.width, size.height * 0.28);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReplyConnectorPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _UnreadDivider extends StatelessWidget {

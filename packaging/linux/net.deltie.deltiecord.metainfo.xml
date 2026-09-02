@@ -20,9 +20,9 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
-    <release version="0.9.23" date="2026-09-01" type="development">
+    <release version="0.9.23" date="2026-09-02" type="stable">
       <description>
-        <p>Decrypts UnifiedPush events locally for rich private notifications with sender avatars, recent-message expansion, and bounded inline image previews.</p>
+        <p>Repairs encrypted video playback and seeking, stabilizes timeline anchoring, refines notification ownership, and promotes Deltiecord's first stable-channel build.</p>
       </description>
     </release>
     <release version="0.9.21" date="2026-09-01" type="development">

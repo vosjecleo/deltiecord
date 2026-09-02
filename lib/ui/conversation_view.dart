@@ -67,12 +67,13 @@ class _ConversationState extends State<_Conversation> {
   final Map<GlobalKey, String> _messageIdsByKey = {};
   String? _roomId;
   bool _loadingAnchoredHistory = false;
+  bool _fillingInitialViewport = false;
   bool _draggingFiles = false;
   bool _scrolledAwayFromPresent = false;
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _navigationGeneration = 0;
-  int _timelineInputGeneration = 0;
+  (String, double)? _pendingPageAnchor;
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
   String? _newestMessageId;
@@ -99,6 +100,9 @@ class _ConversationState extends State<_Conversation> {
 
   void _loadTimelineNearEdges() {
     if (!_scrollController.hasClients) return;
+    if (_loadingAnchoredHistory) {
+      _pendingPageAnchor = _captureVisibleAnchor() ?? _pendingPageAnchor;
+    }
     final position = _scrollController.position;
     widget.backend.setConversationAtPresent(
       position.pixels <= 48 && widget.backend.atTimelinePresent,
@@ -129,7 +133,6 @@ class _ConversationState extends State<_Conversation> {
   }
 
   void _noteTimelineUserInput(PointerEvent _) {
-    _timelineInputGeneration++;
     _timelineUserInputUntil = DateTime.now().add(const Duration(seconds: 1));
   }
 
@@ -185,16 +188,17 @@ class _ConversationState extends State<_Conversation> {
       const Duration(milliseconds: 700),
     );
     final anchor = _captureVisibleAnchor();
-    final inputGeneration = _timelineInputGeneration;
+    _pendingPageAnchor = anchor;
     try {
       await load(anchor?.$1);
       if (!mounted) return;
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || inputGeneration != _timelineInputGeneration) return;
-      _restoreVisibleAnchor(anchor);
+      if (!mounted) return;
+      _restoreVisibleAnchor(_pendingPageAnchor ?? anchor);
     } catch (_) {
       // The backend reports its user-facing pagination error separately.
     } finally {
+      _pendingPageAnchor = null;
       _loadingAnchoredHistory = false;
     }
   }
@@ -208,6 +212,38 @@ class _ConversationState extends State<_Conversation> {
     (anchorEventId) =>
         widget.backend.loadMoreFuture(anchorEventId: anchorEventId),
   );
+
+  void _scheduleInitialViewportFill() {
+    if (_fillingInitialViewport || widget.backend.timelineLoading) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_fillInitialViewport());
+    });
+  }
+
+  Future<void> _fillInitialViewport() async {
+    if (_fillingInitialViewport || !_scrollController.hasClients) return;
+    if (!widget.backend.atTimelinePresent || _scrollController.offset > 48) {
+      return;
+    }
+    _fillingInitialViewport = true;
+    final roomId = widget.backend.selectedRoom?.id;
+    try {
+      for (var pass = 0; pass < 4; pass++) {
+        if (!mounted ||
+            roomId != widget.backend.selectedRoom?.id ||
+            !widget.backend.canLoadMoreHistory ||
+            _scrollController.position.maxScrollExtent > 8) {
+          break;
+        }
+        final previousCount = widget.backend.messages.length;
+        await widget.backend.loadMoreHistory();
+        if (!mounted || widget.backend.messages.length <= previousCount) break;
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    } finally {
+      _fillingInitialViewport = false;
+    }
+  }
 
   int _layoutFingerprint(List<ChatMessage> messages) => Object.hashAll(
     messages.map(
@@ -528,6 +564,7 @@ class _ConversationState extends State<_Conversation> {
     final backend = widget.backend;
     final room = backend.selectedRoom!;
     final messages = backend.messages;
+    _scheduleInitialViewportFill();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _reportTimelineAtPresent(),
     );
@@ -993,9 +1030,7 @@ class _ConversationState extends State<_Conversation> {
                       ),
                       decoration: BoxDecoration(
                         color: context.deltiecord.elevated,
-                        border: Border.all(
-                          color: Theme.of(context).colorScheme.primary,
-                        ),
+                        borderRadius: DeltiecordCorners.borderRadius,
                       ),
                       child: const Text('Drop files to attach'),
                     ),

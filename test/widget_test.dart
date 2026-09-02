@@ -684,7 +684,7 @@ void main() {
     await tester.tap(find.text('general'));
     await tester.pump();
 
-    expect(find.text('Original message'), findsOneWidget);
+    expect(find.textContaining('Original message'), findsOneWidget);
     expect(find.text('My actual reply'), findsOneWidget);
     expect(find.textContaining('> <'), findsNothing);
 
@@ -889,9 +889,11 @@ void main() {
     await tester.pumpWidget(DeltiecordApp(backend: backend));
     await tester.tap(find.text('general'));
     await tester.pump();
+    final requestsBeforeTap = backend.historyRequests;
     await tester.tap(find.text('Load older messages'));
+    await tester.pump();
 
-    expect(backend.historyRequests, 1);
+    expect(backend.historyRequests, requestsBeforeTap + 1);
   });
 
   testWidgets('history insertion preserves the visible event offset', (
@@ -1573,8 +1575,7 @@ void main() {
     final composerSurface = tester.widget<Container>(composerIsland);
     final composerBorder =
         (composerSurface.decoration! as BoxDecoration).border;
-    expect(composerBorder, isNotNull);
-    expect(composerBorder!.top.color, Colors.black);
+    expect(composerBorder, isNull);
     final composerTop = tester.getTopLeft(composerPanel).dy;
 
     backend.setTypingNames(const ['Alice']);
@@ -2116,7 +2117,7 @@ void main() {
     );
     final recipientDecoration = recipientGradient.decoration as BoxDecoration;
     expect(recipientDecoration.gradient, isNotNull);
-    expect(recipientDecoration.border, isNotNull);
+    expect(recipientDecoration.border, isNull);
     final panelRect = tester.getRect(
       find.byKey(const Key('recipient-profile-gradient')),
     );

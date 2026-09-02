@@ -45,6 +45,7 @@ class MediaRangeProxy {
   final Map<String, _EncryptedMedia> _entries = {};
   final Random _random = Random.secure();
   Timer? _cleanupTimer;
+  Directory? _cacheDirectory;
   var _accessSequence = 0;
 
   Future<Uri> register({
@@ -131,7 +132,7 @@ class MediaRangeProxy {
       final partial = requested.$3;
       final length = end - start + 1;
       final alignedStart = start - (start % 16);
-      final upstreamResponse = request.method == 'HEAD'
+      final cipherSource = request.method == 'HEAD'
           ? null
           : await _openEncryptedRange(
               media,
@@ -157,7 +158,7 @@ class MediaRangeProxy {
 
       await _streamDecryptedRange(
         media,
-        upstreamResponse: upstreamResponse!,
+        cipherSource: cipherSource!,
         fetchStart: alignedStart,
         requestedStart: start,
         requestedEnd: end,
@@ -225,23 +226,21 @@ class MediaRangeProxy {
   /// before playback received any data, producing long startup stalls.
   Future<void> _streamDecryptedRange(
     _EncryptedMedia media, {
-    required HttpClientResponse upstreamResponse,
+    required _CipherSource cipherSource,
     required int fetchStart,
     required int requestedStart,
     required int requestedEnd,
     required HttpResponse downstream,
   }) async {
-    final response = upstreamResponse;
-
     final cipherLength = requestedEnd - fetchStart + 1;
     final requestedLength = requestedEnd - requestedStart + 1;
-    var upstreamSkip = response.statusCode == HttpStatus.ok ? fetchStart : 0;
+    var upstreamSkip = cipherSource.skip;
     var cipherRemaining = cipherLength;
     var cipherOffset = fetchStart;
     var emitted = 0;
     var pending = Uint8List(0);
 
-    await for (final rawChunk in response.timeout(
+    await for (final rawChunk in cipherSource.stream.timeout(
       const Duration(seconds: 15),
     )) {
       var rawOffset = 0;
@@ -297,11 +296,26 @@ class MediaRangeProxy {
     }
   }
 
-  Future<HttpClientResponse> _openEncryptedRange(
+  Future<_CipherSource> _openEncryptedRange(
     _EncryptedMedia media, {
     required int fetchStart,
     required int requestedEnd,
   }) async {
+    final cached = media.cachedCiphertext;
+    if (cached != null) {
+      return _CipherSource(
+        cached.openRead(fetchStart, requestedEnd + 1),
+        skip: 0,
+      );
+    }
+    final cacheInProgress = media.cacheFuture;
+    if (cacheInProgress != null) {
+      final file = await cacheInProgress;
+      return _CipherSource(
+        file.openRead(fetchStart, requestedEnd + 1),
+        skip: 0,
+      );
+    }
     final request = await _upstream
         .getUrl(media.upstream)
         .timeout(const Duration(seconds: 10));
@@ -315,12 +329,15 @@ class MediaRangeProxy {
       throw HttpException('Media server returned ${response.statusCode}');
     }
     if (response.statusCode == HttpStatus.ok && fetchStart != 0) {
-      // Never consume and discard a complete multi-gigabyte response to reach
-      // a seek offset. The player may retry or use a separately bounded full
-      // download path, but this streaming request fails without reading it.
-      final subscription = response.listen((_) {});
-      await subscription.cancel();
-      throw const HttpException('Media server ignored the requested range');
+      // Some Matrix media endpoints ignore Range. Never discard bytes until a
+      // seek offset: that turns a small seek into an unbounded network read.
+      // Instead cache exactly one size-validated ciphertext copy in a private
+      // process-owned directory, then serve all seeks from that file.
+      final file = await _cacheCompleteCiphertext(media, response);
+      return _CipherSource(
+        file.openRead(fetchStart, requestedEnd + 1),
+        skip: 0,
+      );
     }
     if (response.statusCode == HttpStatus.partialContent) {
       _validateContentRange(
@@ -331,7 +348,109 @@ class MediaRangeProxy {
       );
     }
 
-    return response;
+    return _CipherSource(
+      response,
+      skip: response.statusCode == HttpStatus.ok ? fetchStart : 0,
+    );
+  }
+
+  Future<File> _cacheCompleteCiphertext(
+    _EncryptedMedia media,
+    HttpClientResponse ignoredRangeResponse,
+  ) async {
+    final cached = media.cachedCiphertext;
+    if (cached != null) {
+      await ignoredRangeResponse.listen((_) {}).cancel();
+      return cached;
+    }
+    final inProgress = media.cacheFuture;
+    if (inProgress != null) {
+      await ignoredRangeResponse.listen((_) {}).cancel();
+      return inProgress;
+    }
+
+    final future = _writeCiphertextCache(media, ignoredRangeResponse);
+    media.cacheFuture = future;
+    try {
+      final file = await future;
+      if (media.removed) {
+        await _deleteFile(file);
+        throw const HttpException('Encrypted media entry expired');
+      }
+      media.cachedCiphertext = file;
+      return file;
+    } finally {
+      media.cacheFuture = null;
+    }
+  }
+
+  Future<File> _writeCiphertextCache(
+    _EncryptedMedia media,
+    HttpClientResponse response,
+  ) async {
+    final advertisedLength = response.contentLength;
+    if (advertisedLength > media.size) {
+      await response.listen((_) {}).cancel();
+      throw const HttpException('Encrypted media exceeds declared size');
+    }
+    final directory = await _ensureCacheDirectory();
+    final randomName = base64UrlEncode(
+      List.generate(24, (_) => _random.nextInt(256)),
+    ).replaceAll('=', '');
+    final file = File('${directory.path}/$randomName.cipher');
+    final sink = file.openWrite(mode: FileMode.writeOnly);
+    var received = 0;
+    try {
+      await for (final chunk in response.timeout(const Duration(seconds: 15))) {
+        received += chunk.length;
+        if (received > media.size) {
+          throw const HttpException('Encrypted media exceeds declared size');
+        }
+        sink.add(chunk);
+      }
+      await sink.flush();
+      await sink.close();
+      if (received != media.size) {
+        throw const HttpException('Incomplete encrypted media download');
+      }
+      await _restrictPermissions(file.path, directory: false);
+      return file;
+    } catch (_) {
+      await sink.close().catchError((_) {});
+      await _deleteFile(file);
+      rethrow;
+    }
+  }
+
+  Future<Directory> _ensureCacheDirectory() async {
+    final existing = _cacheDirectory;
+    if (existing != null) return existing;
+    final directory = await Directory.systemTemp.createTemp(
+      'deltiecord-encrypted-media-',
+    );
+    await _restrictPermissions(directory.path, directory: true);
+    _cacheDirectory = directory;
+    return directory;
+  }
+
+  Future<void> _restrictPermissions(
+    String path, {
+    required bool directory,
+  }) async {
+    if (!Platform.isLinux && !Platform.isMacOS) return;
+    final result = await Process.run('chmod', [
+      directory ? '700' : '600',
+      path,
+    ]);
+    if (result.exitCode != 0) {
+      throw const FileSystemException('Could not restrict media cache');
+    }
+  }
+
+  Future<void> _deleteFile(File file) async {
+    try {
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
   }
 
   void _validateContentRange(
@@ -380,6 +499,13 @@ class MediaRangeProxy {
   void _removeEntry(String id) {
     final media = _entries.remove(id);
     if (media == null) return;
+    media.removed = true;
+    final cached = media.cachedCiphertext;
+    if (cached != null) unawaited(_deleteFile(cached));
+    final inProgress = media.cacheFuture;
+    if (inProgress != null) {
+      unawaited(inProgress.then(_deleteFile, onError: (_) {}));
+    }
     media.key.fillRange(0, media.key.length, 0);
     media.iv.fillRange(0, media.iv.length, 0);
   }
@@ -397,6 +523,13 @@ class MediaRangeProxy {
     _upstream.close(force: true);
     await _server?.close(force: true);
     _server = null;
+    final directory = _cacheDirectory;
+    _cacheDirectory = null;
+    if (directory != null) {
+      try {
+        if (await directory.exists()) await directory.delete(recursive: true);
+      } catch (_) {}
+    }
   }
 }
 
@@ -440,4 +573,14 @@ class _EncryptedMedia {
   final String mimeType;
   DateTime lastAccess;
   int accessSequence;
+  File? cachedCiphertext;
+  Future<File>? cacheFuture;
+  bool removed = false;
+}
+
+class _CipherSource {
+  const _CipherSource(this.stream, {required this.skip});
+
+  final Stream<List<int>> stream;
+  final int skip;
 }

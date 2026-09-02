@@ -1,10 +1,9 @@
 # Deltiecord
 
-> **Current release: version 0.9.23 build 73 beta release**
+> **Current release: version 0.9.23 build 74 stable release**
 >
-> Deltiecord is a desktop and Android beta. It is usable for everyday testing,
-> but bugs and rough edges should still be expected while the project approaches
-> v1.0.
+> Deltiecord is available for desktop and Android. Build 74 is the first release
+> on the stable channel, although broader hardware testing continues before v1.0.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -162,12 +161,14 @@ Some features are still missing or incomplete, including:
 - broader interoperability testing
 - complete testing across all supported desktop environments and hardware combinations
 
-The current `0.9.x` series should be considered a prerelease.
+Build 74 is the first `0.9.x` release promoted to the stable channel. The
+version remains below 1.0 while broader platform and hardware validation
+continues.
 
 The intended meaning of the version numbers is roughly:
 
 ```text
-0.9.x   Feature-complete desktop beta
+0.9.x   Feature-complete pre-1.0 releases
 1.0     Stable desktop release
 ```
 
@@ -238,4 +239,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.23 build 73, beta release**
+**Current release: v0.9.23 build 74, stable release**

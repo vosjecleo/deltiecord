@@ -290,7 +290,6 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
         key: const Key('compact-profile-popup'),
         color: Colors.transparent,
         shape: RoundedRectangleBorder(
-          side: BorderSide(color: accent.withValues(alpha: 0.72), width: 2),
           borderRadius: DeltiecordCorners.borderRadius,
         ),
         clipBehavior: Clip.antiAlias,
@@ -629,10 +628,7 @@ class _ProfileLoadingCard extends StatelessWidget {
   Widget build(BuildContext context) => Material(
     key: const Key('profile-loading-state'),
     color: context.deltiecord.surface,
-    shape: RoundedRectangleBorder(
-      side: BorderSide(color: context.deltiecord.divider),
-      borderRadius: DeltiecordCorners.borderRadius,
-    ),
+    shape: RoundedRectangleBorder(borderRadius: DeltiecordCorners.borderRadius),
     clipBehavior: Clip.antiAlias,
     child: SizedBox(
       width: compact ? 340 : 620,

@@ -97,7 +97,6 @@ class _LinkPreviewCard extends StatelessWidget {
     final mediaWidth = maxWidth / maxHeight > aspectRatio
         ? maxHeight * aspectRatio
         : maxWidth;
-    final mediaHeight = mediaWidth / aspectRatio;
     return Align(
       alignment: Alignment.centerLeft,
       child: SizedBox(
@@ -106,7 +105,6 @@ class _LinkPreviewCard extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: context.deltiecord.elevated,
-            border: Border.all(color: context.deltiecord.divider),
             borderRadius: DeltiecordCorners.borderRadius,
           ),
           child: Column(
@@ -115,7 +113,6 @@ class _LinkPreviewCard extends StatelessWidget {
               if (video != null)
                 SizedBox(
                   width: mediaWidth,
-                  height: mediaHeight,
                   child: _LinkVideoPlayer(
                     uri: video,
                     thumbnail: preview.imageBytes,
@@ -203,6 +200,10 @@ class _LinkVideoPlayer extends StatefulWidget {
 class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
   Player? _player;
   VideoController? _controller;
+  StreamSubscription<int?>? _widthSubscription;
+  StreamSubscription<int?>? _heightSubscription;
+  int? _naturalWidth;
+  int? _naturalHeight;
   bool _opened = false;
   bool _opening = false;
   String? _error;
@@ -229,6 +230,16 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
         );
     _player = player;
     _controller ??= VideoController(player);
+    _widthSubscription ??= player.stream.width.listen((value) {
+      if (mounted && value != null && value > 0) {
+        setState(() => _naturalWidth = value);
+      }
+    });
+    _heightSubscription ??= player.stream.height.listen((value) {
+      if (mounted && value != null && value > 0) {
+        setState(() => _naturalHeight = value);
+      }
+    });
     setState(() {
       _opening = true;
       _error = null;
@@ -248,6 +259,8 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
 
   @override
   void dispose() {
+    _widthSubscription?.cancel();
+    _heightSubscription?.cancel();
     _player?.dispose();
     super.dispose();
   }
@@ -256,8 +269,11 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
   Widget build(BuildContext context) {
     final player = _player;
     final controller = _controller;
+    final naturalRatio = _naturalWidth != null && _naturalHeight != null
+        ? _naturalWidth! / _naturalHeight!
+        : widget.aspectRatio;
     final surface = AspectRatio(
-      aspectRatio: widget.aspectRatio.clamp(0.25, 4.0).toDouble(),
+      aspectRatio: naturalRatio.clamp(0.25, 4.0).toDouble(),
       child: player == null || controller == null
           ? _VideoPoster(
               onPlay: _toggle,
@@ -757,6 +773,21 @@ class _AttachmentViewState extends State<_AttachmentView> {
       widget.messageId,
       thumbnail: !widget.attachment.animated,
     );
+    final screen = MediaQuery.sizeOf(context);
+    final metadataWidth = widget.attachment.width;
+    final metadataHeight = widget.attachment.height;
+    final ratio =
+        metadataWidth != null &&
+            metadataHeight != null &&
+            metadataWidth > 0 &&
+            metadataHeight > 0
+        ? (metadataWidth / metadataHeight).clamp(0.25, 4.0).toDouble()
+        : 3 / 4;
+    final maxWidth = min(420.0, screen.width * 0.5);
+    final maxHeight = min(520.0, screen.height * 0.5);
+    final frame = maxWidth / maxHeight > ratio
+        ? Size(maxHeight * ratio, maxHeight)
+        : Size(maxWidth, maxWidth / ratio);
     return FutureBuilder<Uint8List>(
       future: _imageBytes,
       builder: (context, snapshot) {
@@ -772,20 +803,22 @@ class _AttachmentViewState extends State<_AttachmentView> {
         }
         final bytes = snapshot.data;
         if (bytes == null) {
-          return const SizedBox(
-            width: 184,
-            height: 144,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          return SizedBox(
+            width: frame.width,
+            height: frame.height,
+            child: ColoredBox(
+              color: context.deltiecord.elevated,
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
           );
         }
-        final screen = MediaQuery.sizeOf(context);
         return Align(
           alignment: Alignment.centerLeft,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: screen.width * 0.5,
-              maxHeight: screen.height * 0.5,
-            ),
+          child: SizedBox(
+            width: frame.width,
+            height: frame.height,
             child: InkWell(
               onTap: _showMedia,
               onSecondaryTapDown: (details) => _showContextMenu(
@@ -909,7 +942,6 @@ class _FileTile extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
     decoration: BoxDecoration(
       color: context.deltiecord.elevated,
-      border: Border.all(color: context.deltiecord.divider),
       borderRadius: DeltiecordCorners.borderRadius,
     ),
     child: Row(
@@ -1488,7 +1520,6 @@ class _InlineAudioState extends State<_InlineAudio> {
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
     decoration: BoxDecoration(
       color: context.deltiecord.elevated,
-      border: Border.all(color: context.deltiecord.divider),
       borderRadius: DeltiecordCorners.borderRadius,
     ),
     child: StreamBuilder<bool>(

@@ -77,7 +77,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
               decoration: const InputDecoration(
                 prefixIcon: Icon(Icons.search),
                 hintText: 'Search names and aliases',
-                border: OutlineInputBorder(),
+                border: InputBorder.none,
               ),
             ),
             const SizedBox(height: 8),

@@ -1074,7 +1074,6 @@ class _RoomPanelState extends State<_RoomPanel> {
                       color: context.deltiecord.elevated,
                       shape: RoundedRectangleBorder(
                         borderRadius: DeltiecordCorners.borderRadius,
-                        side: BorderSide(color: context.deltiecord.divider),
                       ),
                       child: Padding(
                         padding: const EdgeInsets.all(6),
@@ -1142,7 +1141,6 @@ class _CurrentUserPanel extends StatelessWidget {
           color: context.deltiecord.island,
           shape: RoundedRectangleBorder(
             borderRadius: DeltiecordCorners.borderRadius,
-            side: const BorderSide(color: Colors.black, width: 1),
           ),
           clipBehavior: Clip.antiAlias,
           child: InkWell(

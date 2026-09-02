@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,8 +7,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
@@ -63,7 +60,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   bool _restoringScrollAnchor = false;
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
-  int _timelineInputGeneration = 0;
+  _TimelineScrollAnchor? _pendingPageAnchor;
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
   int _navigationGeneration = 0;
@@ -75,8 +72,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   int? _emojiStart;
   int _emojiGeneration = 0;
   bool _replacingEmoji = false;
-  MediaRecorder? _voiceRecorder;
-  String? _voiceRecordingPath;
 
   ChatBackend get backend => widget.backend;
 
@@ -193,6 +188,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
 
   void _handleScroll() {
     if (!_scroll.hasClients || _restoringScrollAnchor) return;
+    if (_pageLoadInFlight) {
+      _pendingPageAnchor = _captureScrollAnchor() ?? _pendingPageAnchor;
+    }
     final position = _scroll.position;
     backend.setConversationAtPresent(
       position.pixels <= 48 && backend.atTimelinePresent,
@@ -214,7 +212,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   void _noteTimelineUserInput(PointerEvent _) {
-    _timelineInputGeneration++;
     _timelineUserInputUntil = DateTime.now().add(const Duration(seconds: 1));
   }
 
@@ -225,7 +222,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       const Duration(milliseconds: 700),
     );
     final anchor = _captureScrollAnchor();
-    final inputGeneration = _timelineInputGeneration;
+    _pendingPageAnchor = anchor;
     try {
       if (older) {
         await backend.loadMoreHistory(anchorEventId: anchor?.eventId);
@@ -233,9 +230,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
         await backend.loadMoreFuture(anchorEventId: anchor?.eventId);
       }
       await WidgetsBinding.instance.endOfFrame;
-      if (!mounted || inputGeneration != _timelineInputGeneration) return;
-      _restoreScrollAnchor(anchor);
+      if (!mounted) return;
+      _restoreScrollAnchor(_pendingPageAnchor ?? anchor);
     } finally {
+      _pendingPageAnchor = null;
       _pageLoadInFlight = false;
     }
   }
@@ -388,14 +386,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _focus.dispose();
     _scroll.dispose();
     _giphy.dispose();
-    final recorder = _voiceRecorder;
-    if (recorder != null) unawaited(recorder.stop());
-    final recordingPath = _voiceRecordingPath;
-    if (recordingPath != null) {
-      unawaited(
-        File(recordingPath).delete().then<void>((_) {}, onError: (_) {}),
-      );
-    }
     super.dispose();
   }
 
@@ -421,7 +411,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     if (!_autoFillingInitialChunk &&
         !backend.timelineLoading &&
         !backend.historyLoading &&
-        messages.length < backend.preferences.timelineChunkSize &&
+        (messages.length < backend.preferences.timelineChunkSize ||
+            (_scroll.hasClients && _scroll.position.maxScrollExtent <= 8)) &&
         backend.canLoadMoreHistory) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _fillInitialChunk());
     }
@@ -728,9 +719,15 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       var emptyPasses = 0;
       while (mounted &&
           backend.selectedRoom?.id == widget.room.id &&
-          previousCount < backend.preferences.timelineChunkSize &&
           backend.canLoadMoreHistory &&
           emptyPasses < 4) {
+        await WidgetsBinding.instance.endOfFrame;
+        final viewportNeedsContent =
+            _scroll.hasClients && _scroll.position.maxScrollExtent <= 8;
+        if (!viewportNeedsContent &&
+            previousCount >= backend.preferences.timelineChunkSize) {
+          break;
+        }
         await backend.loadMoreHistory();
         final currentCount = backend.messages.length;
         if (currentCount <= previousCount) {
@@ -758,13 +755,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       selection: TextSelection.collapsed(offset: 0),
       composing: TextRange.empty,
     );
-    // Android IMEs can retain a latched Shift/Caps composing state after the
-    // controller is merely cleared. Reconnecting the field on the next frame
-    // starts the next message with a fresh editing session.
-    _focus.unfocus();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focus.requestFocus();
-    });
+    // Keep the existing Android input connection alive. Reconnecting it here
+    // makes the keyboard visibly close and reopen after every sent message;
+    // clearing the composing range is sufficient for the next draft.
     setState(() {
       _sending = true;
       _attachments.clear();
@@ -844,14 +837,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               onTap: () => Navigator.pop(context, 'camera-video'),
             ),
             ListTile(
-              leading: const Icon(Icons.mic_none),
-              title: const Text('Record voice message'),
-              subtitle: const Text(
-                'Transcription requires an on-device recognizer',
-              ),
-              onTap: () => Navigator.pop(context, 'voice'),
-            ),
-            ListTile(
               leading: const Icon(Icons.gif_box_outlined),
               title: const Text('GIF'),
               onTap: () => Navigator.pop(context, 'gif'),
@@ -862,10 +847,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     );
     if (choice == 'gif') return _showGifPicker();
     if (choice == null) return;
-    if (choice == 'voice') {
-      await _recordVoiceMessage();
-      return;
-    }
     if (choice == 'camera-photo' || choice == 'camera-video') {
       await _captureMedia(video: choice == 'camera-video');
       return;
@@ -889,86 +870,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           ),
         );
     setState(() => _attachments.addAll(drafts));
-  }
-
-  Future<void> _recordVoiceMessage() async {
-    final directory = await getTemporaryDirectory();
-    final path =
-        '${directory.path}/deltiecord-voice-${DateTime.now().microsecondsSinceEpoch}.m4a';
-    final recorder = MediaRecorder(albumName: 'Deltiecord');
-    _voiceRecorder = recorder;
-    _voiceRecordingPath = path;
-    final startedAt = DateTime.now();
-    try {
-      await recorder.start(path, audioChannel: RecorderAudioChannel.INPUT);
-      if (!mounted) {
-        await recorder.stop();
-        return;
-      }
-      final send = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: const Text('Recording voice message'),
-          content: const Row(
-            children: [
-              Icon(Icons.mic, color: Colors.redAccent),
-              SizedBox(width: 10),
-              Expanded(child: Text('Speak now. Stop to attach the recording.')),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
-            ),
-          ],
-        ),
-      );
-      await recorder.stop();
-      _voiceRecorder = null;
-      _voiceRecordingPath = null;
-      final file = File(path);
-      if (send != true || !await file.exists()) {
-        if (await file.exists()) await file.delete();
-        return;
-      }
-      final bytes = await file.readAsBytes();
-      await file.delete();
-      if (!mounted || bytes.isEmpty) return;
-      setState(() {
-        _attachments.add(
-          AttachmentDraft(
-            bytes: bytes,
-            name: 'voice-message.m4a',
-            mimeType: 'audio/mp4',
-            spoiler: false,
-            voiceMessage: true,
-            durationMilliseconds: DateTime.now()
-                .difference(startedAt)
-                .inMilliseconds,
-          ),
-        );
-      });
-    } catch (exception) {
-      try {
-        await recorder.stop();
-      } catch (_) {}
-      _voiceRecorder = null;
-      _voiceRecordingPath = null;
-      final file = File(path);
-      if (await file.exists()) await file.delete();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not record audio: $exception')),
-        );
-      }
-    }
   }
 
   Future<void> _captureMedia({required bool video}) async {
@@ -1200,12 +1101,17 @@ class _MobileMessageRow extends StatelessWidget {
                   width: 40,
                   child: grouped
                       ? null
-                      : GestureDetector(
-                          onTap: onProfile,
-                          child: MobileAvatar(
-                            bytes: message.avatarBytes,
-                            fallback: message.sender,
-                            size: 40,
+                      : Padding(
+                          padding: EdgeInsets.only(
+                            top: message.reply == null ? 0 : 22,
+                          ),
+                          child: GestureDetector(
+                            onTap: onProfile,
+                            child: MobileAvatar(
+                              bytes: message.avatarBytes,
+                              fallback: message.sender,
+                              size: 40,
+                            ),
                           ),
                         ),
                 ),
@@ -1214,6 +1120,54 @@ class _MobileMessageRow extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (message.reply case final reply?)
+                        Transform.translate(
+                          offset: const Offset(-48, 0),
+                          child: InkWell(
+                            key: ValueKey('mobile-reply-${message.id}'),
+                            onTap: () => onJumpToReply(reply.eventId),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Row(
+                                children: [
+                                  CustomPaint(
+                                    size: const Size(40, 20),
+                                    painter: _MobileReplyConnector(
+                                      color: context.deltiecord.muted,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: '${reply.sender}  ',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          TextSpan(
+                                            text: reply.body.replaceAll(
+                                              '\n',
+                                              ' ',
+                                            ),
+                                            style: TextStyle(
+                                              color: context.deltiecord.muted,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       if (!grouped)
                         GestureDetector(
                           onTap: onProfile,
@@ -1277,48 +1231,6 @@ class _MobileMessageRow extends StatelessWidget {
                                 ),
                               ],
                             ],
-                          ),
-                        ),
-                      if (message.reply case final reply?)
-                        InkWell(
-                          key: ValueKey('mobile-reply-${message.id}'),
-                          onTap: () => onJumpToReply(reply.eventId),
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 3),
-                            child: Row(
-                              children: [
-                                CustomPaint(
-                                  size: const Size(18, 18),
-                                  painter: _MobileReplyConnector(
-                                    color: context.deltiecord.muted,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: Text.rich(
-                                    TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: '${reply.sender}  ',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        TextSpan(
-                                          text: reply.body,
-                                          style: TextStyle(
-                                            color: context.deltiecord.muted,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ),
-                              ],
-                            ),
                           ),
                         ),
                       if (!message.redacted)
@@ -1496,15 +1408,15 @@ class _MobileReplyConnector extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
     final path = Path()
-      ..moveTo(size.width, size.height * 0.75)
-      ..lineTo(size.width * 0.45, size.height * 0.75)
+      ..moveTo(size.width * 0.5, size.height)
+      ..lineTo(size.width * 0.5, size.height * 0.52)
       ..quadraticBezierTo(
-        size.width * 0.15,
-        size.height * 0.75,
-        size.width * 0.15,
-        size.height * 0.45,
+        size.width * 0.5,
+        size.height * 0.28,
+        size.width * 0.72,
+        size.height * 0.28,
       )
-      ..lineTo(size.width * 0.15, 0);
+      ..lineTo(size.width, size.height * 0.28);
     canvas.drawPath(path, paint);
   }
 
@@ -1640,7 +1552,6 @@ class _MobileComposerState extends State<_MobileComposer> {
             elevation: 8,
             color: context.deltiecord.surface,
             shape: RoundedRectangleBorder(
-              side: BorderSide(color: context.deltiecord.divider),
               borderRadius: BorderRadius.circular(12),
             ),
             clipBehavior: Clip.antiAlias,
@@ -1691,8 +1602,7 @@ class _MobileComposerState extends State<_MobileComposer> {
           key: const ValueKey('mobile-composer'),
           margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
           decoration: BoxDecoration(
-            color: context.deltiecord.elevated,
-            border: Border.all(color: Colors.black, width: 1),
+            color: context.deltiecord.island,
             borderRadius: DeltiecordCorners.borderRadius,
           ),
           child: Column(

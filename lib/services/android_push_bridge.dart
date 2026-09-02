@@ -102,7 +102,25 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
   }
 
   final settings = client.accountData['net.deltiecord.settings']?.content;
-  if (_activeDesktopLeasePresent(client)) return null;
+  Map<String, Object?>? desktopActivity =
+      client.accountData['net.deltiecord.device_activity']?.content;
+  final userId = client.userID;
+  if (userId != null) {
+    try {
+      desktopActivity = await client
+          .getAccountData(userId, 'net.deltiecord.device_activity')
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      // The local copy remains a useful best-effort lease if account-data
+      // refresh is temporarily unavailable.
+    }
+  }
+  if (hasActiveDesktopLease(
+    desktopActivity,
+    currentDeviceId: client.deviceID,
+  )) {
+    return null;
+  }
   final previewsEnabled =
       settings?.tryGet<bool>('notification_previews') ?? true;
   final sender = displayEvent.senderFromMemoryOrFallback;
@@ -190,15 +208,23 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
   };
 }
 
-bool _activeDesktopLeasePresent(Client client) {
-  final content = client.accountData['net.deltiecord.device_activity']?.content;
+/// Whether another desktop device currently owns the user's notification UI.
+///
+/// Desktop publishes a short renewable lease while foregrounded and active.
+/// Android suppresses external push notifications only for that state; an
+/// idle, backgrounded, expired, or mobile lease never silences the phone.
+bool hasActiveDesktopLease(
+  Map<String, Object?>? content, {
+  required String? currentDeviceId,
+  DateTime? now,
+}) {
   final devices = content?.tryGetMap<String, Object?>('devices');
   if (devices == null) return false;
-  final cutoff = DateTime.now()
+  final cutoff = (now ?? DateTime.now())
       .subtract(const Duration(minutes: 2))
       .millisecondsSinceEpoch;
   for (final entry in devices.entries) {
-    if (entry.key == client.deviceID || entry.value is! Map) continue;
+    if (entry.key == currentDeviceId || entry.value is! Map) continue;
     final lease = entry.value as Map;
     final platform = lease['platform'];
     final updatedAt = lease['updated_at'];

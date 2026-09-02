@@ -171,7 +171,7 @@ class _SecurityDialogState extends State<_SecurityDialog> {
                           maxLines: _hideRecoveryKey ? 1 : 4,
                           decoration: InputDecoration(
                             labelText: 'Recovery key or passphrase',
-                            border: const OutlineInputBorder(),
+                            border: InputBorder.none,
                             suffixIcon: IconButton(
                               tooltip: _hideRecoveryKey ? 'Show' : 'Hide',
                               onPressed: () => setState(

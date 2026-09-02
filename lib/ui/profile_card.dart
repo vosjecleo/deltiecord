@@ -59,10 +59,6 @@ class DeltiecordProfileCard extends StatelessWidget {
           BoxShadow(color: Color(0x44000000), blurRadius: 18, spreadRadius: 2),
         ],
       ),
-      foregroundDecoration: BoxDecoration(
-        border: Border.all(color: accent.withValues(alpha: 0.75), width: 2),
-        borderRadius: DeltiecordCorners.borderRadius,
-      ),
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -151,7 +147,6 @@ class DeltiecordProfileCard extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: palette.background,
-                    border: Border.all(color: palette.divider),
                     borderRadius: DeltiecordCorners.borderRadius,
                   ),
                   child: Column(
@@ -245,7 +240,6 @@ class ProfileStatusBubble extends StatelessWidget {
         accent.withValues(alpha: 0.18),
         context.deltiecord.elevated,
       ),
-      border: Border.all(color: accent.withValues(alpha: 0.58)),
       borderRadius: DeltiecordCorners.borderRadius,
     ),
     child: Row(
@@ -377,7 +371,6 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: palette.elevated,
-                    border: Border.all(color: palette.divider),
                     borderRadius: DeltiecordCorners.borderRadius,
                   ),
                   child: Row(

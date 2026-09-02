@@ -96,7 +96,6 @@ class _SidePanelRegionState extends State<_SidePanelRegion> {
                   elevation: 6,
                   shadowColor: Colors.black54,
                   shape: RoundedRectangleBorder(
-                    side: BorderSide(color: context.deltiecord.divider),
                     borderRadius: DeltiecordCorners.borderRadius,
                   ),
                   child: InkWell(

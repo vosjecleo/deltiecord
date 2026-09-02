@@ -124,7 +124,6 @@ class _RecipientProfileContents extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [gradientTop, gradientBottom],
         ),
-        border: Border.all(color: accent.withValues(alpha: 0.72), width: 2),
       ),
       child: Column(
         children: [
@@ -228,7 +227,6 @@ class _RecipientProfileContents extends StatelessWidget {
                             child: DecoratedBox(
                               decoration: BoxDecoration(
                                 color: palette.surface,
-                                border: Border.all(color: palette.divider),
                                 borderRadius: DeltiecordCorners.borderRadius,
                               ),
                               child: Padding(
@@ -279,7 +277,6 @@ class _RecipientProfileContents extends StatelessWidget {
                       foregroundColor: Theme.of(context).colorScheme.onSurface,
                       shape: RoundedRectangleBorder(
                         borderRadius: DeltiecordCorners.borderRadius,
-                        side: const BorderSide(color: Colors.black, width: 1),
                       ),
                     ),
                     onPressed: () =>

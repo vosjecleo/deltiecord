@@ -1,9 +1,9 @@
 # Installing Deltiecord
 
-Deltiecord 0.9.23 build 73 is a beta release for Android, x86-64 Windows, and
+Deltiecord 0.9.23 build 74 is a stable release for Android, x86-64 Windows, and
 Linux.
 Download official builds from the [Deltiecord releases page](https://deltie.net/cord)
-or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.23-b73).
+or the [GitHub release](https://github.com/vosjecleo/deltiecord/releases/tag/v0.9.23-b74).
 
 Before installing a downloaded build, verify it against the included
 `SHA256SUMS` file:
@@ -15,11 +15,11 @@ sha256sum -c SHA256SUMS
 ## Android
 
 Download the APK matching the device architecture. Most current phones use
-`deltiecord-0.9.23+73-android-arm64-v8a.apk`; older 32-bit phones use
+`deltiecord-0.9.23+74-android-arm64-v8a.apk`; older 32-bit phones use
 `armeabi-v7a`, while `x86_64` is primarily for emulators. Verify
 its checksum, allow installation from the browser or file manager when Android
-asks, then open the APK. The prerelease APK uses Deltiecord's persistent
-prerelease signing identity; v0.9.19 was the first build signed by this identity.
+asks, then open the APK. The APK uses Deltiecord's persistent release-signing
+identity; v0.9.19 was the first build signed by this identity.
 The private keystore and passwords are stored outside the repository. APKs from
 builds 62 and 63 used ephemeral identities and require one uninstall before this
 first persistently signed build can be installed; later upgrades retain the same
@@ -39,12 +39,12 @@ still require broader real-device testing.
 
 ### Installer
 
-Download `deltiecord-0.9.23+73-windows-x64-setup.exe`, run it, and follow the
+Download `deltiecord-0.9.23+74-windows-x64-setup.exe`, run it, and follow the
 installer. A normal per-user installation does not require administrator
 privileges. The installer creates a Start Menu entry and can optionally create
 a desktop shortcut.
 
-Windows may warn about an unrecognized application because this beta is not yet
+Windows may warn about an unrecognized application because this release is not yet
 code-signed. Only continue if the filename and SHA-256 checksum match the
 official release.
 
@@ -53,7 +53,7 @@ per-user application data.
 
 ### Portable build
 
-Download `deltiecord-0.9.23+73-windows-x64-portable.zip`, extract the entire
+Download `deltiecord-0.9.23+74-windows-x64-portable.zip`, extract the entire
 archive, and run `deltiecord.exe` from the extracted directory. Do not move only
 the executable: its accompanying DLLs, plugins, data, and assets are required.
 
@@ -64,11 +64,11 @@ issues.
 
 ## Debian, Ubuntu, and Linux Mint
 
-Download `deltiecord-0.9.23+73-linux-debian-amd64.deb`, open a terminal in its directory, and
+Download `deltiecord-0.9.23+74-linux-debian-amd64.deb`, open a terminal in its directory, and
 install it with APT:
 
 ```sh
-sudo apt install ./deltiecord-0.9.23+73-linux-debian-amd64.deb
+sudo apt install ./deltiecord-0.9.23+74-linux-debian-amd64.deb
 ```
 
 APT installs the package and its declared runtime dependencies. Launch it from
@@ -89,10 +89,10 @@ data.
 
 ## Arch Linux
 
-Download `deltiecord-0.9.23+73-linux-arch-x86_64.pkg.tar.zst` and install it with pacman:
+Download `deltiecord-0.9.23+74-linux-arch-x86_64.pkg.tar.zst` and install it with pacman:
 
 ```sh
-sudo pacman -U ./deltiecord-0.9.23+73-linux-arch-x86_64.pkg.tar.zst
+sudo pacman -U ./deltiecord-0.9.23+74-linux-arch-x86_64.pkg.tar.zst
 ```
 
 Launch Deltiecord from the application menu or run `deltiecord`. Remove the
@@ -101,11 +101,11 @@ package with `sudo pacman -R deltiecord`; user data remains untouched.
 ## AppImage
 
 The AppImage is useful on other current x86-64 Linux distributions. Download
-`deltiecord-0.9.23+73-linux-appimage-x86_64.AppImage`, make it executable, and launch it:
+`deltiecord-0.9.23+74-linux-appimage-x86_64.AppImage`, make it executable, and launch it:
 
 ```sh
-chmod +x deltiecord-0.9.23+73-linux-appimage-x86_64.AppImage
-./deltiecord-0.9.23+73-linux-appimage-x86_64.AppImage
+chmod +x deltiecord-0.9.23+74-linux-appimage-x86_64.AppImage
+./deltiecord-0.9.23+74-linux-appimage-x86_64.AppImage
 ```
 
 The AppImage contains the Flutter application but deliberately relies on some

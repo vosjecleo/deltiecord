@@ -65,7 +65,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Homeserver',
                       hintText: 'https://matrix.example.org',
-                      border: OutlineInputBorder(),
+                      border: InputBorder.none,
                     ),
                     validator: (value) {
                       final uri = normalizedHomeserverUri(value ?? '');
@@ -80,7 +80,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !loading,
                     decoration: const InputDecoration(
                       labelText: 'Username or Matrix ID',
-                      border: OutlineInputBorder(),
+                      border: InputBorder.none,
                     ),
                     validator: (value) => value == null || value.trim().isEmpty
                         ? 'Enter your username.'
@@ -94,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onFieldSubmitted: (_) => loading ? null : _login(),
                     decoration: const InputDecoration(
                       labelText: 'Password',
-                      border: OutlineInputBorder(),
+                      border: InputBorder.none,
                     ),
                     validator: (value) => value == null || value.isEmpty
                         ? 'Enter your password.'

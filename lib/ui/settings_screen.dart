@@ -281,7 +281,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
               initialValue: backend.selectedAudioInputId,
               decoration: const InputDecoration(
                 labelText: 'Microphone',
-                border: OutlineInputBorder(),
+                border: InputBorder.none,
               ),
               items: [
                 const DropdownMenuItem(
@@ -308,7 +308,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           initialValue: backend.selectedAudioOutputId,
           decoration: const InputDecoration(
             labelText: 'Audio output',
-            border: OutlineInputBorder(),
+            border: InputBorder.none,
           ),
           items: [
             const DropdownMenuItem(value: null, child: Text('System default')),
@@ -324,7 +324,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           initialValue: backend.selectedCameraId,
           decoration: const InputDecoration(
             labelText: 'Camera',
-            border: OutlineInputBorder(),
+            border: InputBorder.none,
           ),
           items: [
             const DropdownMenuItem(value: null, child: Text('System default')),
@@ -679,7 +679,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           labelText: 'Fallback emoji font',
           helperText:
               'System fallback is recommended and avoids changing text spacing.',
-          border: OutlineInputBorder(),
+          border: InputBorder.none,
         ),
         items: const [
           DropdownMenuItem(
@@ -1019,7 +1019,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         initialValue: preferences.fontFamily,
         decoration: const InputDecoration(
           labelText: 'Interface font',
-          border: OutlineInputBorder(),
+          border: InputBorder.none,
         ),
         items:
             const [
@@ -1507,7 +1507,7 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
           obscureText: true,
           decoration: const InputDecoration(
             labelText: 'Matrix account password',
-            border: OutlineInputBorder(),
+            border: InputBorder.none,
           ),
         ),
       ],

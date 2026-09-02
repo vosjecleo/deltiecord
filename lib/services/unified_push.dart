@@ -18,6 +18,10 @@ final class UnifiedPushState {
     this.lastEndpointRotation,
     this.lastPusherVerification,
     this.lastPusherResult,
+    this.registrationStage,
+    this.lastTestRequest,
+    this.lastTestReceived,
+    this.lastTestResult,
   });
 
   final String? distributor;
@@ -29,6 +33,10 @@ final class UnifiedPushState {
   final DateTime? lastEndpointRotation;
   final DateTime? lastPusherVerification;
   final String? lastPusherResult;
+  final String? registrationStage;
+  final DateTime? lastTestRequest;
+  final DateTime? lastTestReceived;
+  final String? lastTestResult;
 
   bool get registered => endpoint?.isNotEmpty == true;
 }
@@ -116,6 +124,14 @@ final class UnifiedPushPlatform {
 
   Future<void> unregister(String instance) =>
       _channel.invokeMethod<void>('unregister', {'instance': instance});
+
+  Future<UnifiedPushState> testPush(String instance) async {
+    if (!supported) return const UnifiedPushState();
+    final result = await _channel.invokeMapMethod<String, Object?>('testPush', {
+      'instance': instance,
+    });
+    return _decodeState(result);
+  }
 
   /// Persists a secret-free result for Settings diagnostics.
   Future<void> recordPusherVerification(String result) async {
@@ -214,6 +230,10 @@ final class UnifiedPushPlatform {
           result?['lastPusherVerification'],
         ),
         lastPusherResult: result?['lastPusherResult'] as String?,
+        registrationStage: result?['registrationStage'] as String?,
+        lastTestRequest: _dateFromMilliseconds(result?['lastTestRequest']),
+        lastTestReceived: _dateFromMilliseconds(result?['lastTestReceived']),
+        lastTestResult: result?['lastTestResult'] as String?,
       );
 
   DateTime? _dateFromMilliseconds(Object? value) {
@@ -228,20 +248,11 @@ final class UnifiedPushPlatform {
     Map<String, String> arguments,
     String instance,
   ) async {
-    try {
-      final result = await _channel.invokeMapMethod<String, Object?>(
-        method,
-        arguments,
-      );
-      return _decodeState(result);
-    } on PlatformException {
-      // A distributor callback can race the native registration timeout. The
-      // callback-owned preference is authoritative, so recover it before
-      // reporting a failure that would otherwise disappear after restart.
-      final recovered = await state(instance);
-      if (recovered.registered) return recovered;
-      rethrow;
-    }
+    final result = await _channel.invokeMapMethod<String, Object?>(
+      method,
+      arguments,
+    );
+    return _decodeState(result);
   }
 }
 

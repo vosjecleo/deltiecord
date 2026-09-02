@@ -609,6 +609,14 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                             'Last Matrix pusher check: ${checked.toLocal()}',
                           if (state?.lastPusherResult case final result?)
                             'Matrix pusher result: $result',
+                          if (state?.registrationStage case final stage?)
+                            'Current stage: ${stage.replaceAll('_', ' ')}',
+                          if (state?.lastTestRequest case final requested?)
+                            'Last test request: ${requested.toLocal()}',
+                          if (state?.lastTestReceived case final received?)
+                            'Last test callback: ${received.toLocal()}',
+                          if (state?.lastTestResult case final result?)
+                            'Last test result: ${result.replaceAll('_', ' ')}',
                         ].join('\n'),
                 ),
                 trailing: snapshot.connectionState != ConnectionState.done
@@ -633,6 +641,11 @@ class _SettingsScreenState extends State<_SettingsScreen> {
               onPressed: _refreshUnifiedPushRegistration,
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh registration'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _testUnifiedPush,
+              icon: const Icon(Icons.notification_important_outlined),
+              label: const Text('Test background path'),
             ),
             TextButton.icon(
               onPressed: _disableUnifiedPush,
@@ -1279,6 +1292,28 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     if (mounted) {
       _reloadUnifiedPush();
       _showSettingMessage('UnifiedPush disabled.');
+    }
+  }
+
+  Future<void> _testUnifiedPush() async {
+    final userId = backend.userId;
+    if (userId == null) return;
+    try {
+      _showSettingMessage(
+        'Sending a private round-trip test through the Matrix gateway…',
+      );
+      final state = await UnifiedPushPlatform.instance.testPush(userId);
+      if (!mounted) return;
+      _reloadUnifiedPush();
+      _showSettingMessage(
+        state.lastTestResult == 'receiver_verified'
+            ? 'UnifiedPush gateway and Android receiver verified.'
+            : 'Push test completed: ${state.lastTestResult ?? 'unknown result'}.',
+      );
+    } catch (exception) {
+      if (!mounted) return;
+      _reloadUnifiedPush();
+      _showSettingMessage('UnifiedPush test failed: $exception');
     }
   }
 

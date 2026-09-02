@@ -6,6 +6,7 @@ import org.unifiedpush.android.connector.MessagingReceiver
 import org.unifiedpush.android.connector.data.PushEndpoint
 import org.unifiedpush.android.connector.data.PushMessage
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Receives capability endpoints and Matrix sync pokes from a user-selected
@@ -30,6 +31,7 @@ class DeltiecordPushService : MessagingReceiver() {
             .putString("last_instance", instance)
             .putString("last_pusher_result", "verification_pending")
             .remove(errorKey(instance))
+            .putString("registration_stage", "endpoint_received")
         if (previous != endpointUrl) {
             editor.putLong("last_endpoint_rotation_ms", System.currentTimeMillis())
         }
@@ -48,16 +50,30 @@ class DeltiecordPushService : MessagingReceiver() {
         // a permanent, content-free "silent" alert.
         preferences(context).edit()
             .putLong("last_message_received_ms", System.currentTimeMillis())
+            .putString("registration_stage", "push_received")
             .apply()
         val metadata = parseMatrixMetadata(message.content)
+        if (metadata.eventId?.startsWith(TEST_EVENT_PREFIX) == true) {
+            preferences(context).edit()
+                .putLong("last_test_received_ms", System.currentTimeMillis())
+                .putString("last_test_result", "receiver_callback_reached")
+                .putString("registration_stage", "test_push_received")
+                .apply()
+            stateChangedListener?.invoke(instance)
+            return
+        }
         if (metadata.roomId != null && metadata.eventId != null) {
+            DeltiecordPushWakeService.start(context)
             DeltiecordPushWorker.enqueue(context, metadata.roomId, metadata.eventId)
+        } else {
+            recordWorkerResult(context, "push_payload_missing_event")
         }
     }
 
     override fun onRegistrationFailed(context: Context, reason: FailedReason, instance: String) {
         preferences(context).edit()
             .putString(errorKey(instance), reason.name)
+            .putString("registration_stage", "registration_failed")
             .apply()
         stateChangedListener?.invoke(instance)
     }
@@ -69,6 +85,7 @@ class DeltiecordPushService : MessagingReceiver() {
 
     companion object {
         private const val PREFS = "deltiecord_unified_push"
+        internal const val TEST_EVENT_PREFIX = "\$deltiecord-push-test-"
 
         /**
          * Completes an in-flight registration while Flutter is alive.
@@ -112,13 +129,50 @@ class DeltiecordPushService : MessagingReceiver() {
                 ?.toString(),
             "lastPusherResult" to preferences(context)
                 .getString("last_pusher_result", null),
+            "registrationStage" to preferences(context)
+                .getString("registration_stage", null),
+            "lastTestRequest" to preferences(context)
+                .getLong("last_test_request_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
+            "lastTestReceived" to preferences(context)
+                .getLong("last_test_received_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
+            "lastTestResult" to preferences(context)
+                .getString("last_test_result", null),
         )
 
         fun recordWorkerResult(context: Context, result: String) {
             preferences(context).edit()
                 .putString("last_worker_result", result.take(96))
+                .putString("registration_stage", result.take(96))
                 .apply()
         }
+
+        fun recordRegistrationStage(context: Context, stage: String) {
+            preferences(context).edit()
+                .putString("registration_stage", stage.take(96))
+                .apply()
+        }
+
+        fun recordTestRequest(context: Context, result: String) {
+            preferences(context).edit()
+                .putLong("last_test_request_ms", System.currentTimeMillis())
+                .putString("last_test_result", result.take(96))
+                .putString("registration_stage", "test_$result".take(96))
+                .apply()
+        }
+
+        fun recordTestResult(context: Context, result: String) {
+            preferences(context).edit()
+                .putString("last_test_result", result.take(96))
+                .putString("registration_stage", "test_$result".take(96))
+                .apply()
+        }
+
+        fun lastTestReceived(context: Context): Long = preferences(context)
+            .getLong("last_test_received_ms", 0L)
 
         fun recordPusherVerification(context: Context, result: String) {
             preferences(context).edit()
@@ -129,6 +183,46 @@ class DeltiecordPushService : MessagingReceiver() {
 
         fun rememberInstance(context: Context, instance: String) {
             preferences(context).edit().putString("last_instance", instance).apply()
+        }
+
+        fun accountForInstance(context: Context, instance: String): String =
+            preferences(context).getString("account_for_instance:$instance", null)
+                ?.takeIf { it.isNotBlank() }
+                ?: instance
+
+        /**
+         * New registrations use an opaque per-account instance. Existing
+         * registrations keyed by a Matrix ID remain valid until the user
+         * changes distributor or disables push, avoiding a silent migration
+         * window during upgrade.
+         */
+        fun instanceForAccount(
+            context: Context,
+            account: String,
+            create: Boolean,
+        ): String {
+            val prefs = preferences(context)
+            prefs.getString("instance_for_account:$account", null)
+                ?.takeIf { it.isNotBlank() }
+                ?.let { return it }
+            if (endpoint(context, account) != null || !create) return account
+            return newInstanceForAccount(context, account)
+        }
+
+        fun newInstanceForAccount(context: Context, account: String): String {
+            val instance = UUID.randomUUID().toString().replace("-", "")
+            preferences(context).edit()
+                .putString("instance_for_account:$account", instance)
+                .putString("account_for_instance:$instance", account)
+                .apply()
+            return instance
+        }
+
+        fun forgetInstanceForAccount(context: Context, account: String, instance: String) {
+            preferences(context).edit()
+                .remove("instance_for_account:$account")
+                .remove("account_for_instance:$instance")
+                .apply()
         }
 
         fun knownInstance(context: Context): String? = preferences(context)

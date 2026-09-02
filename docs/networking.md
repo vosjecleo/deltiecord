@@ -80,13 +80,14 @@ uses `https://push.deltie.net/_matrix/push/v1/notify`, while an `ntfy.sh`
 capability uses the corresponding `ntfy.sh` gateway. The endpoint is a bearer
 capability and is never displayed in the UI or written to logs.
 
-Android checks the distributor endpoint whenever Deltiecord returns from the
-background, after login or reconnect, after an endpoint-change callback, and
-periodically every 12 hours while a network is available. It verifies that the
-homeserver retained the exact `event_id_only` Matrix pusher and repairs stale or
-missing same-device entries. Notification settings expose only timestamps and
-result categories for this process; the private endpoint itself never enters
-logs, UI diagnostics, or WorkManager input data.
+Distributor registration is requested only during setup, an explicit refresh,
+or a registration failure. The asynchronous endpoint callback is authoritative.
+On foreground resume, reconnect, endpoint rotation, and every 12 hours while a
+network is available, Deltiecord instead verifies that the homeserver retained
+the exact `event_id_only` Matrix pusher and repairs stale or missing same-device
+entries without asking the distributor to rotate its capability. Notification
+settings expose stage timestamps and a gateway-to-receiver test; the private
+endpoint itself never enters logs, visible diagnostics, or WorkManager input.
 
 Release builds use an installed external distributor such as ntfy. Embedded
 Firebase-compatible WebPush is disabled until Deltiecord has a dedicated,
@@ -95,12 +96,13 @@ gateway contract.
 
 The gateway and distributor receive Matrix room/event metadata sufficient to
 wake the application. The push path is not trusted as a source of plaintext.
-After delivery, a bounded Android worker contacts the configured homeserver,
-restores the existing local crypto store, synchronizes the event and decrypts
-its body on-device. Only bounded renderable notification fields cross the local
+After delivery, a short-lived foreground hand-off keeps the process awake until
+a bounded Android worker contacts the configured homeserver, restores the
+existing local crypto store, synchronizes the event and decrypts its body
+on-device. Only bounded renderable notification fields cross the local
 Flutter/Android method channel; access tokens, room keys, and crypto material do
-not. If that local resolution cannot complete, Deltiecord retains a generic
-notification instead.
+not. Failed resolution is reported in private diagnostics without leaving a
+content-free message alert behind.
 
 ## Release update checks
 

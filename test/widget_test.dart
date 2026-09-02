@@ -1676,7 +1676,7 @@ void main() {
     expect(
       tester.getTopLeft(composerIsland).dx -
           tester.getTopLeft(composerPanel).dx,
-      10,
+      5,
     );
     expect(
       tester.getSize(accountIsland).height,

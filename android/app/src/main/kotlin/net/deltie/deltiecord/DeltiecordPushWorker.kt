@@ -73,6 +73,7 @@ class DeltiecordPushWorker(
                 applicationContext,
                 "suppressed_phone_foreground",
             )
+            DeltiecordPushWakeService.stop(applicationContext)
             return Result.success()
         }
         var ownsEngine = false
@@ -158,6 +159,7 @@ class DeltiecordPushWorker(
             DeltiecordNotificationPublisher.cancelBackgroundWorkNotification(
                 applicationContext,
             )
+            DeltiecordPushWakeService.stop(applicationContext)
             if (ownsEngine && engine != null) {
                 withContext(Dispatchers.Main) { engine.destroy() }
             }
@@ -167,18 +169,16 @@ class DeltiecordPushWorker(
     private suspend fun reconcilePusher(): Result {
         val instance = inputData.getString(KEY_INSTANCE)?.takeIf { it.isNotBlank() }
             ?: return Result.failure()
-        // Registration is idempotent for a healthy distributor. If it has
-        // rotated the capability, onNewEndpoint persists it and schedules a
-        // second reconciliation without exposing the endpoint here.
-        runCatching {
-            org.unifiedpush.android.connector.UnifiedPush.register(
-                applicationContext,
-                instance,
-                messageForDistributor = instance.take(100),
-            )
-        }
+        // Endpoint registration and Matrix pusher verification are separate.
+        // Re-registering on every app resume can rotate the private capability
+        // while Matrix still points at the old endpoint. onNewEndpoint owns
+        // registration; this path only verifies or repairs the Matrix pusher.
         val endpoint = DeltiecordPushService.endpoint(applicationContext, instance)
         if (endpoint == null) {
+            DeltiecordPushService.recordRegistrationStage(
+                applicationContext,
+                "endpoint_missing",
+            )
             DeltiecordPushService.recordPusherVerification(
                 applicationContext,
                 "endpoint_missing",
@@ -188,6 +188,10 @@ class DeltiecordPushWorker(
         var ownsEngine = false
         var engine = DeltiecordEngineRegistry.engine
         try {
+            DeltiecordPushService.recordRegistrationStage(
+                applicationContext,
+                "pusher_verification_running",
+            )
             if (engine != null) {
                 withTimeout(15_000) {
                     while (!DeltiecordEngineRegistry.pushBridgeReady) delay(100)
@@ -198,6 +202,10 @@ class DeltiecordPushWorker(
             }
             val result = invokePusherReconciliation(engine, endpoint)
             if (result == "verified" || result == "repaired") {
+                DeltiecordPushService.recordRegistrationStage(
+                    applicationContext,
+                    "pusher_$result",
+                )
                 DeltiecordPushService.recordPusherVerification(
                     applicationContext,
                     result,
@@ -210,6 +218,10 @@ class DeltiecordPushWorker(
             )
             return if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
         } catch (_: Throwable) {
+            DeltiecordPushService.recordRegistrationStage(
+                applicationContext,
+                "pusher_verification_failed",
+            )
             DeltiecordPushService.recordPusherVerification(
                 applicationContext,
                 "verification_failed_attempt_${runAttemptCount + 1}",

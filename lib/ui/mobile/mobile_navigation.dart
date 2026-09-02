@@ -679,32 +679,40 @@ class _RoomList extends StatelessWidget {
           presence: room.isDirect ? room.presence : null,
         ),
         title: Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Row(
-          children: [
-            Expanded(
-              child: Text(
-                room.lastMessage,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: context.deltiecord.muted),
-              ),
-            ),
-            if (age.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(
-                age,
-                style: TextStyle(
-                  color: context.deltiecord.muted,
-                  fontSize: DeltiecordTypeScale.small,
-                  height: 1.16,
-                ),
-              ),
-            ],
-          ],
+        subtitle: Text(
+          room.lastMessage,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: context.deltiecord.muted),
         ),
-        trailing: room.unreadCount == 0
+        trailing: room.unreadCount == 0 && age.isEmpty
             ? null
-            : Badge(label: Text('${room.unreadCount}')),
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (room.unreadCount > 0)
+                    Badge(
+                      largeSize: 16,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      label: Text(
+                        '${room.unreadCount}',
+                        style: const TextStyle(fontSize: 9),
+                      ),
+                    ),
+                  if (room.unreadCount > 0 && age.isNotEmpty)
+                    const SizedBox(height: 2),
+                  if (age.isNotEmpty)
+                    Text(
+                      age,
+                      style: TextStyle(
+                        color: context.deltiecord.muted,
+                        fontSize: DeltiecordTypeScale.small,
+                        height: 1.05,
+                      ),
+                    ),
+                ],
+              ),
         onTap: () => onOpenRoom(room),
       );
     },

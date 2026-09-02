@@ -23,6 +23,7 @@ void main() {
       'UNREGISTERED',
       'NEW_ENDPOINT',
       'REGISTRATION_FAILED',
+      'REGISTRATION_REFUSED',
     ]) {
       expect(
         declaration,
@@ -33,6 +34,9 @@ void main() {
   });
 
   test('background push decrypts locally into bounded rich notifications', () {
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
     final receiver = File(
       'android/app/src/main/kotlin/net/deltie/deltiecord/'
       'DeltiecordPushService.kt',
@@ -90,5 +94,8 @@ void main() {
     expect(receiver, contains('last_pusher_verification_ms'));
     expect(receiver, contains('last_endpoint_rotation_ms'));
     expect(worker, contains('suppressed_active_desktop'));
+    expect(worker, isNot(contains('UnifiedPush.register(')));
+    expect(receiver, contains('DeltiecordPushWakeService.start'));
+    expect(manifest, contains('android:name=".DeltiecordPushWakeService"'));
   });
 }

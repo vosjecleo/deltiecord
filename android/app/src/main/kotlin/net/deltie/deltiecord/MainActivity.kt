@@ -32,7 +32,7 @@ class MainActivity : FlutterActivity() {
         unifiedPushChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .also { channel ->
                 channel.setMethodCallHandler { call, result ->
-                    val instance = call.argument<String>("instance") ?: "default"
+                    val account = call.argument<String>("instance") ?: "default"
                     when (call.method) {
                         "getDistributors" -> result.success(
                             UnifiedPush.getDistributors(this).map { packageName ->
@@ -42,34 +42,88 @@ class MainActivity : FlutterActivity() {
                                 )
                             },
                         )
-                        "getState" -> result.success(DeltiecordPushService.state(this, instance))
+                        "getState" -> {
+                            val instance = DeltiecordPushService.instanceForAccount(
+                                this,
+                                account,
+                                create = false,
+                            )
+                            result.success(DeltiecordPushService.state(this, instance))
+                        }
                         "selectDistributor" -> {
                             val distributor = call.argument<String>("distributor")
                             if (distributor.isNullOrBlank()) {
                                 result.error("invalid_distributor", "Choose a UnifiedPush distributor.", null)
                             } else {
+                                val previous = DeltiecordPushService.instanceForAccount(
+                                    this,
+                                    account,
+                                    create = false,
+                                )
+                                runCatching { UnifiedPush.unregister(this, previous) }
+                                DeltiecordPushService.clear(this, previous)
+                                DeltiecordPushService.forgetInstanceForAccount(
+                                    this,
+                                    account,
+                                    previous,
+                                )
                                 UnifiedPush.saveDistributor(this, distributor)
                                 // An endpoint belongs to the selected distributor.
                                 // Never reuse a stale capability after switching.
-                                DeltiecordPushService.clear(this, instance)
-                                registerUnifiedPush(instance, result)
+                                registerUnifiedPush(account, result)
                             }
                         }
                         "register" -> {
                             if (UnifiedPush.getSavedDistributor(this) == null) {
                                 result.error("no_distributor", "No UnifiedPush distributor is selected.", null)
                             } else {
-                                registerUnifiedPush(instance, result)
+                                registerUnifiedPush(account, result)
                             }
                         }
                         "unregister" -> {
                             // Removing the distributor as well as its instance
                             // prevents Refresh from silently reusing a rejected
                             // or uninstalled provider.
-                            UnifiedPush.removeDistributor(this)
+                            val instance = DeltiecordPushService.instanceForAccount(
+                                this,
+                                account,
+                                create = false,
+                            )
+                            runCatching { UnifiedPush.unregister(this, instance) }
                             DeltiecordPushService.clear(this, instance)
                             DeltiecordPushWorker.cancelPusherVerification(this, instance)
+                            DeltiecordPushService.forgetInstanceForAccount(
+                                this,
+                                account,
+                                instance,
+                            )
+                            UnifiedPush.removeDistributor(this)
                             result.success(null)
+                        }
+                        "testPush" -> {
+                            val instance = DeltiecordPushService.instanceForAccount(
+                                this,
+                                account,
+                                create = false,
+                            )
+                            DeltiecordPushDiagnostics.run(this, instance) { testResult ->
+                                mainHandler.post {
+                                    testResult.fold(
+                                        onSuccess = {
+                                            result.success(
+                                                DeltiecordPushService.state(this, instance),
+                                            )
+                                        },
+                                        onFailure = { exception ->
+                                            result.error(
+                                                "push_test_failed",
+                                                exception.message,
+                                                null,
+                                            )
+                                        },
+                                    )
+                                }
+                            }
                         }
                         "recordPusherVerification" -> {
                             val verification = call.argument<String>("result")
@@ -167,45 +221,33 @@ class MainActivity : FlutterActivity() {
         return mapOf("roomId" to roomId, "eventId" to eventId)
     }
 
-    private fun registerUnifiedPush(instance: String, result: MethodChannel.Result) {
+    private fun registerUnifiedPush(account: String, result: MethodChannel.Result) {
+        val instance = DeltiecordPushService.instanceForAccount(
+            this,
+            account,
+            create = true,
+        )
         DeltiecordPushService.rememberInstance(this, instance)
         DeltiecordPushWorker.schedulePusherVerification(this, instance)
         DeltiecordPushService.clearError(this, instance)
-        val existingState = DeltiecordPushService.state(this, instance)
-        val existingEndpoint = existingState["endpoint"]
         pendingRegistrations.remove(instance)?.error(
             "registration_replaced",
             "A newer UnifiedPush registration replaced this request.",
             null,
         )
-        if (existingEndpoint.isNullOrBlank()) {
-            pendingRegistrations[instance] = result
-        } else {
-            // A persisted endpoint is already usable. Return it before asking
-            // the distributor to refresh so a missing/slow callback cannot
-            // leave Settings stale until the next application launch.
-            result.success(existingState)
-        }
+        pendingRegistrations[instance] = result
+        DeltiecordPushService.recordRegistrationStage(this, "registration_requested")
         try {
             UnifiedPush.register(
                 this,
                 instance,
-                // Element X labels registrations by session so multi-account
-                // distributor UIs remain understandable.
-                messageForDistributor = instance.take(100),
+                // Keep the distributor label useful without exposing the
+                // account identifier as the connector's routing key.
+                messageForDistributor = account.take(100),
             )
         } catch (exception: Exception) {
             pendingRegistrations.remove(instance)
-            if (existingEndpoint.isNullOrBlank()) {
-                result.error("registration_failed", exception.message, null)
-            }
-            return
-        }
-        // Refreshing an existing registration must not wait for an endpoint
-        // rotation that a distributor is not required to emit. Reconcile the
-        // persisted capability immediately; a later callback still updates it.
-        if (!existingEndpoint.isNullOrBlank()) {
-            DeltiecordPushWorker.enqueuePusherReconciliation(this, instance)
+            result.error("registration_failed", exception.message, null)
             return
         }
         mainHandler.postDelayed(
@@ -229,6 +271,7 @@ class MainActivity : FlutterActivity() {
 
     private fun completeUnifiedPushRegistration(instance: String) {
         val state = DeltiecordPushService.state(this, instance)
+        val account = DeltiecordPushService.accountForInstance(this, instance)
         pendingRegistrations.remove(instance)?.let { result ->
             val endpoint = state["endpoint"]
             val error = state["error"]
@@ -242,7 +285,7 @@ class MainActivity : FlutterActivity() {
         // the distributor rather than by an explicit Settings action.
         unifiedPushChannel?.invokeMethod(
             "onStateChanged",
-            mapOf("instance" to instance),
+            mapOf("instance" to account),
         )
     }
 

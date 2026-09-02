@@ -336,9 +336,11 @@ class _RichComposerState extends State<_RichComposer> {
             color: context.deltiecord.panel,
             child: Padding(
               key: const Key('message-composer-panel'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: _bottomPanelVerticalInset,
+              padding: const EdgeInsets.fromLTRB(
+                5,
+                _bottomPanelVerticalInset,
+                10,
+                _bottomPanelVerticalInset,
               ),
               child: Container(
                 key: const Key('message-composer-island'),
@@ -497,7 +499,7 @@ class _RichComposerState extends State<_RichComposer> {
                                       // Keep the compact composer while seating its text
                                       // cleanly alongside the attachment and send controls.
                                       padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
+                                        horizontal: 11,
                                         vertical: 7,
                                       ),
                                       placeholder:

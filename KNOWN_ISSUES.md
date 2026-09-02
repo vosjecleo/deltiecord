@@ -1,5 +1,23 @@
 # Known issues
 
+## v0.9.25 build 79 stable notes
+
+- Fixed in build 79: UnifiedPush endpoint registration is callback-driven and
+  no longer runs during every foreground resume or periodic pusher check. App
+  resume now repairs only the existing Matrix pusher, preventing endpoint
+  rotation races.
+- Hardened in build 79: Android keeps push resolution alive across the native
+  receiver-to-WorkManager hand-off, handles registration refusal, uses opaque
+  per-account registration identifiers for new setups, and updates to the
+  UnifiedPush 3.3.5 connector.
+- Added in build 79: Notification settings expose the current delivery stage
+  and a private gateway-to-Android round-trip test, separating distributor,
+  gateway, receiver, Matrix resolution, and notification-posting failures.
+- Fixed in build 79: timeline content reserves just enough transparent space
+  beneath the typing fade to prevent overlap. Composer text aligns with message
+  bodies, the desktop composer reaches the navigation gutter, and compact DM
+  unread badges sit above their relative activity time.
+
 ## v0.9.25 build 78 stable notes
 
 - Fixed in build 78: typing activity now overlays the bottom of the timeline

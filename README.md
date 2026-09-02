@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.25 build 78, stable and latest**
+> **Current release: version 0.9.25 build 79, stable and latest**
 >
-> Deltiecord is available for desktop and Android. Build 78 improves the compact
-> conversation layout and automatically repairs stale UnifiedPush endpoints and
-> Matrix pushers when Android resumes.
+> Deltiecord is available for desktop and Android. Build 79 prevents UnifiedPush
+> endpoint races, hardens background delivery, and finishes the compact typing,
+> composer, and DM activity layout on desktop and Android.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -261,4 +261,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.25 build 78, stable and latest**
+**Current release: v0.9.25 build 79, stable and latest**

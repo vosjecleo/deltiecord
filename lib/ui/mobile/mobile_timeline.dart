@@ -634,7 +634,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             controller: _scroll,
                             reverse: true,
                             physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
+                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 22),
                             itemCount:
                                 messages.length +
                                 ((backend.canLoadMoreHistory ||
@@ -1883,6 +1883,11 @@ class _MobileComposerState extends State<_MobileComposer> {
                 children: [
                   IconButton(
                     onPressed: widget.onAdd,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 42,
+                      height: 48,
+                    ),
+                    padding: EdgeInsets.zero,
                     icon: const Icon(Icons.add_circle_outline),
                   ),
                   Expanded(
@@ -1905,6 +1910,7 @@ class _MobileComposerState extends State<_MobileComposer> {
                             hintText: 'Message',
                             border: InputBorder.none,
                             filled: false,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 6),
                           ),
                         ),
                       ),
@@ -1912,6 +1918,11 @@ class _MobileComposerState extends State<_MobileComposer> {
                   ),
                   IconButton(
                     onPressed: widget.onEmoji,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 42,
+                      height: 48,
+                    ),
+                    padding: EdgeInsets.zero,
                     icon: const Icon(Icons.emoji_emotions_outlined),
                   ),
                   Semantics(
@@ -1922,7 +1933,10 @@ class _MobileComposerState extends State<_MobileComposer> {
                       onLongPress: widget.sending ? null : widget.onSchedule,
                       radius: 26,
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 12,
+                        ),
                         child: widget.sending
                             ? const SizedBox.square(
                                 dimension: 20,

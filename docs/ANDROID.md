@@ -50,15 +50,15 @@ Matrix HTTP push gateway on that same ntfy server. Neither distributor
 credentials nor generated endpoint capabilities are shipped or logged by
 Deltiecord.
 
-On every foreground resume, Deltiecord asks the selected distributor to refresh
-its registration and verifies the resulting endpoint against the homeserver's
-Matrix pusher list. Endpoint-change callbacks trigger the same check, and a
-network-constrained 12-hour WorkManager task provides a bounded safety net while
-the app stays closed. Stale same-device pushers are replaced without exposing
-the private endpoint in logs or worker input. The Notifications page reports
-the last endpoint rotation, pusher verification, native alert, background push,
-and worker outcome independently so a stopped distributor can be distinguished
-from decryption or notification suppression.
+Registration is callback-driven: Deltiecord asks the selected distributor for
+an endpoint during setup, explicit refresh, or recovery from a registration
+failure, then waits for that callback before installing the Matrix pusher.
+Foreground resume verifies the existing pusher without rotating its endpoint.
+Endpoint-change callbacks trigger the same repair, and a network-constrained
+12-hour WorkManager task provides a bounded safety net while the app stays
+closed. The Notifications page reports each stage and offers a private
+gateway-to-receiver test so a stopped distributor can be distinguished from a
+gateway, Matrix, decryption, or notification-suppression failure.
 
 The embedded Firebase-compatible distributor is not enabled in release builds.
 Matrix requires a WebPush-capable gateway and VAPID configuration for that
@@ -70,13 +70,14 @@ Release CI produces architecture-specific APKs for `arm64-v8a`,
 use the smaller `arm64-v8a` APK.
 
 Push payloads are treated as generic Matrix room/event wake-ups, never as
-trusted plaintext. A bounded Android worker restores Deltiecord's local Matrix
+trusted plaintext. A short-lived foreground service protects the receiver-to-
+worker hand-off, then a bounded Android worker restores Deltiecord's local Matrix
 session, synchronizes the named event and any room key, then decrypts the
 notification locally. The distributor and gateway never receive decrypted
 text, access tokens, or room keys. Android conversation notifications show the
 latest message when collapsed and up to six recent messages when expanded;
-bounded image attachments can appear in the expanded view. If local resolution
-fails, the generic wake-up notification remains visible.
+bounded image attachments can appear in the expanded view. Failed local
+resolution is recorded in Settings without leaving a generic wake-up alert.
 
 An active MatrixRTC session may also be constrained by vendor background policy.
 The in-app persistent call island is implemented, but a production Android

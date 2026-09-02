@@ -67,6 +67,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
   int _navigationGeneration = 0;
+  bool _scrolledAwayFromPresent = false;
   String? _highlightedMessageId;
   Timer? _highlightTimer;
   Completer<void>? _highlightWaiter;
@@ -103,6 +104,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _reply = null;
     _edit = null;
     _attachments.clear();
+    _scrolledAwayFromPresent = false;
     _messageKeys.clear();
     _messageIdsByKey.clear();
     if (_scroll.hasClients) _scroll.jumpTo(0);
@@ -244,6 +246,14 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   void _handleScroll() {
     if (!_scroll.hasClients || _restoringScrollAnchor) return;
     final position = _scroll.position;
+    final jumpThreshold = (position.viewportDimension * 0.75).clamp(
+      320.0,
+      640.0,
+    );
+    final scrolledAway = position.pixels > jumpThreshold;
+    if (scrolledAway != _scrolledAwayFromPresent && mounted) {
+      setState(() => _scrolledAwayFromPresent = scrolledAway);
+    }
     backend.setConversationAtPresent(
       position.pixels <= 48 && backend.atTimelinePresent,
     );
@@ -741,14 +751,28 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                           ),
                         ),
                       ),
-                      if (!backend.atTimelinePresent)
+                      if (!backend.atTimelinePresent ||
+                          _scrolledAwayFromPresent)
                         Positioned(
                           right: 14,
                           bottom: 10,
                           child: FilledButton.icon(
                             onPressed: () async {
-                              await backend.jumpToPresent();
-                              if (_scroll.hasClients) _scroll.jumpTo(0);
+                              if (!backend.atTimelinePresent) {
+                                await backend.jumpToPresent();
+                              }
+                              if (_scroll.hasClients) {
+                                await _scroll.animateTo(
+                                  0,
+                                  duration: const Duration(milliseconds: 180),
+                                  curve: Curves.easeOutCubic,
+                                );
+                              }
+                              if (mounted && _scrolledAwayFromPresent) {
+                                setState(
+                                  () => _scrolledAwayFromPresent = false,
+                                );
+                              }
                               backend.setConversationAtPresent(true);
                             },
                             icon: const Icon(Icons.arrow_downward),

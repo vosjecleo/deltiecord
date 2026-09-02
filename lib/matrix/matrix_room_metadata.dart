@@ -5,6 +5,7 @@ extension _MatrixRoomMetadata on MatrixBackend {
     id: room.id,
     name: room.getLocalizedDisplayname(),
     lastMessage: _eventPreview(room.lastEvent),
+    lastActivityAt: room.lastEvent?.originServerTs,
     unreadCount: room.notificationCount,
     usesChannelIcon: _selectedSpaceId != null,
     presentation: _presentationFor(room),

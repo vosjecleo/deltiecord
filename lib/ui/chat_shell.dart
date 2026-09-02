@@ -42,6 +42,7 @@ import 'member_management.dart';
 import 'presence_controls.dart';
 import 'space_settings_screen.dart';
 import 'typing_indicator.dart';
+import 'relative_activity_time.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';
@@ -751,11 +752,19 @@ class _ChatShellState extends State<ChatShell> {
                                   width: 68,
                                   child: _SpaceBar(backend: widget.backend),
                                 ),
-                                const VerticalDivider(width: 1),
+                                const VerticalDivider(
+                                  width: 1,
+                                  color: Colors.transparent,
+                                ),
                               ],
                               SizedBox(
                                 width: panelWidth,
-                                child: _RoomPanel(backend: widget.backend),
+                                child: ClipRRect(
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: DeltiecordCorners.corner,
+                                  ),
+                                  child: _RoomPanel(backend: widget.backend),
+                                ),
                               ),
                               MouseRegion(
                                 cursor: SystemMouseCursors.resizeColumn,
@@ -779,13 +788,11 @@ class _ChatShellState extends State<ChatShell> {
                                       ),
                                     );
                                   },
-                                  child: SizedBox(
+                                  child: const SizedBox(
                                     width: 5,
-                                    child: Center(
-                                      child: VerticalDivider(
-                                        width: 1,
-                                        color: context.deltiecord.divider,
-                                      ),
+                                    child: VerticalDivider(
+                                      width: 1,
+                                      color: Colors.transparent,
                                     ),
                                   ),
                                 ),

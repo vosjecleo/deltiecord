@@ -1,5 +1,17 @@
 # Known issues
 
+## v0.9.25 build 77 stable notes
+
+- Improved in build 77: mobile Jump to present follows viewport distance
+  instead of waiting for unloaded newer pages, while retaining the stable
+  single-list timeline introduced in build 76.
+- Improved in build 77: mobile system-bar and navigation surfaces form one
+  rail-backed layout, and desktop navigation adopts the same rounded,
+  contrast-led hierarchy with denser inline channels and categories.
+- Added in build 77: DM rows show collision-safe compact activity ages on
+  desktop and mobile, and accepted Space invitations present non-empty welcome
+  and rules pages once.
+
 ## v0.9.24 build 76 prerelease notes
 
 - Fixed in build 76: poll response maps are tallied by voter as defined by the

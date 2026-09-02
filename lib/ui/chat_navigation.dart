@@ -941,30 +941,38 @@ class _RoomPanelState extends State<_RoomPanel> {
                     height: 56,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     alignment: Alignment.centerLeft,
-                    decoration: BoxDecoration(
-                      color: context.deltiecord.surface,
-                      border: Border(
-                        bottom: BorderSide(color: context.deltiecord.divider),
-                      ),
-                    ),
+                    color: context.deltiecord.surface,
                     child: Row(
                       children: [
                         Expanded(
-                          child: Text(
-                            backend.selectedSpaceId == null
-                                ? 'Home'
-                                : backend.spaces
-                                          .where(
-                                            (space) =>
-                                                space.id ==
-                                                backend.selectedSpaceId,
-                                          )
-                                          .map((space) => space.name)
-                                          .firstOrNull ??
-                                      'Space',
-                            style: const TextStyle(
-                              fontSize: DeltiecordTypeScale.bigUi,
-                              fontWeight: FontWeight.w600,
+                          child: InkWell(
+                            borderRadius: DeltiecordCorners.borderRadius,
+                            onTap: backend.selectedSpaceId == null
+                                ? null
+                                : () => showSpacePages(
+                                    context,
+                                    backend,
+                                    backend.selectedSpaceId!,
+                                  ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                backend.selectedSpaceId == null
+                                    ? 'Home'
+                                    : backend.spaces
+                                              .where(
+                                                (space) =>
+                                                    space.id ==
+                                                    backend.selectedSpaceId,
+                                              )
+                                              .map((space) => space.name)
+                                              .firstOrNull ??
+                                          'Space',
+                                style: const TextStyle(
+                                  fontSize: DeltiecordTypeScale.bigUi,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -983,13 +991,6 @@ class _RoomPanelState extends State<_RoomPanel> {
                             ),
                           ),
                         ),
-                        if (backend.selectedSpaceId case final spaceId?)
-                          IconButton(
-                            tooltip: 'Welcome and rules',
-                            onPressed: () =>
-                                showSpacePages(context, backend, spaceId),
-                            icon: const Icon(Icons.info_outline, size: 19),
-                          ),
                         PopupMenuButton<String>(
                           tooltip: backend.selectedSpaceId == null
                               ? 'Start chat or create room'
@@ -1581,7 +1582,7 @@ class _ChannelCategorySection extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: EdgeInsets.only(top: current == null ? 2 : 5, bottom: 1),
+              padding: const EdgeInsets.only(top: 1),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onSecondaryTapDown: current == null
@@ -1589,7 +1590,7 @@ class _ChannelCategorySection extends StatelessWidget {
                     : (details) =>
                           _showContextMenu(context, details.globalPosition),
                 child: SizedBox(
-                  height: 32,
+                  height: 30,
                   child: Row(
                     children: [
                       if (current != null && canArrange)
@@ -1598,7 +1599,7 @@ class _ChannelCategorySection extends StatelessWidget {
                           child: SizedBox(
                             key: ValueKey('category-drag-grip-${current.id}'),
                             width: _gripColumnWidth,
-                            height: 32,
+                            height: 30,
                             child: Center(
                               child: Transform.translate(
                                 offset: const Offset(0, 1),
@@ -1636,7 +1637,7 @@ class _ChannelCategorySection extends StatelessWidget {
                                 ],
                                 Flexible(
                                   child: Text(
-                                    name,
+                                    name.toUpperCase(),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
@@ -1686,7 +1687,7 @@ class _ChannelCategorySection extends StatelessWidget {
                     ),
                   ),
                 ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 1),
           ],
         ),
       ),
@@ -2032,8 +2033,9 @@ class _RoomListTile extends StatelessWidget {
           _showContextMenu(context, details.globalPosition),
       child: ListTile(
         dense: true,
-        visualDensity: VisualDensity(vertical: -1 - (compactness * 2)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 9),
+        visualDensity: VisualDensity(vertical: -2 - (compactness * 2)),
+        minTileHeight: 38,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         minVerticalPadding: 0,
         minLeadingWidth: 0,
         horizontalTitleGap: 8,
@@ -2111,6 +2113,7 @@ class _HomeRoomListTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = backend.selectedRoom?.id == room.id;
+    final age = compactActivityAge(room.lastActivityAt);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onSecondaryTapDown: onSecondaryTapDown,
@@ -2132,7 +2135,7 @@ class _HomeRoomListTile extends StatelessWidget {
             ),
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                12,
+                8,
                 _densityBetween(
                   backend.preferences.compactness,
                   roomy: 6,
@@ -2172,15 +2175,32 @@ class _HomeRoomListTile extends StatelessWidget {
                             compact: 3,
                           ),
                         ),
-                        Text(
-                          room.lastMessage,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: context.deltiecord.muted,
-                            fontSize: DeltiecordTypeScale.normal,
-                            height: 1.05,
-                          ),
+                        Row(
+                          children: [
+                            if (age.isNotEmpty) ...[
+                              Text(
+                                age,
+                                style: TextStyle(
+                                  color: context.deltiecord.muted,
+                                  fontSize: DeltiecordTypeScale.small,
+                                  height: 1.05,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            Expanded(
+                              child: Text(
+                                room.lastMessage,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: context.deltiecord.muted,
+                                  fontSize: DeltiecordTypeScale.normal,
+                                  height: 1.05,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),

@@ -39,13 +39,19 @@ Future<void> showSpaceSettings(
   }
 }
 
-Future<void> showSpacePages(
+Future<bool> showSpacePages(
   BuildContext context,
   ChatBackend backend,
-  String spaceId,
-) async {
+  String spaceId, {
+  bool skipWhenEmpty = false,
+}) async {
   final pages = await backend.getSpacePages(spaceId);
-  if (!context.mounted) return;
+  if (skipWhenEmpty &&
+      pages.welcome.trim().isEmpty &&
+      pages.rules.trim().isEmpty) {
+    return false;
+  }
+  if (!context.mounted) return false;
   await showDialog<void>(
     context: context,
     builder: (context) => Dialog(
@@ -82,6 +88,7 @@ Future<void> showSpacePages(
       ),
     ),
   );
+  return true;
 }
 
 class _SpacePageText extends StatelessWidget {

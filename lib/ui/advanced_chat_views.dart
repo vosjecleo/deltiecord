@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import 'deltiecord_theme.dart';
+import 'space_settings_screen.dart';
 
 Future<void> showSavedMessages(
   BuildContext context,
@@ -212,11 +213,11 @@ Future<void> showPinnedMessages(
 }
 
 Future<void> showUnifiedInbox(
-  BuildContext context,
+  BuildContext hostContext,
   ChatBackend backend, {
   required Future<void> Function(InboxItemSummary item) onOpen,
 }) => showDialog<void>(
-  context: context,
+  context: hostContext,
   builder: (dialogContext) => Dialog(
     child: SizedBox(
       width: 680,
@@ -256,12 +257,18 @@ Future<void> showUnifiedInbox(
                                 tooltip: 'Invitation actions',
                                 onSelected: (value) async {
                                   if (value == 'accept') {
-                                    await backend.acceptRoomInvite(item.roomId);
+                                    await _acceptInboxInvite(
+                                      hostContext,
+                                      dialogContext,
+                                      backend,
+                                      item,
+                                      onOpen,
+                                    );
                                   } else {
                                     await backend.rejectRoomInvite(item.roomId);
-                                  }
-                                  if (dialogContext.mounted) {
-                                    Navigator.pop(dialogContext);
+                                    if (dialogContext.mounted) {
+                                      Navigator.pop(dialogContext);
+                                    }
                                   }
                                 },
                                 itemBuilder: (context) => const [
@@ -278,11 +285,18 @@ Future<void> showUnifiedInbox(
                             : Text(_inboxLabel(item.kind)),
                         onTap: () async {
                           if (item.kind == InboxItemKind.invite) {
-                            await backend.acceptRoomInvite(item.roomId);
+                            await _acceptInboxInvite(
+                              hostContext,
+                              dialogContext,
+                              backend,
+                              item,
+                              onOpen,
+                            );
+                          } else {
+                            if (!dialogContext.mounted) return;
+                            Navigator.pop(dialogContext);
+                            await onOpen(item);
                           }
-                          if (!dialogContext.mounted) return;
-                          Navigator.pop(dialogContext);
-                          await onOpen(item);
                         },
                       );
                     },
@@ -293,6 +307,28 @@ Future<void> showUnifiedInbox(
     ),
   ),
 );
+
+Future<void> _acceptInboxInvite(
+  BuildContext hostContext,
+  BuildContext dialogContext,
+  ChatBackend backend,
+  InboxItemSummary item,
+  Future<void> Function(InboxItemSummary item) onOpen,
+) async {
+  await backend.acceptRoomInvite(item.roomId);
+  if (dialogContext.mounted) Navigator.pop(dialogContext);
+  if (item.isSpace) {
+    if (!hostContext.mounted) return;
+    await showSpacePages(
+      hostContext,
+      backend,
+      item.roomId,
+      skipWhenEmpty: true,
+    );
+    return;
+  }
+  await onOpen(item);
+}
 
 Future<void> _open(
   BuildContext context,

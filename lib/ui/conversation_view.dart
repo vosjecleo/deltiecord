@@ -597,12 +597,7 @@ class _ConversationState extends State<_Conversation> {
                   height: 56,
                   padding: const EdgeInsets.symmetric(horizontal: 18),
                   alignment: Alignment.centerLeft,
-                  decoration: BoxDecoration(
-                    color: context.deltiecord.surface,
-                    border: Border(
-                      bottom: BorderSide(color: context.deltiecord.divider),
-                    ),
-                  ),
+                  color: context.deltiecord.surface,
                   child: Row(
                     children: [
                       _RoomIcon(room: room, size: 30),

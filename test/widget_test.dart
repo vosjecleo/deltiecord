@@ -2486,6 +2486,84 @@ void main() {
       find.byKey(const ValueKey('mobile-navigation-bottom-scrim')),
       findsOneWidget,
     );
+    final navigationCard = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey('mobile-navigation-card')),
+    );
+    expect(
+      navigationCard.borderRadius,
+      const BorderRadius.only(topLeft: DeltiecordCorners.corner),
+    );
+    final systemBars = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.byKey(const ValueKey('mobile-system-bars')),
+    );
+    expect(systemBars.value.statusBarColor, Colors.transparent);
+    final background = tester.widget<ColoredBox>(
+      find.byKey(const ValueKey('mobile-navigation-background')),
+    );
+    expect(
+      background.color,
+      DeltiecordPalette.forMode(DeltiecordThemeMode.dark).rail,
+    );
+  });
+
+  testWidgets('Android DM rows reserve a compact activity age', (tester) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = [
+        RoomSummary(
+          id: '!recent:test',
+          name: 'Recent chat',
+          lastMessage: 'A preview that must yield before the age overlaps it',
+          lastActivityAt: DateTime.now().subtract(const Duration(hours: 2)),
+          unreadCount: 0,
+          usesChannelIcon: false,
+          isDirect: true,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+
+    expect(find.text('2h'), findsOneWidget);
+    expect(
+      find.text('A preview that must yield before the age overlaps it'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Android offers Present after leaving the newest viewport', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!mobile-history:test',
+          name: 'Mobile history',
+          lastMessage: 'latest',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+      ]
+      ..messageList = List.generate(
+        60,
+        (index) => ChatMessage(
+          id: '\$mobile-history-$index',
+          sender: 'Alice',
+          body: 'Timeline message $index with enough text for a normal row.',
+          timestamp: DateTime(2026, 9, 2, 12, index),
+          pending: false,
+        ),
+      );
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Mobile history'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Present'), findsNothing);
+    await tester.drag(
+      find.byKey(const ValueKey('mobile-message-timeline')),
+      const Offset(0, 700),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Present'), findsOneWidget);
   });
 
   testWidgets('Android exposes older history even before a row is mapped', (

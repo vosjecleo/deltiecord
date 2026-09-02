@@ -527,7 +527,11 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     final room = _matrix.getRoomById(roomId);
     if (room == null) throw StateError('That invitation is unavailable.');
     await room.join();
-    await _selectRoom(room.id);
+    if (room.isSpace) {
+      _selectSpace(room.id);
+    } else {
+      await _selectRoom(room.id);
+    }
   }
 
   Future<void> _rejectRoomInvite(String roomId) async {
@@ -807,6 +811,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
             timestamp: room.lastEvent?.originServerTs ?? DateTime.now().toUtc(),
             preview: 'Room invitation',
             avatarBytes: _avatarBytes[room.id],
+            isSpace: room.isSpace,
           ),
         );
       }

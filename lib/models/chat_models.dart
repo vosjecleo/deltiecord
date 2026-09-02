@@ -486,6 +486,7 @@ class RoomSummary {
     this.notificationMode = RoomNotificationMode.allMessages,
     this.mutedUntil,
     this.markedUnread = false,
+    this.lastActivityAt,
   });
 
   final String id;
@@ -502,6 +503,12 @@ class RoomSummary {
   final RoomNotificationMode notificationMode;
   final DateTime? mutedUntil;
   final bool markedUnread;
+
+  /// Timestamp of the newest event represented by [lastMessage].
+  ///
+  /// Navigation UIs use this for compact relative activity labels. It remains
+  /// nullable for rooms whose homeserver has not supplied any timeline event.
+  final DateTime? lastActivityAt;
 
   bool get isVoice => presentation == RoomPresentation.voice;
 }
@@ -641,6 +648,7 @@ class InboxItemSummary {
     required this.preview,
     this.eventId,
     this.avatarBytes,
+    this.isSpace = false,
   });
 
   final String id;
@@ -651,6 +659,7 @@ class InboxItemSummary {
   final String preview;
   final String? eventId;
   final Uint8List? avatarBytes;
+  final bool isSpace;
 }
 
 class StickerPackSummary {

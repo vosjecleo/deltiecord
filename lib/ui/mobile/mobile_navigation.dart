@@ -1,6 +1,5 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../backend/chat_backend.dart';
@@ -8,6 +7,7 @@ import '../../models/chat_models.dart';
 import '../deltiecord_theme.dart';
 import '../advanced_chat_views.dart';
 import '../presence_controls.dart';
+import '../relative_activity_time.dart';
 import '../space_settings_screen.dart';
 import 'mobile_widgets.dart';
 import 'mobile_channel_manager.dart';
@@ -46,133 +46,185 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
               room.lastMessage.toLowerCase().contains(query);
         })
         .toList(growable: false);
-    return SafeArea(
-      bottom: false,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: Row(
-              children: [
-                _SpaceRail(backend: backend),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 10, 8, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                selectedSpace == null
-                                    ? 'Home'
-                                    : backend.spaces
-                                              .where(
-                                                (space) =>
-                                                    space.id == selectedSpace,
-                                              )
-                                              .firstOrNull
-                                              ?.name ??
-                                          'Space',
-                                style: Theme.of(context).textTheme.titleLarge
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                            IconButton(
-                              key: const ValueKey('mobile-inbox'),
-                              tooltip: 'Inbox',
-                              onPressed: () => _openInbox(context),
-                              icon: const Icon(Icons.inbox_outlined),
-                            ),
-                            if (selectedSpace != null)
-                              IconButton(
-                                tooltip: 'Welcome and rules',
-                                onPressed: () => showSpacePages(
-                                  context,
-                                  backend,
-                                  selectedSpace,
-                                ),
-                                icon: const Icon(Icons.info_outline),
-                              ),
-                            IconButton(
-                              key: const ValueKey('mobile-start-chat'),
-                              tooltip: selectedSpace == null
-                                  ? 'Start a chat'
-                                  : 'Create a room',
-                              onPressed: () => selectedSpace == null
-                                  ? _startChat(context)
-                                  : _createRoom(context),
-                              icon: const Icon(Icons.add),
-                            ),
-                          ],
+    final darkSystemIcons = Theme.of(context).brightness == Brightness.light;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      key: const ValueKey('mobile-system-bars'),
+      value: SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: darkSystemIcons
+            ? Brightness.dark
+            : Brightness.light,
+        statusBarBrightness: darkSystemIcons
+            ? Brightness.light
+            : Brightness.dark,
+      ),
+      child: ColoredBox(
+        key: const ValueKey('mobile-navigation-background'),
+        color: context.deltiecord.rail,
+        child: SafeArea(
+          bottom: false,
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Row(
+                  children: [
+                    _SpaceRail(backend: backend),
+                    Expanded(
+                      child: ClipRRect(
+                        key: const ValueKey('mobile-navigation-card'),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: DeltiecordCorners.corner,
                         ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: TextField(
-                          key: const ValueKey('mobile-room-search'),
-                          onChanged: (value) => setState(() => _query = value),
-                          decoration: InputDecoration(
-                            isDense: true,
-                            hintText: selectedSpace == null
-                                ? 'Search direct messages'
-                                : 'Search rooms',
-                            prefixIcon: const Icon(Icons.search, size: 20),
+                        child: Material(
+                          color: context.deltiecord.panel,
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  8,
+                                  10,
+                                  6,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: InkWell(
+                                    borderRadius:
+                                        DeltiecordCorners.borderRadius,
+                                    onTap: selectedSpace == null
+                                        ? null
+                                        : () => showSpacePages(
+                                            context,
+                                            backend,
+                                            selectedSpace,
+                                          ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 2,
+                                        vertical: 3,
+                                      ),
+                                      child: Text(
+                                        selectedSpace == null
+                                            ? 'Home'
+                                            : backend.spaces
+                                                      .where(
+                                                        (space) =>
+                                                            space.id ==
+                                                            selectedSpace,
+                                                      )
+                                                      .firstOrNull
+                                                      ?.name ??
+                                                  'Space',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleLarge
+                                            ?.copyWith(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 0, 6, 6),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextField(
+                                        key: const ValueKey(
+                                          'mobile-room-search',
+                                        ),
+                                        onChanged: (value) =>
+                                            setState(() => _query = value),
+                                        decoration: InputDecoration(
+                                          isDense: true,
+                                          hintText: selectedSpace == null
+                                              ? 'Search direct messages'
+                                              : 'Search rooms',
+                                          prefixIcon: const Icon(
+                                            Icons.search,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    IconButton(
+                                      key: const ValueKey('mobile-inbox'),
+                                      tooltip: 'Inbox',
+                                      onPressed: () => _openInbox(context),
+                                      icon: const Icon(Icons.inbox_outlined),
+                                    ),
+                                    IconButton(
+                                      key: const ValueKey('mobile-start-chat'),
+                                      tooltip: selectedSpace == null
+                                          ? 'Start a chat'
+                                          : 'Create a room',
+                                      onPressed: () => selectedSpace == null
+                                          ? _startChat(context)
+                                          : _createRoom(context),
+                                      icon: const Icon(Icons.add),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: selectedSpace == null
+                                    ? _RoomList(
+                                        rooms: rooms,
+                                        onOpenRoom: widget.onOpenRoom,
+                                      )
+                                    : _SpaceRoomList(
+                                        backend: backend,
+                                        rooms: rooms,
+                                        onOpenRoom: widget.onOpenRoom,
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 6),
-                      Expanded(
-                        child: selectedSpace == null
-                            ? _RoomList(
-                                rooms: rooms,
-                                onOpenRoom: widget.onOpenRoom,
-                              )
-                            : _SpaceRoomList(
-                                backend: backend,
-                                rooms: rooms,
-                                onOpenRoom: widget.onOpenRoom,
-                              ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: IgnorePointer(
-              child: Container(
-                key: const ValueKey('mobile-navigation-bottom-scrim'),
-                height: 128,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      context.deltiecord.panel.withValues(alpha: 0),
-                      context.deltiecord.rail.withValues(alpha: 0.82),
-                      context.deltiecord.rail,
-                    ],
-                    stops: const [0, 0.48, 1],
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: Container(
+                    key: const ValueKey('mobile-navigation-bottom-scrim'),
+                    height: 128,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          context.deltiecord.panel.withValues(alpha: 0),
+                          context.deltiecord.rail.withValues(alpha: 0.82),
+                          context.deltiecord.rail,
+                        ],
+                        stops: const [0, 0.48, 1],
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _MobileUserIsland(
+                  backend: backend,
+                  onOpenSettings: widget.onOpenSettings,
+                  onOpenProfile: widget.onOpenProfile,
+                ),
+              ),
+            ],
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _MobileUserIsland(
-              backend: backend,
-              onOpenSettings: widget.onOpenSettings,
-              onOpenProfile: widget.onOpenProfile,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -616,8 +668,10 @@ class _RoomList extends StatelessWidget {
     itemCount: rooms.length,
     itemBuilder: (context, index) {
       final room = rooms[index];
+      final age = compactActivityAge(room.lastActivityAt);
       return ListTile(
         minTileHeight: 64,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         selected: false,
         leading: MobileAvatar(
           bytes: room.avatarBytes,
@@ -625,10 +679,27 @@ class _RoomList extends StatelessWidget {
           presence: room.isDirect ? room.presence : null,
         ),
         title: Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          room.lastMessage,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        subtitle: Row(
+          children: [
+            if (age.isNotEmpty) ...[
+              Text(
+                age,
+                style: TextStyle(
+                  color: context.deltiecord.muted,
+                  fontSize: DeltiecordTypeScale.small,
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Expanded(
+              child: Text(
+                room.lastMessage,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: context.deltiecord.muted),
+              ),
+            ),
+          ],
         ),
         trailing: room.unreadCount == 0
             ? null
@@ -738,7 +809,7 @@ class _MobileUserIsland extends StatelessWidget {
     top: false,
     child: Container(
       key: const ValueKey('mobile-user-island'),
-      margin: const EdgeInsets.all(8),
+      margin: const EdgeInsets.fromLTRB(8, 8, 8, 2),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: context.deltiecord.island,
@@ -753,7 +824,7 @@ class _MobileUserIsland extends StatelessWidget {
               bytes: backend.profileAvatarBytes,
               fallback: backend.profileDisplayName ?? backend.userId ?? '?',
               presence: backend.profilePresence,
-              size: 42,
+              size: 46,
             ),
             const SizedBox(width: 9),
             Expanded(

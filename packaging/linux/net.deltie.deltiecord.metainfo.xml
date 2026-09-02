@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.25" date="2026-09-02" type="stable">
+      <description>
+        <p>Promotes the stable timeline, adds compact DM activity ages, aligns desktop and mobile navigation styling, improves typing and jump-to-present affordances, and presents Space welcome pages after invitations.</p>
+      </description>
+    </release>
     <release version="0.9.24" date="2026-09-02" type="development">
       <description>
         <p>Adds interoperable polls and stickers, scheduled sending, richer room controls and moderation, device trust management, advanced search and galleries, presence modes, Space settings, per-Space profiles, and an activity inbox.</p>

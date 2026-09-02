@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: version 0.9.24 build 76, latest prerelease**
+> **Current release: version 0.9.25 build 77, stable and latest**
 >
 > Deltiecord is available for desktop and Android. Build 76 is deliberately on
 > the latest/prerelease channel while its expanded collaboration features receive
@@ -261,4 +261,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.24 build 76, latest prerelease**
+**Current release: v0.9.25 build 77, stable and latest**

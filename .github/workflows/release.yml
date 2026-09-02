@@ -109,16 +109,16 @@ jobs:
           (cd release-assets && sha256sum -- * >SHA256SUMS)
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 10
 
-      - name: Publish GitHub latest prerelease
+      - name: Publish GitHub stable release
         shell: bash
         run: |
           set -euo pipefail
           version="${{ steps.release.outputs.version }}"
           build="${{ steps.release.outputs.build }}"
           cat >release-notes.md <<EOF
-          Deltiecord ${version} build ${build} is the latest desktop and Android prerelease for Matrix.
+          Deltiecord ${version} build ${build} is the latest stable desktop and Android release for Matrix.
 
-          This build fixes Matrix poll vote tallying, removes the sliding timeline window that could trap scrolling after newer events were unloaded, restores mobile hold-to-schedule, moves typing activity beside the composer, prevents early desktop presence updates from erasing status, makes the mobile profile editor use the full viewport, and unifies per-Space profile editing with field-by-field inheritance controls.
+          This build promotes the stable timeline implementation, makes Jump to present respond to viewport distance on mobile, gives typing activity a soft timeline-to-composer fade, and aligns desktop and mobile navigation around rounded contrasting surfaces rather than separator lines. Mobile navigation now integrates the Android status area, places Inbox and Create beside search, and presents Welcome/Rules after a Space invitation. DM rows on both platforms include compact collision-safe activity ages.
 
           Android background notification resolution now waits for network, retries bounded transient failures with exponential backoff, renews its Matrix pusher after foreground/reconnect transitions, and exposes the last background-worker result in Settings for diagnosis.
 
@@ -143,5 +143,4 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Deltiecord ${version} build ${build}" \
             --notes-file release-notes.md \
-            --prerelease \
             --verify-tag

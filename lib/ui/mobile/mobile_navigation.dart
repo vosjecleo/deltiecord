@@ -681,16 +681,6 @@ class _RoomList extends StatelessWidget {
         title: Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Row(
           children: [
-            if (age.isNotEmpty) ...[
-              Text(
-                age,
-                style: TextStyle(
-                  color: context.deltiecord.muted,
-                  fontSize: DeltiecordTypeScale.small,
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
             Expanded(
               child: Text(
                 room.lastMessage,
@@ -699,6 +689,17 @@ class _RoomList extends StatelessWidget {
                 style: TextStyle(color: context.deltiecord.muted),
               ),
             ),
+            if (age.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(
+                age,
+                style: TextStyle(
+                  color: context.deltiecord.muted,
+                  fontSize: DeltiecordTypeScale.small,
+                  height: 1.16,
+                ),
+              ),
+            ],
           ],
         ),
         trailing: room.unreadCount == 0

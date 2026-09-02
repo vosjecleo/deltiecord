@@ -1001,51 +1001,19 @@ extension _MatrixSession on MatrixBackend {
   }
 
   Future<void> _setUnifiedPushEndpoint(String endpoint) async {
-    final normalized = normalizeUnifiedPushEndpoint(endpoint);
-    final gateway = matrixPushGatewayForUnifiedPushEndpoint(endpoint);
-    if (_matrix.userID == null || normalized == null || gateway == null) {
-      throw ArgumentError('UnifiedPush returned an invalid endpoint.');
-    }
-    final profileTag = 'mobile_${_matrix.deviceID ?? 'android'}';
-    // Endpoint rotation should not leave duplicate pushers for this device.
-    // Other devices use a distinct profile tag and remain untouched.
     try {
-      final pushers = await _matrix.getPushers();
-      for (final pusher in pushers ?? const <Pusher>[]) {
-        if (pusher.appId == 'net.deltie.deltiecord' &&
-            pusher.profileTag == profileTag &&
-            pusher.pushkey != normalized) {
-          await _matrix.deletePusher(
-            PusherId(appId: pusher.appId, pushkey: pusher.pushkey),
-          );
-        }
-      }
+      final result = await _reconcileUnifiedPushEndpoint(endpoint);
+      await UnifiedPushPlatform.instance.recordPusherVerification(result);
     } catch (_) {
-      // A pusher refresh remains safe if listing or stale-entry cleanup is not
-      // supported by a homeserver. Failed endpoints expire independently.
+      await UnifiedPushPlatform.instance.recordPusherVerification(
+        'verification_failed',
+      );
+      rethrow;
     }
-    await _matrix.postPusher(
-      Pusher(
-        appId: 'net.deltie.deltiecord',
-        pushkey: normalized,
-        appDisplayName: 'Deltiecord',
-        deviceDisplayName: Platform.isAndroid
-            ? 'Deltiecord Android'
-            : 'Deltiecord',
-        kind: 'http',
-        lang: 'en',
-        profileTag: profileTag,
-        data: PusherData(
-          url: gateway,
-          // FluffyChat likewise uses the privacy-preserving Matrix format: the
-          // distributor receives IDs/counts and the client resolves content.
-          format: 'event_id_only',
-          additionalProperties: {'client_name': _matrix.clientName},
-        ),
-      ),
-      append: true,
-    );
   }
+
+  Future<String> _reconcileUnifiedPushEndpoint(String endpoint) async =>
+      (await reconcileMatrixUnifiedPushPusher(_matrix, endpoint)).name;
 
   Future<void> _reconcileUnifiedPushState(String instance) async {
     if (_matrix.userID != instance || !_matrix.isLogged()) return;

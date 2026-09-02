@@ -371,7 +371,9 @@ class _MessageList extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: Text('${message.timestamp.toLocal()}'),
+                trailing: Theme.of(context).platform == TargetPlatform.android
+                    ? null
+                    : Text('${message.timestamp.toLocal()}'),
                 onTap: onOpen == null ? null : () => onOpen!(message),
               ),
             );

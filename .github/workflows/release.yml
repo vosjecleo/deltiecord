@@ -118,9 +118,9 @@ jobs:
           cat >release-notes.md <<EOF
           Deltiecord ${version} build ${build} is the latest stable desktop and Android release for Matrix.
 
-          This build promotes the stable timeline implementation, makes Jump to present respond to viewport distance on mobile, gives typing activity a soft timeline-to-composer fade, and aligns desktop and mobile navigation around rounded contrasting surfaces rather than separator lines. Mobile navigation now integrates the Android status area, places Inbox and Create beside search, and presents Welcome/Rules after a Space invitation. DM rows on both platforms include compact collision-safe activity ages.
+          This build tightens the timeline-to-composer spacing on desktop and Android, turns typing activity into a genuinely translucent timeline overlay, moves compact DM activity ages to the collision-safe trailing edge, protects preview glyph descenders, and removes oversized timestamps from the Android Media and Links view.
 
-          Android background notification resolution now waits for network, retries bounded transient failures with exponential backoff, renews its Matrix pusher after foreground/reconnect transitions, and exposes the last background-worker result in Settings for diagnosis.
+          Android now refreshes its UnifiedPush distributor registration and verifies the exact event-only Matrix pusher whenever the app resumes, after endpoint rotation, after reconnect, and through a network-constrained 12-hour safety check. Stale same-device pushers are repaired, while Settings reports endpoint rotation, pusher verification, worker failure, phone-foreground suppression, and active-desktop suppression as distinct outcomes without exposing the private endpoint.
 
           Scheduled messages remain device-local until sent. Please review the known-issues document for the current limitations around full SAS verification UI, indexed missed-call history, timeout restoration permissions, and sticker-pack authoring.
 

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:matrix/matrix.dart';
 
 import '../matrix/matrix_client_factory.dart';
+import '../matrix/matrix_push_reconciliation.dart';
 import 'avatar_media_pool.dart';
 import 'chat_notifications.dart';
 
@@ -20,6 +21,7 @@ typedef AndroidPushAction =
       String action,
       String? reply,
     );
+typedef AndroidPushPusherReconcile = Future<String> Function(String endpoint);
 
 /// Bidirectional boundary used by Android's background push worker.
 ///
@@ -38,6 +40,7 @@ final class AndroidPushBridge {
     required AndroidPushResolver resolve,
     AndroidPushActivation? activate,
     AndroidPushAction? performAction,
+    AndroidPushPusherReconcile? reconcilePusher,
   }) async {
     if (!_supported) return;
     _channel.setMethodCallHandler((call) async {
@@ -75,6 +78,15 @@ final class AndroidPushBridge {
         }
         return false;
       }
+      if (call.method == 'reconcilePusher' && reconcilePusher != null) {
+        final arguments = call.arguments;
+        if (arguments is! Map) return null;
+        final endpoint = arguments['endpoint'];
+        if (endpoint is String && endpoint.isNotEmpty) {
+          return reconcilePusher(endpoint);
+        }
+        return null;
+      }
       return null;
     });
     await _channel.invokeMethod<void>('ready');
@@ -98,7 +110,9 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
   String eventId, {
   AvatarMediaPool? avatarPool,
 }) async {
-  if (!client.isLogged() || roomId.isEmpty || eventId.isEmpty) return null;
+  if (!client.isLogged() || roomId.isEmpty || eventId.isEmpty) {
+    return const {'resolutionStatus': 'session_unavailable'};
+  }
   try {
     await client
         .oneShotSync(timeout: Duration.zero)
@@ -107,15 +121,19 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
     // The event endpoint below can still resolve an event if sync is slow.
   }
   final room = client.getRoomById(roomId);
-  if (room == null || room.membership != Membership.join) return null;
+  if (room == null || room.membership != Membership.join) {
+    return const {'resolutionStatus': 'event_unavailable'};
+  }
 
   Event? event;
   try {
     event = await room.getEventById(eventId);
   } catch (_) {
-    return null;
+    return const {'resolutionStatus': 'event_unavailable'};
   }
-  if (event == null) return null;
+  if (event == null) {
+    return const {'resolutionStatus': 'event_unavailable'};
+  }
   var displayEvent = event;
   if (event.type == EventTypes.Encrypted && client.encryption != null) {
     try {
@@ -144,7 +162,7 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
     desktopActivity,
     currentDeviceId: client.deviceID,
   )) {
-    return null;
+    return const {'resolutionStatus': 'suppressed_active_desktop'};
   }
   final previewsEnabled =
       settings?.tryGet<bool>('notification_previews') ?? true;
@@ -312,6 +330,12 @@ final class HeadlessAndroidPushResolver {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<String> reconcilePusher(String endpoint) async {
+    final client = await _readyClient();
+    if (client == null) return 'session_unavailable';
+    return (await reconcileMatrixUnifiedPushPusher(client, endpoint)).name;
   }
 
   Future<Client?> _readyClient() async {

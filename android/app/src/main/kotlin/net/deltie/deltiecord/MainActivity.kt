@@ -68,7 +68,21 @@ class MainActivity : FlutterActivity() {
                             // or uninstalled provider.
                             UnifiedPush.removeDistributor(this)
                             DeltiecordPushService.clear(this, instance)
+                            DeltiecordPushWorker.cancelPusherVerification(this, instance)
                             result.success(null)
+                        }
+                        "recordPusherVerification" -> {
+                            val verification = call.argument<String>("result")
+                                ?.takeIf { it.isNotBlank() }
+                            if (verification == null) {
+                                result.error("invalid_result", "Missing pusher result.", null)
+                            } else {
+                                DeltiecordPushService.recordPusherVerification(
+                                    this,
+                                    verification,
+                                )
+                                result.success(null)
+                            }
                         }
                         else -> result.notImplemented()
                     }
@@ -131,6 +145,10 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         DeltiecordEngineRegistry.appInForeground = true
+        DeltiecordPushService.knownInstance(this)?.let { instance ->
+            DeltiecordPushWorker.enqueuePusherReconciliation(this, instance)
+            DeltiecordPushWorker.schedulePusherVerification(this, instance)
+        }
     }
 
     override fun onPause() {
@@ -150,6 +168,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun registerUnifiedPush(instance: String, result: MethodChannel.Result) {
+        DeltiecordPushService.rememberInstance(this, instance)
+        DeltiecordPushWorker.schedulePusherVerification(this, instance)
         DeltiecordPushService.clearError(this, instance)
         val existingState = DeltiecordPushService.state(this, instance)
         val existingEndpoint = existingState["endpoint"]
@@ -185,6 +205,7 @@ class MainActivity : FlutterActivity() {
         // rotation that a distributor is not required to emit. Reconcile the
         // persisted capability immediately; a later callback still updates it.
         if (!existingEndpoint.isNullOrBlank()) {
+            DeltiecordPushWorker.enqueuePusherReconciliation(this, instance)
             return
         }
         mainHandler.postDelayed(

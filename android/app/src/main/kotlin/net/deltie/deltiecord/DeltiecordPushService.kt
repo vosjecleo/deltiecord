@@ -24,10 +24,20 @@ class DeltiecordPushService : MessagingReceiver() {
             stateChangedListener?.invoke(instance)
             return
         }
-        preferences(context).edit()
+        val previous = preferences(context).getString(endpointKey(instance), null)
+        val editor = preferences(context).edit()
             .putString(endpointKey(instance), endpointUrl)
+            .putString("last_instance", instance)
+            .putString("last_pusher_result", "verification_pending")
             .remove(errorKey(instance))
-            .apply()
+        if (previous != endpointUrl) {
+            editor.putLong("last_endpoint_rotation_ms", System.currentTimeMillis())
+        }
+        editor.apply()
+        if (previous != endpointUrl) {
+            DeltiecordPushWorker.enqueuePusherReconciliation(context, instance)
+        }
+        DeltiecordPushWorker.schedulePusherVerification(context, instance)
         stateChangedListener?.invoke(instance)
     }
 
@@ -92,6 +102,16 @@ class DeltiecordPushService : MessagingReceiver() {
                 ?.toString(),
             "lastWorkerResult" to preferences(context)
                 .getString("last_worker_result", null),
+            "lastEndpointRotation" to preferences(context)
+                .getLong("last_endpoint_rotation_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
+            "lastPusherVerification" to preferences(context)
+                .getLong("last_pusher_verification_ms", 0L)
+                .takeIf { it > 0L }
+                ?.toString(),
+            "lastPusherResult" to preferences(context)
+                .getString("last_pusher_result", null),
         )
 
         fun recordWorkerResult(context: Context, result: String) {
@@ -100,11 +120,31 @@ class DeltiecordPushService : MessagingReceiver() {
                 .apply()
         }
 
-        fun clear(context: Context, instance: String) {
+        fun recordPusherVerification(context: Context, result: String) {
             preferences(context).edit()
+                .putLong("last_pusher_verification_ms", System.currentTimeMillis())
+                .putString("last_pusher_result", result.take(96))
+                .apply()
+        }
+
+        fun rememberInstance(context: Context, instance: String) {
+            preferences(context).edit().putString("last_instance", instance).apply()
+        }
+
+        fun knownInstance(context: Context): String? = preferences(context)
+            .getString("last_instance", null)
+            ?.takeIf { it.isNotBlank() }
+
+        fun endpoint(context: Context, instance: String): String? = preferences(context)
+            .getString(endpointKey(instance), null)
+            ?.takeIf { it.isNotBlank() }
+
+        fun clear(context: Context, instance: String) {
+            val editor = preferences(context).edit()
                 .remove(endpointKey(instance))
                 .remove(errorKey(instance))
-                .apply()
+            if (knownInstance(context) == instance) editor.remove("last_instance")
+            editor.apply()
         }
 
         fun clearError(context: Context, instance: String) {

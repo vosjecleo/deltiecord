@@ -50,6 +50,16 @@ Matrix HTTP push gateway on that same ntfy server. Neither distributor
 credentials nor generated endpoint capabilities are shipped or logged by
 Deltiecord.
 
+On every foreground resume, Deltiecord asks the selected distributor to refresh
+its registration and verifies the resulting endpoint against the homeserver's
+Matrix pusher list. Endpoint-change callbacks trigger the same check, and a
+network-constrained 12-hour WorkManager task provides a bounded safety net while
+the app stays closed. Stale same-device pushers are replaced without exposing
+the private endpoint in logs or worker input. The Notifications page reports
+the last endpoint rotation, pusher verification, native alert, background push,
+and worker outcome independently so a stopped distributor can be distinguished
+from decryption or notification suppression.
+
 The embedded Firebase-compatible distributor is not enabled in release builds.
 Matrix requires a WebPush-capable gateway and VAPID configuration for that
 route; silently falling back to an unconfigured embedded distributor would

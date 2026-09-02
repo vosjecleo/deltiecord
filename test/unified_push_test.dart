@@ -84,6 +84,8 @@ void main() {
               'distributor': 'io.heckel.ntfy',
               'endpoint': 'https://push.deltie.net/up-private?up=1',
               'error': null,
+              'lastPusherVerification': '1788354000000',
+              'lastPusherResult': 'verified',
             };
           });
       addTearDown(() {
@@ -97,6 +99,11 @@ void main() {
       expect(state.registered, isTrue);
       expect(state.distributor, 'io.heckel.ntfy');
       expect(state.endpoint, 'https://push.deltie.net/up-private?up=1');
+      expect(state.lastPusherResult, 'verified');
+      expect(
+        state.lastPusherVerification,
+        DateTime.fromMillisecondsSinceEpoch(1788354000000),
+      );
     },
   );
 

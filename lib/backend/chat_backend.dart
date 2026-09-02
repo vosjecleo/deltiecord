@@ -256,6 +256,10 @@ abstract class ChatBackend extends ChangeNotifier {
   /// Implementations must never log or display the full endpoint.
   Future<void> setUnifiedPushEndpoint(String endpoint) async {}
 
+  /// Checks and repairs the current Android device's Matrix pusher.
+  Future<String> reconcileUnifiedPushEndpoint(String endpoint) async =>
+      'unsupported';
+
   Future<void> removeUnifiedPushEndpoint(String endpoint) async {}
   Future<void> updatePreferences(AppPreferences preferences);
   Future<void> loadMoreHistory({String? anchorEventId});

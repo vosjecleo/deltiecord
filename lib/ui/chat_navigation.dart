@@ -2175,32 +2175,35 @@ class _HomeRoomListTile extends StatelessWidget {
                             compact: 3,
                           ),
                         ),
-                        Row(
-                          children: [
-                            if (age.isNotEmpty) ...[
-                              Text(
-                                age,
-                                style: TextStyle(
-                                  color: context.deltiecord.muted,
-                                  fontSize: DeltiecordTypeScale.small,
-                                  height: 1.05,
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  room.lastMessage,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: context.deltiecord.muted,
+                                    fontSize: DeltiecordTypeScale.normal,
+                                    height: 1.16,
+                                  ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
+                              if (age.isNotEmpty) ...[
+                                const SizedBox(width: 6),
+                                Text(
+                                  age,
+                                  style: TextStyle(
+                                    color: context.deltiecord.muted,
+                                    fontSize: DeltiecordTypeScale.small,
+                                    height: 1.16,
+                                  ),
+                                ),
+                              ],
                             ],
-                            Expanded(
-                              child: Text(
-                                room.lastMessage,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: context.deltiecord.muted,
-                                  fontSize: DeltiecordTypeScale.normal,
-                                  height: 1.05,
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     ),

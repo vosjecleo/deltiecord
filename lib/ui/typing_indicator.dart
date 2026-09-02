@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'deltiecord_theme.dart';
 
-/// A fixed-height typing footer so appearing activity never shifts the
-/// timeline or composer. The dots pulse in sequence without rebuilding chat.
+/// A translucent timeline overlay for live typing activity.
+///
+/// Callers place this over the bottom of the timeline rather than allocating
+/// a separate row. Messages therefore keep their natural proximity to the
+/// composer and remain visible through the fade when typing starts.
 class TypingIndicator extends StatefulWidget {
   const TypingIndicator({required this.names, super.key});
 
@@ -54,61 +57,65 @@ class _TypingIndicatorState extends State<TypingIndicator>
     final visible = widget.names.isNotEmpty;
     return Semantics(
       label: visible ? typingLabel(widget.names) : null,
-      child: SizedBox(
-        key: const Key('typing-indicator'),
-        height: 28,
-        child: DecoratedBox(
-          key: const Key('typing-indicator-gradient'),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                context.deltiecord.background.withValues(alpha: 0),
-                context.deltiecord.background.withValues(alpha: 0.96),
-              ],
-            ),
-          ),
-          child: AnimatedOpacity(
-            duration: const Duration(milliseconds: 120),
-            opacity: visible ? 1 : 0,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-              child: Row(
-                children: [
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, _) => Row(
-                      children: [
-                        for (var index = 0; index < 3; index++) ...[
-                          Opacity(
-                            opacity: _dotOpacity(_controller.value, index),
-                            child: Text(
-                              '•',
-                              style: TextStyle(
-                                color: context.deltiecord.muted,
-                                fontWeight: FontWeight.w800,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          key: const Key('typing-indicator'),
+          duration: const Duration(milliseconds: 120),
+          opacity: visible ? 1 : 0,
+          child: SizedBox(
+            height: 26,
+            child: DecoratedBox(
+              key: const Key('typing-indicator-gradient'),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0, 0.55, 1],
+                  colors: [
+                    context.deltiecord.background.withValues(alpha: 0),
+                    context.deltiecord.background.withValues(alpha: 0.2),
+                    context.deltiecord.background.withValues(alpha: 0.78),
+                  ],
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 5, 8, 1),
+                child: Row(
+                  children: [
+                    AnimatedBuilder(
+                      animation: _controller,
+                      builder: (context, _) => Row(
+                        children: [
+                          for (var index = 0; index < 3; index++) ...[
+                            Opacity(
+                              opacity: _dotOpacity(_controller.value, index),
+                              child: Text(
+                                '•',
+                                style: TextStyle(
+                                  color: context.deltiecord.muted,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
-                          ),
-                          if (index < 2) const SizedBox(width: 1),
+                            if (index < 2) const SizedBox(width: 1),
+                          ],
                         ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      visible ? typingLabel(widget.names) : '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: DeltiecordTypeScale.small,
-                        color: context.deltiecord.muted,
                       ),
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        visible ? typingLabel(widget.names) : '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: DeltiecordTypeScale.small,
+                          color: context.deltiecord.muted,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

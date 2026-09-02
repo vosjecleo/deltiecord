@@ -584,9 +584,12 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                       : Icons.notifications_off_outlined,
                 ),
                 title: Text(
-                  state?.registered == true
-                      ? 'UnifiedPush registered'
-                      : 'UnifiedPush not registered',
+                  state?.registered != true
+                      ? 'UnifiedPush not registered'
+                      : state?.lastPusherResult == 'verified' ||
+                            state?.lastPusherResult == 'repaired'
+                      ? 'UnifiedPush and Matrix pusher verified'
+                      : 'UnifiedPush endpoint available',
                 ),
                 subtitle: Text(
                   state?.error != null
@@ -600,6 +603,12 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                             'Last native alert: ${posted.toLocal()}',
                           if (state?.lastWorkerResult case final result?)
                             'Last background result: $result',
+                          if (state?.lastEndpointRotation case final rotated?)
+                            'Last endpoint rotation: ${rotated.toLocal()}',
+                          if (state?.lastPusherVerification case final checked?)
+                            'Last Matrix pusher check: ${checked.toLocal()}',
+                          if (state?.lastPusherResult case final result?)
+                            'Matrix pusher result: $result',
                         ].join('\n'),
                 ),
                 trailing: snapshot.connectionState != ConnectionState.done

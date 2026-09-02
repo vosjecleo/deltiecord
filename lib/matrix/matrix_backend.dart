@@ -27,6 +27,7 @@ import '../services/timeline_window_policy.dart';
 import '../services/unified_push.dart';
 import 'matrix_client_factory.dart';
 import 'media_range_proxy.dart';
+import 'matrix_push_reconciliation.dart';
 import 'matrix_voice_controller.dart';
 
 part 'matrix_event_mapping.dart';
@@ -703,6 +704,10 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> setUnifiedPushEndpoint(String endpoint) =>
       _setUnifiedPushEndpoint(endpoint);
+
+  @override
+  Future<String> reconcileUnifiedPushEndpoint(String endpoint) =>
+      _reconcileUnifiedPushEndpoint(endpoint);
 
   @override
   Future<void> removeUnifiedPushEndpoint(String endpoint) =>

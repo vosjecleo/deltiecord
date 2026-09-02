@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.25 build 77, stable and latest**
+> **Current release: version 0.9.25 build 78, stable and latest**
 >
-> Deltiecord is available for desktop and Android. Build 76 is deliberately on
-> the latest/prerelease channel while its expanded collaboration features receive
-> cross-client and real-device testing.
+> Deltiecord is available for desktop and Android. Build 78 improves the compact
+> conversation layout and automatically repairs stale UnifiedPush endpoints and
+> Matrix pushers when Android resumes.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -261,4 +261,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.25 build 77, stable and latest**
+**Current release: v0.9.25 build 78, stable and latest**

@@ -874,7 +874,7 @@ class _ConversationState extends State<_Conversation> {
                                       0,
                                       10,
                                       0,
-                                      14,
+                                      4,
                                     ),
                                     itemCount:
                                         messages.length +
@@ -1031,10 +1031,15 @@ class _ConversationState extends State<_Conversation> {
                             ),
                           ),
                         ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: TypingIndicator(names: backend.typingUserNames),
+                      ),
                     ],
                   ),
                 ),
-                TypingIndicator(names: backend.typingUserNames),
                 if (widget.replyingTo case final message?)
                   _ComposerContext(
                     label: 'Replying to ${message.sender}',

@@ -22,7 +22,7 @@
   <releases>
     <release version="0.9.25" date="2026-09-02" type="stable">
       <description>
-        <p>Promotes the stable timeline, adds compact DM activity ages, aligns desktop and mobile navigation styling, improves typing and jump-to-present affordances, and presents Space welcome pages after invitations.</p>
+        <p>Tightens conversation and DM layouts, turns typing activity into a translucent timeline overlay, and automatically verifies and repairs Android UnifiedPush endpoints and Matrix pushers.</p>
       </description>
     </release>
     <release version="0.9.24" date="2026-09-02" type="development">

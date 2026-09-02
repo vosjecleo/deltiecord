@@ -50,6 +50,13 @@ Future<void> main() async {
         if (backend.status != SessionStatus.signedIn) return false;
         return backend.performAndroidPushAction(roomId, eventId, action, reply);
       },
+      reconcilePusher: (endpoint) async {
+        await initialization;
+        if (backend.status != SessionStatus.signedIn) {
+          return 'session_unavailable';
+        }
+        return backend.reconcileUnifiedPushEndpoint(endpoint);
+      },
     ),
   );
   await initialization;
@@ -70,6 +77,7 @@ Future<void> deltiecordPushBackgroundMain() async {
   await AndroidPushBridge.bind(
     resolve: resolver.resolve,
     performAction: resolver.perform,
+    reconcilePusher: resolver.reconcilePusher,
   );
   await Completer<void>().future;
 }

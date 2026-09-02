@@ -15,6 +15,9 @@ final class UnifiedPushState {
     this.lastMessageReceived,
     this.lastNotificationPosted,
     this.lastWorkerResult,
+    this.lastEndpointRotation,
+    this.lastPusherVerification,
+    this.lastPusherResult,
   });
 
   final String? distributor;
@@ -23,6 +26,9 @@ final class UnifiedPushState {
   final DateTime? lastMessageReceived;
   final DateTime? lastNotificationPosted;
   final String? lastWorkerResult;
+  final DateTime? lastEndpointRotation;
+  final DateTime? lastPusherVerification;
+  final String? lastPusherResult;
 
   bool get registered => endpoint?.isNotEmpty == true;
 }
@@ -111,6 +117,18 @@ final class UnifiedPushPlatform {
   Future<void> unregister(String instance) =>
       _channel.invokeMethod<void>('unregister', {'instance': instance});
 
+  /// Persists a secret-free result for Settings diagnostics.
+  Future<void> recordPusherVerification(String result) async {
+    if (!supported) return;
+    try {
+      await _channel.invokeMethod<void>('recordPusherVerification', {
+        'result': result,
+      });
+    } on MissingPluginException {
+      // Headless engines report their result through the native worker.
+    }
+  }
+
   /// Selects a known external distributor on a fresh installation.
   ///
   /// An existing choice is never replaced. Deltiecord deliberately does not
@@ -189,6 +207,13 @@ final class UnifiedPushPlatform {
           result?['lastNotificationPosted'],
         ),
         lastWorkerResult: result?['lastWorkerResult'] as String?,
+        lastEndpointRotation: _dateFromMilliseconds(
+          result?['lastEndpointRotation'],
+        ),
+        lastPusherVerification: _dateFromMilliseconds(
+          result?['lastPusherVerification'],
+        ),
+        lastPusherResult: result?['lastPusherResult'] as String?,
       );
 
   DateTime? _dateFromMilliseconds(Object? value) {

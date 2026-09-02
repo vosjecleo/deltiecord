@@ -634,7 +634,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             controller: _scroll,
                             reverse: true,
                             physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 4),
                             itemCount:
                                 messages.length +
                                 ((backend.canLoadMoreHistory ||
@@ -779,10 +779,15 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             label: const Text('Present'),
                           ),
                         ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: TypingIndicator(names: backend.typingUserNames),
+                      ),
                     ],
                   ),
           ),
-          TypingIndicator(names: backend.typingUserNames),
           _MobileComposer(
             controller: _composer,
             focusNode: _focus,

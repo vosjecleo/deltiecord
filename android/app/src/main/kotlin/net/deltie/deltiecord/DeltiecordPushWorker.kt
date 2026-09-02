@@ -5,10 +5,12 @@ import androidx.work.CoroutineWorker
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -55,6 +57,9 @@ class DeltiecordPushWorker(
     )
 
     override suspend fun doWork(): Result {
+        if (inputData.getString(KEY_JOB_KIND) == JOB_RECONCILE_PUSHER) {
+            return reconcilePusher()
+        }
         val roomId = inputData.getString(KEY_ROOM_ID)?.takeIf { it.isNotBlank() }
             ?: return Result.failure()
         val eventId = inputData.getString(KEY_EVENT_ID)?.takeIf { it.isNotBlank() }
@@ -64,6 +69,10 @@ class DeltiecordPushWorker(
         // notification as well duplicates the alert and can mark a visible
         // conversation as externally notified.
         if (notificationAction == null && DeltiecordEngineRegistry.appInForeground) {
+            DeltiecordPushService.recordWorkerResult(
+                applicationContext,
+                "suppressed_phone_foreground",
+            )
             return Result.success()
         }
         var ownsEngine = false
@@ -96,6 +105,25 @@ class DeltiecordPushWorker(
                 }
             } else {
                 val resolution = invokeResolver(engine, roomId, eventId)
+                val resolutionStatus = resolution?.get("resolutionStatus") as? String
+                if (resolutionStatus == "suppressed_active_desktop") {
+                    DeltiecordPushService.recordWorkerResult(
+                        applicationContext,
+                        resolutionStatus,
+                    )
+                    return Result.success()
+                }
+                if (resolutionStatus != null) {
+                    DeltiecordPushService.recordWorkerResult(
+                        applicationContext,
+                        "${resolutionStatus}_attempt_${runAttemptCount + 1}",
+                    )
+                    return if (runAttemptCount < MAX_RETRIES) {
+                        Result.retry()
+                    } else {
+                        Result.success()
+                    }
+                }
                 val message = resolution?.let(DeltiecordNotificationPublisher::fromMap)
                 if (message != null) {
                     DeltiecordNotificationPublisher.publish(applicationContext, message)
@@ -130,6 +158,64 @@ class DeltiecordPushWorker(
             DeltiecordNotificationPublisher.cancelBackgroundWorkNotification(
                 applicationContext,
             )
+            if (ownsEngine && engine != null) {
+                withContext(Dispatchers.Main) { engine.destroy() }
+            }
+        }
+    }
+
+    private suspend fun reconcilePusher(): Result {
+        val instance = inputData.getString(KEY_INSTANCE)?.takeIf { it.isNotBlank() }
+            ?: return Result.failure()
+        // Registration is idempotent for a healthy distributor. If it has
+        // rotated the capability, onNewEndpoint persists it and schedules a
+        // second reconciliation without exposing the endpoint here.
+        runCatching {
+            org.unifiedpush.android.connector.UnifiedPush.register(
+                applicationContext,
+                instance,
+                messageForDistributor = instance.take(100),
+            )
+        }
+        val endpoint = DeltiecordPushService.endpoint(applicationContext, instance)
+        if (endpoint == null) {
+            DeltiecordPushService.recordPusherVerification(
+                applicationContext,
+                "endpoint_missing",
+            )
+            return Result.success()
+        }
+        var ownsEngine = false
+        var engine = DeltiecordEngineRegistry.engine
+        try {
+            if (engine != null) {
+                withTimeout(15_000) {
+                    while (!DeltiecordEngineRegistry.pushBridgeReady) delay(100)
+                }
+            } else {
+                ownsEngine = true
+                engine = startHeadlessEngine()
+            }
+            val result = invokePusherReconciliation(engine, endpoint)
+            if (result == "verified" || result == "repaired") {
+                DeltiecordPushService.recordPusherVerification(
+                    applicationContext,
+                    result,
+                )
+                return Result.success()
+            }
+            DeltiecordPushService.recordPusherVerification(
+                applicationContext,
+                result ?: "verification_failed",
+            )
+            return if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
+        } catch (_: Throwable) {
+            DeltiecordPushService.recordPusherVerification(
+                applicationContext,
+                "verification_failed_attempt_${runAttemptCount + 1}",
+            )
+            return if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.success()
+        } finally {
             if (ownsEngine && engine != null) {
                 withContext(Dispatchers.Main) { engine.destroy() }
             }
@@ -221,12 +307,40 @@ class DeltiecordPushWorker(
         withTimeout(45_000) { completed.await() }
     }
 
+    private suspend fun invokePusherReconciliation(
+        engine: FlutterEngine,
+        endpoint: String,
+    ): String? = withContext(Dispatchers.Main) {
+        val completed = CompletableDeferred<String?>()
+        MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL).invokeMethod(
+            "reconcilePusher",
+            mapOf("endpoint" to endpoint),
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    completed.complete(result as? String)
+                }
+
+                override fun error(code: String, message: String?, details: Any?) {
+                    completed.complete(null)
+                }
+
+                override fun notImplemented() {
+                    completed.complete(null)
+                }
+            },
+        )
+        withTimeout(45_000) { completed.await() }
+    }
+
     companion object {
         private const val CHANNEL = "net.deltie.deltiecord/background_push"
         private const val KEY_ROOM_ID = "room_id"
         private const val KEY_EVENT_ID = "event_id"
         private const val KEY_ACTION = "notification_action"
         private const val KEY_REPLY = "notification_reply"
+        private const val KEY_JOB_KIND = "job_kind"
+        private const val KEY_INSTANCE = "instance"
+        private const val JOB_RECONCILE_PUSHER = "reconcile_pusher"
         private const val MAX_RETRIES = 3
 
         private fun request(data: Data) =
@@ -239,6 +353,17 @@ class DeltiecordPushWorker(
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+
+        private fun pusherRequest(data: Data) =
+            OneTimeWorkRequestBuilder<DeltiecordPushWorker>()
+                .setInputData(data)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .build()
 
         fun enqueue(context: Context, roomId: String, eventId: String) {
@@ -275,6 +400,50 @@ class DeltiecordPushWorker(
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request,
             )
+        }
+
+        fun enqueuePusherReconciliation(context: Context, instance: String) {
+            if (instance.isBlank()) return
+            val data = Data.Builder()
+                .putString(KEY_JOB_KIND, JOB_RECONCILE_PUSHER)
+                .putString(KEY_INSTANCE, instance)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "deltiecord-pusher-check-${instance.hashCode()}",
+                ExistingWorkPolicy.REPLACE,
+                pusherRequest(data),
+            )
+        }
+
+        fun schedulePusherVerification(context: Context, instance: String) {
+            if (instance.isBlank()) return
+            val data = Data.Builder()
+                .putString(KEY_JOB_KIND, JOB_RECONCILE_PUSHER)
+                .putString(KEY_INSTANCE, instance)
+                .build()
+            val request = PeriodicWorkRequestBuilder<DeltiecordPushWorker>(
+                12,
+                TimeUnit.HOURS,
+            )
+                .setInputData(data)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "deltiecord-pusher-periodic-${instance.hashCode()}",
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request,
+            )
+        }
+
+        fun cancelPusherVerification(context: Context, instance: String) {
+            val manager = WorkManager.getInstance(context)
+            manager.cancelUniqueWork("deltiecord-pusher-check-${instance.hashCode()}")
+            manager.cancelUniqueWork("deltiecord-pusher-periodic-${instance.hashCode()}")
         }
     }
 }

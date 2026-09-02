@@ -1,5 +1,19 @@
 # Known issues
 
+## v0.9.25 build 78 stable notes
+
+- Fixed in build 78: typing activity now overlays the bottom of the timeline
+  with a translucent fade instead of reserving an opaque row. This removes the
+  large composer gap on desktop and tightens the same area on Android.
+- Fixed in build 78: compact DM activity ages sit to the right of the preview,
+  preview text ellipsizes before the age, and desktop glyph descenders are no
+  longer clipped. Mobile Media and Links rows omit their oversized timestamp.
+- Hardened in build 78: Android revalidates both the distributor endpoint and
+  the matching Matrix pusher whenever the app resumes, after endpoint rotation,
+  after reconnect, and every 12 hours while constraints permit. Notification
+  settings report endpoint rotation, pusher verification, and suppression
+  outcomes separately.
+
 ## v0.9.25 build 77 stable notes
 
 - Improved in build 77: mobile Jump to present follows viewport distance

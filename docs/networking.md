@@ -80,6 +80,14 @@ uses `https://push.deltie.net/_matrix/push/v1/notify`, while an `ntfy.sh`
 capability uses the corresponding `ntfy.sh` gateway. The endpoint is a bearer
 capability and is never displayed in the UI or written to logs.
 
+Android checks the distributor endpoint whenever Deltiecord returns from the
+background, after login or reconnect, after an endpoint-change callback, and
+periodically every 12 hours while a network is available. It verifies that the
+homeserver retained the exact `event_id_only` Matrix pusher and repairs stale or
+missing same-device entries. Notification settings expose only timestamps and
+result categories for this process; the private endpoint itself never enters
+logs, UI diagnostics, or WorkManager input data.
+
 Release builds use an installed external distributor such as ntfy. Embedded
 Firebase-compatible WebPush is disabled until Deltiecord has a dedicated,
 VAPID-configured Matrix WebPush gateway; it cannot safely reuse the ntfy

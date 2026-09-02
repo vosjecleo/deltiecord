@@ -191,7 +191,7 @@ clients can ignore the state; the power-level restriction remains visible and
 interoperable. Rooms that deny the moderator permission to write this custom
 state can only restore automatically while the initiating client remains open.
 
-## Standard interoperable events used by build 77
+## Standard interoperable events used by build 78
 
 Polls use Matrix poll events from MSC3381 through matrix-dart-sdk. Stickers are
 sent as `m.sticker`; packs are read from the established FluffyChat-compatible

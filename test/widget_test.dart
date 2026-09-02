@@ -1697,6 +1697,14 @@ void main() {
       tester.getSize(find.byKey(const Key('typing-indicator'))).width,
       tester.getSize(find.byKey(const Key('conversation-timeline-area'))).width,
     );
+    expect(
+      tester.getBottomLeft(find.byKey(const Key('typing-indicator'))).dy,
+      composerTop,
+    );
+    final indicator = tester.widget<AnimatedOpacity>(
+      find.byKey(const Key('typing-indicator')),
+    );
+    expect(indicator.opacity, 1);
   });
 
   testWidgets('multiline composer grows but remains within lower third', (
@@ -2526,6 +2534,16 @@ void main() {
     expect(
       find.text('A preview that must yield before the age overlaps it'),
       findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(find.text('2h')).dx,
+      greaterThan(
+        tester
+            .getTopLeft(
+              find.text('A preview that must yield before the age overlaps it'),
+            )
+            .dx,
+      ),
     );
   });
 

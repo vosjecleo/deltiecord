@@ -1,12 +1,12 @@
-Deltiecord v0.9.25 build 77 stable release bundle
+Deltiecord v0.9.25 build 78 stable release bundle
 ====================================================
 
 Linux AppImage:
-  chmod +x deltiecord-0.9.25+77-linux-appimage-x86_64.AppImage
-  ./deltiecord-0.9.25+77-linux-appimage-x86_64.AppImage
+  chmod +x deltiecord-0.9.25+78-linux-appimage-x86_64.AppImage
+  ./deltiecord-0.9.25+78-linux-appimage-x86_64.AppImage
 
 Debian/Ubuntu package:
-  sudo apt install ./deltiecord-0.9.25+77-linux-debian-amd64.deb
+  sudo apt install ./deltiecord-0.9.25+78-linux-debian-amd64.deb
 
 Verify files:
   sha256sum -c SHA256SUMS

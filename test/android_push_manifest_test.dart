@@ -82,5 +82,13 @@ void main() {
     expect(publisher, contains('"mute", "Mute"'));
     expect(actionReceiver, contains('DeltiecordPushWorker.enqueueAction'));
     expect(worker, contains('performNotificationAction'));
+    expect(worker, contains('reconcilePusher'));
+    expect(worker, contains('PeriodicWorkRequestBuilder'));
+    expect(worker, contains('ExistingPeriodicWorkPolicy.UPDATE'));
+    expect(worker, contains('schedulePusherVerification'));
+    expect(worker, contains('enqueuePusherReconciliation'));
+    expect(receiver, contains('last_pusher_verification_ms'));
+    expect(receiver, contains('last_endpoint_rotation_ms'));
+    expect(worker, contains('suppressed_active_desktop'));
   });
 }

@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.25 build 79, stable and latest**
+> **Current release: version 0.9.26 build 80, latest preview**
 >
-> Deltiecord is available for desktop and Android. Build 79 prevents UnifiedPush
-> endpoint races, hardens background delivery, and finishes the compact typing,
-> composer, and DM activity layout on desktop and Android.
+> Deltiecord is available for desktop and Android. Build 80 hardens private
+> local state and Android notifications, removes the unused bundled emoji font,
+> and unifies room search with bounded media/history discovery.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -130,7 +130,7 @@ Notable features include:
 - Clipboard image/file support
 - Configurable keyboard shortcuts
 - Multiple UI density and appearance settings
-- Bundled text and emoji fonts with configurable application and fallback
+- Bundled Liberation Sans text with platform-native colour emoji fallback
   font choices
 - Custom profile theming
 
@@ -261,4 +261,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.25 build 79, stable and latest**
+**Current release: v0.9.26 build 80, latest preview**

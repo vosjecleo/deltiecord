@@ -244,6 +244,9 @@ extension _MatrixEventMapping on MatrixBackend {
       animated: event.attachmentMimetype == 'image/gif',
       width: event.infoMap.tryGet<int>('w'),
       height: event.infoMap.tryGet<int>('h'),
+      thumbnailSize: event.thumbnailInfoMap.tryGet<int>('size'),
+      thumbnailWidth: event.thumbnailInfoMap.tryGet<int>('w'),
+      thumbnailHeight: event.thumbnailInfoMap.tryGet<int>('h'),
     );
   }
 

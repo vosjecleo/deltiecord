@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.26" date="2026-09-02" type="development">
+      <description>
+        <p>Hardens Android backups, notification media and local stores, adds bounded media-aware room search, and improves release and proxy safeguards.</p>
+      </description>
+    </release>
     <release version="0.9.25" date="2026-09-02" type="stable">
       <description>
         <p>Tightens conversation and DM layouts, turns typing activity into a translucent timeline overlay, and automatically verifies and repairs Android UnifiedPush endpoints and Matrix pushers.</p>

@@ -400,11 +400,7 @@ class _ConversationState extends State<_Conversation> {
   }
 
   Future<void> showSearch() async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) =>
-          _RoomSearchDialog(backend: widget.backend, onSelected: _jumpToEvent),
-    );
+    await showRoomSearchDialog(context, widget.backend, onOpen: _jumpToEvent);
     _focusComposerAfterBuild();
   }
 
@@ -663,10 +659,11 @@ class _ConversationState extends State<_Conversation> {
                                 },
                               );
                             case 'media':
-                              await showRoomMediaGallery(
+                              await showRoomSearchDialog(
                                 context,
                                 backend,
                                 onOpen: _jumpToEvent,
+                                initialSection: RoomSearchSection.media,
                               );
                             case 'inbox':
                               await showUnifiedInbox(
@@ -1152,123 +1149,6 @@ class _ConversationPresence extends StatelessWidget {
       ),
     );
   }
-}
-
-class _RoomSearchDialog extends StatefulWidget {
-  const _RoomSearchDialog({required this.backend, required this.onSelected});
-
-  final ChatBackend backend;
-  final ValueChanged<String> onSelected;
-
-  @override
-  State<_RoomSearchDialog> createState() => _RoomSearchDialogState();
-}
-
-class _RoomSearchDialogState extends State<_RoomSearchDialog> {
-  final _controller = TextEditingController();
-  Timer? _debounce;
-  List<ChatMessage> _results = const [];
-  bool _searching = false;
-  String? _error;
-  int _generation = 0;
-
-  void _queryChanged(String value) {
-    _debounce?.cancel();
-    if (value.trim().isEmpty) {
-      setState(() {
-        _results = const [];
-        _searching = false;
-        _error = null;
-      });
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 350), _search);
-  }
-
-  Future<void> _search() async {
-    final query = _controller.text.trim();
-    if (query.isEmpty) return;
-    final generation = ++_generation;
-    setState(() {
-      _searching = true;
-      _error = null;
-    });
-    try {
-      final results = await widget.backend.searchRoomHistory(query);
-      if (!mounted || generation != _generation) return;
-      setState(() => _results = results);
-    } catch (_) {
-      if (!mounted || generation != _generation) return;
-      setState(() => _error = 'Search failed. Try again.');
-    } finally {
-      if (mounted && generation == _generation) {
-        setState(() => _searching = false);
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Search this room'),
-    content: SizedBox(
-      width: 520,
-      height: 430,
-      child: Column(
-        children: [
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.search),
-              hintText: 'Search message history',
-            ),
-            onChanged: _queryChanged,
-            onSubmitted: (_) {
-              _debounce?.cancel();
-              _search();
-            },
-          ),
-          if (_searching) const LinearProgressIndicator(minHeight: 2),
-          const SizedBox(height: 8),
-          if (_error != null) Text(_error!),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _results.length,
-              itemBuilder: (context, index) {
-                final message = _results[index];
-                return ListTile(
-                  dense: true,
-                  title: Text(message.sender),
-                  subtitle: Text(
-                    message.body,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  onTap: () {
-                    Navigator.of(context).pop();
-                    widget.onSelected(message.id);
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: Navigator.of(context).pop,
-        child: const Text('Close'),
-      ),
-    ],
-  );
 }
 
 class _EmptyConversation extends StatelessWidget {

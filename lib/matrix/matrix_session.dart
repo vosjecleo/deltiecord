@@ -178,6 +178,7 @@ extension _MatrixSession on MatrixBackend {
       }
       _memberTimeoutTimers.clear();
       await _scheduledMessageStore.clear();
+      await _notifications.clearPrivateState();
       _bookmarkedEventIds.clear();
       _temporaryRoomMutes.clear();
       _temporaryRoomMuteRestoreModes.clear();
@@ -635,7 +636,25 @@ extension _MatrixSession on MatrixBackend {
     final declaredSize = useThumbnail
         ? event.thumbnailInfoMap.tryGet<int>('size')
         : event.infoMap.tryGet<int>('size');
-    if (declaredSize != null && declaredSize > 3 * 1024 * 1024) return null;
+    // Background rich notifications never fetch media with unknown bounds.
+    // A small compressed file can otherwise expand into an enormous bitmap.
+    if (declaredSize == null ||
+        declaredSize <= 0 ||
+        declaredSize > 3 * 1024 * 1024) {
+      return null;
+    }
+    final info = useThumbnail ? event.thumbnailInfoMap : event.infoMap;
+    final width = info.tryGet<int>('w');
+    final height = info.tryGet<int>('h');
+    if (width == null ||
+        height == null ||
+        width <= 0 ||
+        height <= 0 ||
+        width > 4096 ||
+        height > 4096 ||
+        width * height > 8000000) {
+      return null;
+    }
     try {
       final file = await event.downloadAndDecryptAttachment(
         getThumbnail: useThumbnail,

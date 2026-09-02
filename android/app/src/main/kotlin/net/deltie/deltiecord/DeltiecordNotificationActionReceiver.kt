@@ -16,6 +16,7 @@ class DeltiecordNotificationActionReceiver : BroadcastReceiver() {
             ?.getCharSequence(KEY_REPLY)
             ?.toString()
         DeltiecordPushWorker.enqueueAction(context, roomId, eventId, action, reply)
+        DeltiecordNotificationPublisher.clearRoom(context, roomId)
         context.getSystemService(NotificationManager::class.java)
             .cancel(roomId, 9001)
     }

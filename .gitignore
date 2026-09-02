@@ -36,6 +36,14 @@ migrate_working_dir/
 /.ci-logs/
 /packaging/.tools/
 /.secrets/
+*.jks
+*.keystore
+key.properties
+.env
+.env.*
+*.p12
+*.pfx
+*.pem
 
 # Symbolication related
 app.*.symbols

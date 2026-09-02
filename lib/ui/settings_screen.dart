@@ -109,17 +109,18 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     super.dispose();
   }
 
+  void _closeTopmost() {
+    final mobile = MediaQuery.sizeOf(context).width < 700;
+    if (mobile && _mobilePageOpen) {
+      setState(() => _mobilePageOpen = false);
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mobile = MediaQuery.sizeOf(context).width < 700;
-    void closeTopmost() {
-      if (mobile && _mobilePageOpen) {
-        setState(() => _mobilePageOpen = false);
-      } else {
-        Navigator.of(context).maybePop();
-      }
-    }
-
     return PopScope(
       canPop: !mobile || !_mobilePageOpen,
       onPopInvokedWithResult: (didPop, _) {
@@ -129,7 +130,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       },
       child: CallbackShortcuts(
         bindings: {
-          const SingleActivator(LogicalKeyboardKey.escape): closeTopmost,
+          const SingleActivator(LogicalKeyboardKey.escape): _closeTopmost,
         },
         child: Focus(
           autofocus: true,
@@ -144,7 +145,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                   tooltip: mobile && _mobilePageOpen
                       ? 'Back to settings'
                       : 'Close settings',
-                  onPressed: closeTopmost,
+                  onPressed: _closeTopmost,
                   icon: Icon(
                     mobile && _mobilePageOpen ? Icons.arrow_back : Icons.close,
                   ),
@@ -706,10 +707,6 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           border: InputBorder.none,
         ),
         items: const [
-          DropdownMenuItem(
-            value: 'Deltiecord Emoji',
-            child: Text('Bundled Noto Color Emoji'),
-          ),
           DropdownMenuItem(value: 'System', child: Text('System emoji font')),
         ],
         onChanged: (font) {

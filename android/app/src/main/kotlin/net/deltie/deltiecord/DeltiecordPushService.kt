@@ -12,6 +12,10 @@ import java.util.UUID
  * Receives capability endpoints and Matrix sync pokes from a user-selected
  * UnifiedPush distributor. Endpoint URLs stay in private Android preferences;
  * they are never logged because they are bearer capabilities.
+ *
+ * Android must export this receiver for distributor delivery. MessagingReceiver
+ * validates the connector's random per-instance token before these callbacks;
+ * duplicating that protocol here would weaken compatibility and key rotation.
  */
 class DeltiecordPushService : MessagingReceiver() {
     override fun onNewEndpoint(context: Context, endpoint: PushEndpoint, instance: String) {
@@ -173,6 +177,9 @@ class DeltiecordPushService : MessagingReceiver() {
 
         fun lastTestReceived(context: Context): Long = preferences(context)
             .getLong("last_test_received_ms", 0L)
+
+        fun lastTestRequest(context: Context): Long = preferences(context)
+            .getLong("last_test_request_ms", 0L)
 
         fun recordPusherVerification(context: Context, result: String) {
             preferences(context).edit()

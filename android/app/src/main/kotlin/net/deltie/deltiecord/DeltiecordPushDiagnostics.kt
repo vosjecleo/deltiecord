@@ -10,6 +10,8 @@ import java.util.UUID
 
 /** Performs a secret-safe round trip through the configured Matrix push gateway. */
 object DeltiecordPushDiagnostics {
+    private const val LOCAL_TEST_COOLDOWN_MS = 60_000L
+
     fun run(
         context: Context,
         instance: String,
@@ -18,6 +20,19 @@ object DeltiecordPushDiagnostics {
         val endpoint = DeltiecordPushService.endpoint(context, instance)
         if (endpoint == null) {
             callback(Result.failure(IllegalStateException("No UnifiedPush endpoint is registered.")))
+            return
+        }
+        val previous = DeltiecordPushService.lastTestRequest(context)
+        val remaining = LOCAL_TEST_COOLDOWN_MS - (System.currentTimeMillis() - previous)
+        if (remaining > 0) {
+            DeltiecordPushService.recordTestResult(context, "local_cooldown")
+            callback(
+                Result.failure(
+                    IllegalStateException(
+                        "The diagnostic is cooling down; retry in ${(remaining + 999) / 1000} seconds.",
+                    ),
+                ),
+            )
             return
         }
         Thread {
@@ -68,8 +83,20 @@ object DeltiecordPushDiagnostics {
                     connection.setFixedLengthStreamingMode(body.size)
                     connection.setRequestProperty("Content-Type", "application/json")
                     connection.outputStream.use { it.write(body) }
-                    require(connection.responseCode in 200..299) {
-                        "Matrix gateway returned HTTP ${connection.responseCode}."
+                    val responseCode = connection.responseCode
+                    if (responseCode == 429) {
+                        val retryAfter = connection.getHeaderField("Retry-After")
+                            ?.take(32)
+                            ?.takeIf { it.isNotBlank() }
+                        DeltiecordPushService.recordTestResult(context, "gateway_rate_limited")
+                        throw PushDiagnosticException(
+                            "The Matrix gateway rate-limited this optional test" +
+                                (retryAfter?.let { "; retry after $it" } ?: "") +
+                                ". Registration remains unchanged.",
+                        )
+                    }
+                    require(responseCode in 200..299) {
+                        "Matrix gateway returned HTTP $responseCode."
                     }
                 } finally {
                     connection.disconnect()
@@ -87,7 +114,9 @@ object DeltiecordPushDiagnostics {
                     "The gateway accepted the test, but Android did not receive it within 15 seconds.",
                 )
             }.onFailure {
-                DeltiecordPushService.recordTestResult(context, "failed")
+                if (it !is PushDiagnosticException) {
+                    DeltiecordPushService.recordTestResult(context, "failed")
+                }
             }
             callback(result)
         }.apply {
@@ -96,4 +125,6 @@ object DeltiecordPushDiagnostics {
             start()
         }
     }
+
+    private class PushDiagnosticException(message: String) : IllegalStateException(message)
 }

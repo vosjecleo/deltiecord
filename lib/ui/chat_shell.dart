@@ -43,6 +43,7 @@ import 'presence_controls.dart';
 import 'space_settings_screen.dart';
 import 'typing_indicator.dart';
 import 'relative_activity_time.dart';
+import 'room_search_panel.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';
@@ -119,6 +120,7 @@ class _ChatShellState extends State<ChatShell> {
   _SidePanelView _sidePanelView = _SidePanelView.profile;
   RoomMemberSummary? _sidePanelMember;
   bool? _reportedConversationVisible;
+  late SessionStatus _lastBackendStatus;
 
   @override
   void initState() {
@@ -148,31 +150,10 @@ class _ChatShellState extends State<ChatShell> {
     );
     _message.addListener(_updateMentionQuery);
     _message.addListener(_saveActiveDraft);
+    _lastBackendStatus = widget.backend.status;
     _draftRoomId = widget.backend.selectedRoom?.id;
     widget.backend.addListener(_handleBackendRoomChange);
-    HardwareKeyboard.instance.addHandler(_handleGlobalShortcut);
     unawaited(_initializeDrafts());
-  }
-
-  bool _handleGlobalShortcut(KeyEvent event) {
-    if (event is! KeyDownEvent || !mounted) return false;
-    if (ModalRoute.of(context)?.isCurrent != true) return false;
-    final keyboard = HardwareKeyboard.instance;
-    for (final entry in widget.backend.preferences.shortcutBindings.entries) {
-      if (!matchesRecordedShortcut(
-        entry.value,
-        event.logicalKey,
-        control: keyboard.isControlPressed,
-        shift: keyboard.isShiftPressed,
-        alt: keyboard.isAltPressed,
-        meta: keyboard.isMetaPressed,
-      )) {
-        continue;
-      }
-      _invokeShortcut(entry.key);
-      return true;
-    }
-    return false;
   }
 
   void _invokeShortcut(AppShortcutAction action) {
@@ -207,10 +188,28 @@ class _ChatShellState extends State<ChatShell> {
   }
 
   void _handleBackendRoomChange() {
+    final status = widget.backend.status;
+    if (status == SessionStatus.signedOut &&
+        _lastBackendStatus != SessionStatus.signedOut) {
+      _lastBackendStatus = status;
+      _draftRoomId = null;
+      _memoryDrafts.clear();
+      _restoringDraft = true;
+      try {
+        _message.document = Document();
+      } finally {
+        _restoringDraft = false;
+      }
+      _pendingAttachments.clear();
+      _replyingTo = null;
+      _editingMessage = null;
+      unawaited(_draftStore.clear());
+      return;
+    }
+    _lastBackendStatus = status;
     final roomId = widget.backend.selectedRoom?.id;
     if (roomId == _draftRoomId) return;
     _storeCurrentDraft();
-    HardwareKeyboard.instance.removeHandler(_handleGlobalShortcut);
     _restoreDraft(roomId);
     _sidePanelMember = null;
     _sidePanelView = widget.backend.selectedRoom?.isDirect == true
@@ -680,7 +679,9 @@ class _ChatShellState extends State<ChatShell> {
       if (activator != null && callback != null) bindings[activator] = callback;
     }
     bindings[const SingleActivator(LogicalKeyboardKey.escape)] = () {
-      if (_conversationKey.currentState?.dismissTemporaryUi() == true) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).maybePop();
+      } else if (_conversationKey.currentState?.dismissTemporaryUi() == true) {
         _composerFocus.requestFocus();
       } else if (_replyingTo != null || _editingMessage != null) {
         _cancelComposerAction();

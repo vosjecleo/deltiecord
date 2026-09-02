@@ -7,6 +7,13 @@ through an HTTPS reverse proxy. The production endpoint is rate-limited and
 does not return or log the shared key. Clients request trending results from
 the same endpoint with `mode=trending`.
 
+Set `TRUSTED_PROXY_CIDRS` to the explicit reverse-proxy networks allowed to
+supply `X-Real-IP`/`X-Forwarded-For`; the default trusts loopback only. Direct
+clients cannot spoof those headers. `MAX_RATE_CLIENTS` bounds rate-limit state
+and `MAX_CONCURRENT_REQUESTS` bounds upstream worker concurrency. Deploy one
+process per configured capacity or put a shared limiter in front of multiple
+processes; the in-process limits are intentionally not distributed.
+
 The desktop client defaults to
 `https://deltie.net/api/servers/giphy/search`. Alternative deployments can set
 `GIPHY_PROXY_URL` at build time; this value is an ordinary public URL, not a

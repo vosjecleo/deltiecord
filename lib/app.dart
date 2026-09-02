@@ -120,13 +120,10 @@ class DeltiecordApp extends StatelessWidget {
               fontFamily: preferences.fontFamily == 'System'
                   ? null
                   : preferences.fontFamily,
-              // Platform fallback is the default. Applying Noto Color Emoji
-              // to an entire Flutter text run changes the metrics of digits
-              // and spaces on some hosts; the bundled face is therefore an
-              // explicit advanced compatibility option only.
-              fontFamilyFallback: emojiFontFamily == systemEmojiFontFamily
-                  ? null
-                  : <String>[emojiFontFamily],
+              // Let each platform select its native colour-emoji face. The
+              // old bundled Noto font did not shape reliably in Flutter and
+              // changed ordinary text metrics on some hosts.
+              fontFamilyFallback: null,
             );
         return MaterialApp(
           title: 'Deltiecord',

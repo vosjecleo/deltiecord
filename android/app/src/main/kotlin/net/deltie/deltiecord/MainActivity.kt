@@ -169,6 +169,10 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+                "clearPrivateState" -> {
+                    DeltiecordNotificationPublisher.clearPrivateState(this)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

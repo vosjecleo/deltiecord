@@ -782,6 +782,9 @@ class ChatAttachment {
     this.animated = false,
     this.width,
     this.height,
+    this.thumbnailSize,
+    this.thumbnailWidth,
+    this.thumbnailHeight,
   });
 
   final AttachmentKind kind;
@@ -795,6 +798,9 @@ class ChatAttachment {
   final bool animated;
   final int? width;
   final int? height;
+  final int? thumbnailSize;
+  final int? thumbnailWidth;
+  final int? thumbnailHeight;
 }
 
 class AttachmentDraft {

@@ -43,6 +43,9 @@ HTTPS `giphy.com` host after DNS/public-address and redirect validation.
 
 Search JSON is capped at 2 MiB and GIF downloads at 25 MiB. Both use connection
 and inactivity timeouts, status/content-type validation, and bounded redirects.
+The reference proxy accepts forwarded client addresses only from configured
+trusted reverse-proxy networks, bounds rate-limit identity state, and limits
+concurrent upstream requests per process.
 
 ## External links and files
 

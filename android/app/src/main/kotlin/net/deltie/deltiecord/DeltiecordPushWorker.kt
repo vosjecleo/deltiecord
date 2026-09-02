@@ -93,9 +93,16 @@ class DeltiecordPushWorker(
                     roomId,
                     eventId,
                     notificationAction,
-                    inputData.getString(KEY_REPLY),
+                    NotificationReplyStore.consume(
+                        applicationContext,
+                        inputData.getString(KEY_REPLY_TOKEN),
+                    ),
                 )
                 return if (completed || runAttemptCount >= 1) {
+                    NotificationReplyStore.delete(
+                        applicationContext,
+                        inputData.getString(KEY_REPLY_TOKEN),
+                    )
                     DeltiecordPushService.recordWorkerResult(
                         applicationContext,
                         if (completed) "action_completed" else "action_failed",
@@ -146,6 +153,12 @@ class DeltiecordPushWorker(
             }
             return Result.success()
         } catch (_: Throwable) {
+            if (notificationAction != null && runAttemptCount >= MAX_RETRIES) {
+                NotificationReplyStore.delete(
+                    applicationContext,
+                    inputData.getString(KEY_REPLY_TOKEN),
+                )
+            }
             DeltiecordPushService.recordWorkerResult(
                 applicationContext,
                 "worker_failed_attempt_${runAttemptCount + 1}",
@@ -349,7 +362,7 @@ class DeltiecordPushWorker(
         private const val KEY_ROOM_ID = "room_id"
         private const val KEY_EVENT_ID = "event_id"
         private const val KEY_ACTION = "notification_action"
-        private const val KEY_REPLY = "notification_reply"
+        private const val KEY_REPLY_TOKEN = "notification_reply_token"
         private const val KEY_JOB_KIND = "job_kind"
         private const val KEY_INSTANCE = "instance"
         private const val JOB_RECONCILE_PUSHER = "reconcile_pusher"
@@ -385,7 +398,7 @@ class DeltiecordPushWorker(
                 .build()
             val request = request(data)
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "deltiecord-push-${roomId.hashCode()}",
+                StableIdentifier.workName("deltiecord-push", roomId),
                 // Only the most recent event per room needs resolution. A
                 // stalled encrypted-event lookup must not block later pushes.
                 ExistingWorkPolicy.REPLACE,
@@ -400,15 +413,16 @@ class DeltiecordPushWorker(
             action: String,
             reply: String?,
         ) {
+            val replyToken = NotificationReplyStore.put(context, reply)
             val data = Data.Builder()
                 .putString(KEY_ROOM_ID, roomId)
                 .putString(KEY_EVENT_ID, eventId)
                 .putString(KEY_ACTION, action)
-                .putString(KEY_REPLY, reply)
+                .putString(KEY_REPLY_TOKEN, replyToken)
                 .build()
             val request = request(data)
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "deltiecord-action-${roomId.hashCode()}",
+                StableIdentifier.workName("deltiecord-action", roomId),
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request,
             )
@@ -421,7 +435,7 @@ class DeltiecordPushWorker(
                 .putString(KEY_INSTANCE, instance)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "deltiecord-pusher-check-${instance.hashCode()}",
+                StableIdentifier.workName("deltiecord-pusher-check", instance),
                 ExistingWorkPolicy.REPLACE,
                 pusherRequest(data),
             )
@@ -446,7 +460,7 @@ class DeltiecordPushWorker(
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "deltiecord-pusher-periodic-${instance.hashCode()}",
+                StableIdentifier.workName("deltiecord-pusher-periodic", instance),
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
@@ -454,8 +468,12 @@ class DeltiecordPushWorker(
 
         fun cancelPusherVerification(context: Context, instance: String) {
             val manager = WorkManager.getInstance(context)
-            manager.cancelUniqueWork("deltiecord-pusher-check-${instance.hashCode()}")
-            manager.cancelUniqueWork("deltiecord-pusher-periodic-${instance.hashCode()}")
+            manager.cancelUniqueWork(
+                StableIdentifier.workName("deltiecord-pusher-check", instance),
+            )
+            manager.cancelUniqueWork(
+                StableIdentifier.workName("deltiecord-pusher-periodic", instance),
+            )
         }
     }
 }

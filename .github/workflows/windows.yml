@@ -67,7 +67,7 @@ jobs:
           (Join-Path $destination 'flutter\bin') | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Resolve dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .

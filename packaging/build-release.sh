@@ -13,11 +13,11 @@ mkdir -p dist
 packaging/linux/verify-release.sh
 packaging/linux/build-deb.sh
 packaging/linux/build-appimage.sh
-if command -v makepkg >/dev/null; then
-  packaging/arch/build-package.sh
-else
-  echo 'Skipping Arch package: makepkg is unavailable on this host.' >&2
-fi
+command -v makepkg >/dev/null || {
+  echo 'makepkg is required for the complete release artifact set.' >&2
+  exit 1
+}
+packaging/arch/build-package.sh
 version="$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)"
 release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
 if [[ -f "dist/deltiecord_${release_id}_amd64.deb" ]]; then
@@ -26,10 +26,22 @@ fi
 if [[ -f "dist/Deltiecord-${version}-x86_64.AppImage" ]]; then
   mv "dist/Deltiecord-${version}-x86_64.AppImage" "dist/deltiecord-${release_id}-linux-appimage-x86_64.AppImage"
 fi
-package="$(find dist -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
-if [[ -n "$package" ]]; then
-  mv "$package" "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
+mapfile -t packages < <(find dist -maxdepth 1 -type f -name '*.pkg.tar.zst' -print)
+if [[ "${#packages[@]}" -ne 1 ]]; then
+  printf 'Expected exactly one Arch package, found %s\n' "${#packages[@]}" >&2
+  exit 1
 fi
+mv -- "${packages[0]}" "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
+
+for artifact in \
+  "dist/deltiecord-${release_id}-linux-debian-amd64.deb" \
+  "dist/deltiecord-${release_id}-linux-appimage-x86_64.AppImage" \
+  "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"; do
+  [[ -f "$artifact" ]] || {
+    printf 'Missing required release artifact: %s\n' "$artifact" >&2
+    exit 1
+  }
+done
 commit="$(git rev-parse HEAD)"
 {
   echo "Deltiecord $release_id"

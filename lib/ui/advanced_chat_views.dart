@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
-import 'deltiecord_theme.dart';
 import 'space_settings_screen.dart';
 
 Future<void> showSavedMessages(
@@ -85,96 +84,6 @@ Future<void> showSavedMessages(
     ),
   ),
 );
-
-Future<void> showRoomMediaGallery(
-  BuildContext context,
-  ChatBackend backend, {
-  required Future<void> Function(String eventId) onOpen,
-}) {
-  final images = backend.messages
-      .where((message) => message.attachment?.kind == AttachmentKind.image)
-      .toList();
-  final videos = backend.messages
-      .where((message) => message.attachment?.kind == AttachmentKind.video)
-      .toList();
-  final files = backend.messages
-      .where(
-        (message) =>
-            message.attachment != null &&
-            message.attachment?.kind != AttachmentKind.image &&
-            message.attachment?.kind != AttachmentKind.video,
-      )
-      .toList();
-  final links = backend.messages
-      .where(
-        (message) =>
-            message.linkPreviews.isNotEmpty ||
-            RegExp(r'https?://', caseSensitive: false).hasMatch(message.body),
-      )
-      .toList();
-  return showDialog<void>(
-    context: context,
-    builder: (dialogContext) => Dialog(
-      child: SizedBox(
-        width: 720,
-        height: 640,
-        child: DefaultTabController(
-          length: 4,
-          child: Column(
-            children: [
-              const TabBar(
-                tabs: [
-                  Tab(text: 'Images'),
-                  Tab(text: 'Videos'),
-                  Tab(text: 'Files'),
-                  Tab(text: 'Links'),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
-                  children: [
-                    _MessageList(
-                      emptyLabel: 'No loaded images.',
-                      messages: images,
-                      onOpen: (message) =>
-                          _open(dialogContext, onOpen, message),
-                    ),
-                    _MessageList(
-                      emptyLabel: 'No loaded videos.',
-                      messages: videos,
-                      onOpen: (message) =>
-                          _open(dialogContext, onOpen, message),
-                    ),
-                    _MessageList(
-                      emptyLabel: 'No loaded files.',
-                      messages: files,
-                      onOpen: (message) =>
-                          _open(dialogContext, onOpen, message),
-                    ),
-                    _MessageList(
-                      emptyLabel: 'No loaded links.',
-                      messages: links,
-                      onOpen: (message) =>
-                          _open(dialogContext, onOpen, message),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Text(
-                  'This gallery covers the loaded room history. Load older '
-                  'messages in the timeline to extend it.',
-                  style: TextStyle(color: dialogContext.deltiecord.muted),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
 
 Future<void> showPinnedMessages(
   BuildContext context,
@@ -328,15 +237,6 @@ Future<void> _acceptInboxInvite(
     return;
   }
   await onOpen(item);
-}
-
-Future<void> _open(
-  BuildContext context,
-  Future<void> Function(String eventId) onOpen,
-  ChatMessage message,
-) async {
-  Navigator.pop(context);
-  await onOpen(message.id);
 }
 
 class _MessageList extends StatelessWidget {

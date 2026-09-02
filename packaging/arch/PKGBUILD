@@ -1,6 +1,6 @@
 pkgname=deltiecord
-pkgver=0.9.25
-pkgrel=79
+pkgver=0.9.26
+pkgrel=80
 pkgdesc='Compact Matrix desktop client'
 arch=('x86_64')
 url='https://deltie.net/cord'
@@ -19,7 +19,7 @@ build() {
   cd "$startdir/../.."
   # makepkg supplies its own RUSTFLAGS, so append rather than defaulting.
   export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-dead-code"
-  flutter pub get
+  flutter pub get --enforce-lockfile
   flutter build linux --release
   packaging/linux/verify-release.sh
 }

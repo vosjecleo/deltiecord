@@ -99,6 +99,9 @@ abstract interface class ChatNotificationSink {
   /// cache contains only already-renderable avatar bytes, never credentials.
   Future<void> cacheRoomAvatar(String roomId, Uint8List avatar);
 
+  /// Removes native notification plaintext/cache state during logout.
+  Future<void> clearPrivateState();
+
   Future<void> dispose();
 }
 
@@ -254,6 +257,16 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
   }
 
   @override
+  Future<void> clearPrivateState() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _nativeAssets.invokeMethod<void>('clearPrivateState');
+    } on MissingPluginException {
+      // Older Android runners do not expose this maintenance call.
+    }
+  }
+
+  @override
   Future<void> dispose() => _activations.close();
 }
 
@@ -287,6 +300,9 @@ class SilentChatNotificationSink implements ChatNotificationSink {
 
   @override
   Future<void> cacheRoomAvatar(String roomId, Uint8List avatar) async {}
+
+  @override
+  Future<void> clearPrivateState() async {}
 
   @override
   Future<void> dispose() async {}

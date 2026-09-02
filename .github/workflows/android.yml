@@ -17,9 +17,6 @@ env:
   RUST_TOOLCHAIN: 1.97.1
   RUSTFLAGS: -C link-dead-code
   GRADLE_OPTS: -Dorg.gradle.daemon=false
-  FALLBACK_APK_RELEASE_ID: 0.9.20+66
-  FALLBACK_APK_URL: https://deltie.net/cord/staging/deltiecord-0.9.20+66-android.apk
-  FALLBACK_APK_SHA256: 9def6cad357b84ce4c338405a624b3e6e8d54fa406bdd47b721ab1da67ce2758
 
 jobs:
   android:
@@ -55,68 +52,7 @@ jobs:
           echo "$RUNNER_TEMP/flutter/bin" >>"$GITHUB_PATH"
 
       - name: Resolve dependencies
-        run: flutter pub get
-
-      - name: Configure stable Android release signing
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.DELTIECORD_ANDROID_KEYSTORE_BASE64 }}
-          STORE_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_STORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.DELTIECORD_ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
-          if [[ "$release_id" == "$FALLBACK_APK_RELEASE_ID" ]]; then
-            echo 'Using the checksum-pinned stable-signed APK built from this release source.'
-            echo 'DELTIECORD_USE_PINNED_APK=1' >>"$GITHUB_ENV"
-            exit 0
-          fi
-          missing=()
-          [[ -n "$KEYSTORE_BASE64" ]] || missing+=(DELTIECORD_ANDROID_KEYSTORE_BASE64)
-          [[ -n "$STORE_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_STORE_PASSWORD)
-          [[ -n "$KEY_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_KEY_PASSWORD)
-          if ((${#missing[@]})); then
-            missing_list="$(IFS=', '; echo "${missing[*]}")"
-            echo "::error title=Android signing secrets unavailable::Missing required repository secret(s): $missing_list"
-            exit 1
-          fi
-          if ! printf '%s' "$KEYSTORE_BASE64" | base64 --decode >"$RUNNER_TEMP/deltiecord-release.jks"; then
-            echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 is not valid base64.'
-            exit 1
-          fi
-          if [[ ! -s "$RUNNER_TEMP/deltiecord-release.jks" ]]; then
-            echo '::error title=Invalid Android keystore::DELTIECORD_ANDROID_KEYSTORE_BASE64 decoded to an empty file.'
-            exit 1
-          fi
-          effective_store_password="$STORE_PASSWORD"
-          effective_key_password="$KEY_PASSWORD"
-          if ! keytool_output="$(keytool -J-Duser.language=en -list -v \
-            -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
-            -storepass "$effective_store_password" 2>&1)"; then
-            if keytool_output="$(keytool -J-Duser.language=en -list -v \
-              -keystore "$RUNNER_TEMP/deltiecord-release.jks" \
-              -storepass "$KEY_PASSWORD" 2>&1)"; then
-              echo '::warning title=Android signing secrets swapped::The key password opened the keystore; using the two password secrets in the opposite roles for this build.'
-              effective_store_password="$KEY_PASSWORD"
-              effective_key_password="$STORE_PASSWORD"
-            else
-              echo '::error title=Invalid Android keystore::The supplied keystore could not be opened with either configured Android password secret.'
-              exit 1
-            fi
-          fi
-          if [[ -z "$KEY_ALIAS" ]]; then
-            KEY_ALIAS="$(sed -n 's/^Alias name: //p' <<<"$keytool_output" | head -n 1)"
-          fi
-          if [[ -z "$KEY_ALIAS" ]]; then
-            echo '::error title=Invalid Android keystore::No signing-key alias could be read from the supplied keystore.'
-            exit 1
-          fi
-          chmod 0600 "$RUNNER_TEMP/deltiecord-release.jks"
-          echo "DELTIECORD_ANDROID_KEYSTORE=$RUNNER_TEMP/deltiecord-release.jks" >>"$GITHUB_ENV"
-          echo "DELTIECORD_ANDROID_STORE_PASSWORD=$effective_store_password" >>"$GITHUB_ENV"
-          echo "DELTIECORD_ANDROID_KEY_ALIAS=$KEY_ALIAS" >>"$GITHUB_ENV"
-          echo "DELTIECORD_ANDROID_KEY_PASSWORD=$effective_key_password" >>"$GITHUB_ENV"
+        run: flutter pub get --enforce-lockfile
 
       - name: Verify formatting
         run: dart format --output=none --set-exit-if-changed .
@@ -128,8 +64,42 @@ jobs:
         run: flutter test --concurrency=1
 
       - name: Build split Android APKs and app bundle
-        if: env.DELTIECORD_USE_PINNED_APK != '1'
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DELTIECORD_ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.DELTIECORD_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.DELTIECORD_ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
+          keystore="$RUNNER_TEMP/deltiecord-release.jks"
+          trap 'rm -f -- "$keystore"' EXIT
+          missing=()
+          [[ -n "$KEYSTORE_BASE64" ]] || missing+=(DELTIECORD_ANDROID_KEYSTORE_BASE64)
+          [[ -n "$STORE_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_STORE_PASSWORD)
+          [[ -n "$KEY_PASSWORD" ]] || missing+=(DELTIECORD_ANDROID_KEY_PASSWORD)
+          if ((${#missing[@]})); then
+            printf 'Missing Android signing secret(s): %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode >"$keystore"
+          [[ -s "$keystore" ]] || exit 1
+          chmod 0600 "$keystore"
+          effective_store_password="$STORE_PASSWORD"
+          effective_key_password="$KEY_PASSWORD"
+          if ! keytool_output="$(keytool -J-Duser.language=en -list -v -keystore "$keystore" -storepass "$effective_store_password" 2>&1)"; then
+            keytool_output="$(keytool -J-Duser.language=en -list -v -keystore "$keystore" -storepass "$KEY_PASSWORD" 2>&1)"
+            effective_store_password="$KEY_PASSWORD"
+            effective_key_password="$STORE_PASSWORD"
+          fi
+          if [[ -z "$KEY_ALIAS" ]]; then
+            KEY_ALIAS="$(sed -n 's/^Alias name: //p' <<<"$keytool_output" | head -n 1)"
+          fi
+          [[ -n "$KEY_ALIAS" ]] || exit 1
+          export DELTIECORD_ANDROID_KEYSTORE="$keystore"
+          export DELTIECORD_ANDROID_STORE_PASSWORD="$effective_store_password"
+          export DELTIECORD_ANDROID_KEY_ALIAS="$KEY_ALIAS"
+          export DELTIECORD_ANDROID_KEY_PASSWORD="$effective_key_password"
           flutter build apk --release --split-per-abi
           flutter build appbundle --release
 
@@ -139,16 +109,10 @@ jobs:
           set -euo pipefail
           release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
           mkdir -p dist
-          if [[ "${DELTIECORD_USE_PINNED_APK:-}" == 1 ]]; then
-            curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
-              "$FALLBACK_APK_URL" -o "dist/deltiecord-${release_id}-android.apk"
-            echo "$FALLBACK_APK_SHA256  dist/deltiecord-${release_id}-android.apk" | sha256sum --check --strict
-          else
-            cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/deltiecord-${release_id}-android-arm64-v8a.apk"
-            cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/deltiecord-${release_id}-android-armeabi-v7a.apk"
-            cp build/app/outputs/flutter-apk/app-x86_64-release.apk "dist/deltiecord-${release_id}-android-x86_64.apk"
-            cp build/app/outputs/bundle/release/app-release.aab "dist/deltiecord-${release_id}-android.aab"
-          fi
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/deltiecord-${release_id}-android-arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/deltiecord-${release_id}-android-armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk "dist/deltiecord-${release_id}-android-x86_64.apk"
+          cp build/app/outputs/bundle/release/app-release.aab "dist/deltiecord-${release_id}-android.aab"
           (cd dist && sha256sum -- * >SHA256SUMS-android)
 
       - name: Upload Android artifacts

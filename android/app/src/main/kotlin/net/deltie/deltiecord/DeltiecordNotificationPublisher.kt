@@ -38,7 +38,9 @@ import java.security.MessageDigest
 object DeltiecordNotificationPublisher {
     private const val CHANNEL_ID = "deltiecord_messages_stable"
     private const val BACKGROUND_CHANNEL_ID = "deltiecord_background_sync"
-    private const val PREFS = "deltiecord_notification_history"
+    private const val PREFS = "deltiecord_notification_alerts"
+    private const val HISTORY_DIRECTORY = "notification-history"
+    private const val MAX_HISTORY_BYTES = 64 * 1024
     private const val MAX_MESSAGES = 6
     private const val MAX_MEDIA_BYTES = 3 * 1024 * 1024
     private const val MAX_AVATAR_BYTES = 1024 * 1024
@@ -72,9 +74,15 @@ object DeltiecordNotificationPublisher {
             body = (arguments["body"] as? String).orEmpty().ifBlank { "New message" }.take(4096),
             timestamp = (arguments["timestamp"] as? Number)?.toLong() ?: System.currentTimeMillis(),
             groupConversation = arguments["groupConversation"] as? Boolean ?: false,
-            senderAvatar = (arguments["senderAvatar"] as? ByteArray)?.takeIf { it.size <= MAX_AVATAR_BYTES },
-            image = (arguments["image"] as? ByteArray)?.takeIf { it.size <= MAX_MEDIA_BYTES },
-            imageMimeType = (arguments["imageMimeType"] as? String)?.takeIf { it.startsWith("image/") },
+            senderAvatar = (arguments["senderAvatar"] as? ByteArray)?.takeIf {
+                it.size <= MAX_AVATAR_BYTES && NotificationBitmapDecoder.hasSafeBounds(it)
+            },
+            image = (arguments["image"] as? ByteArray)?.takeIf {
+                it.size <= MAX_MEDIA_BYTES && NotificationBitmapDecoder.hasSafeBounds(it)
+            },
+            imageMimeType = (arguments["imageMimeType"] as? String)?.takeIf {
+                it in setOf("image/jpeg", "image/png", "image/webp", "image/gif")
+            },
             sound = arguments["sound"] as? Boolean ?: true,
             vibrate = arguments["vibrate"] as? Boolean ?: true,
             alertCadence = (arguments["alertCadence"] as? String)
@@ -209,6 +217,9 @@ object DeltiecordNotificationPublisher {
         mutable: Boolean,
     ): PendingIntent {
         val intent = Intent(context, DeltiecordNotificationActionReceiver::class.java).apply {
+            data = Uri.parse(
+                "deltiecord://notification-action/${StableIdentifier.digest("$roomId|$eventId|$action")}",
+            )
             putExtra(DeltiecordNotificationActionReceiver.EXTRA_ROOM_ID, roomId)
             putExtra(DeltiecordNotificationActionReceiver.EXTRA_EVENT_ID, eventId)
             putExtra(DeltiecordNotificationActionReceiver.EXTRA_ACTION, action)
@@ -221,7 +232,7 @@ object DeltiecordNotificationPublisher {
         }
         return PendingIntent.getBroadcast(
             context,
-            ("$roomId|$eventId|$action").hashCode(),
+            StableIdentifier.requestCode("$roomId|$eventId|$action"),
             intent,
             flags,
         )
@@ -254,6 +265,9 @@ object DeltiecordNotificationPublisher {
         val shortcutId = "room-${digest(data.roomId)}"
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N_MR1) return shortcutId
         val intent = Intent(context, MainActivity::class.java).apply {
+            this.data = Uri.parse(
+                "deltiecord://notification/${StableIdentifier.digest("${data.roomId}|${data.eventId}")}",
+            )
             action = Intent.ACTION_VIEW
             putExtra("notification_room_id", data.roomId)
             putExtra("notification_event_id", data.eventId)
@@ -402,7 +416,7 @@ object DeltiecordNotificationPublisher {
         if (path.isBlank()) return null
         val file = File(path)
         if (!file.isFile || file.length() !in 1..MAX_AVATAR_BYTES.toLong()) return null
-        return BitmapFactory.decodeFile(path)
+        return NotificationBitmapDecoder.decode(file, 192)
     }
 
     private fun writeBoundedFile(
@@ -414,13 +428,22 @@ object DeltiecordNotificationPublisher {
     ): String? = runCatching {
         val root = File(context.cacheDir, "notification-$directory").apply { mkdirs() }
         val file = File(root, "${digest(eventId)}$extension")
-        file.writeBytes(bytes)
+        if (!NotificationBitmapDecoder.hasSafeBounds(bytes)) return@runCatching null
+        val temporary = File(root, ".${file.name}.${System.nanoTime()}.tmp")
+        temporary.writeBytes(bytes)
+        if (!temporary.renameTo(file)) {
+            temporary.copyTo(file, overwrite = true)
+            temporary.delete()
+        }
         file.absolutePath
     }.getOrNull()
 
     private fun loadHistory(context: Context, roomId: String): List<JSONObject> = runCatching {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(historyKey(roomId), null) ?: return@runCatching emptyList()
+        val file = historyFile(context, roomId)
+        if (!file.isFile || file.length() !in 1..MAX_HISTORY_BYTES.toLong()) {
+            return@runCatching emptyList()
+        }
+        val raw = file.readText(Charsets.UTF_8)
         val array = JSONArray(raw)
         List(array.length()) { index -> array.getJSONObject(index) }
     }.getOrDefault(emptyList())
@@ -428,10 +451,16 @@ object DeltiecordNotificationPublisher {
     private fun saveHistory(context: Context, roomId: String, history: List<JSONObject>) {
         val array = JSONArray()
         history.forEach(array::put)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(historyKey(roomId), array.toString())
-            .apply()
+        val raw = array.toString()
+        if (raw.toByteArray(Charsets.UTF_8).size > MAX_HISTORY_BYTES) return
+        val file = historyFile(context, roomId)
+        file.parentFile?.mkdirs()
+        val temporary = File(file.parentFile, ".${file.name}.${System.nanoTime()}.tmp")
+        temporary.writeText(raw, Charsets.UTF_8)
+        if (!temporary.renameTo(file)) {
+            temporary.copyTo(file, overwrite = true)
+            temporary.delete()
+        }
     }
 
     private fun cleanupFiles(context: Context, retained: List<JSONObject>) {
@@ -454,7 +483,7 @@ object DeltiecordNotificationPublisher {
         }
         return PendingIntent.getActivity(
             context,
-            roomId.hashCode(),
+            StableIdentifier.requestCode("$roomId|$eventId"),
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -510,7 +539,25 @@ object DeltiecordNotificationPublisher {
     private fun manager(context: Context) =
         context.getSystemService(NotificationManager::class.java)
 
-    private fun historyKey(roomId: String) = "room:${digest(roomId)}"
+    private fun historyFile(context: Context, roomId: String) =
+        File(File(context.cacheDir, HISTORY_DIRECTORY), "${digest(roomId)}.json")
+
+    fun clearPrivateState(context: Context) {
+        File(context.cacheDir, HISTORY_DIRECTORY).deleteRecursively()
+        File(context.cacheDir, "notification-avatar").deleteRecursively()
+        File(context.cacheDir, "notification-media").deleteRecursively()
+        File(context.cacheDir, "notification-avatars").deleteRecursively()
+        NotificationReplyStore.clear(context)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    fun clearRoom(context: Context, roomId: String) {
+        loadHistory(context, roomId).forEach { entry ->
+            entry.optString("avatarPath").takeIf(String::isNotBlank)?.let(::File)?.delete()
+            entry.optString("imagePath").takeIf(String::isNotBlank)?.let(::File)?.delete()
+        }
+        historyFile(context, roomId).delete()
+    }
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))

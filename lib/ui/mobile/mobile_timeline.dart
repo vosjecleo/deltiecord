@@ -19,6 +19,7 @@ import '../advanced_chat_views.dart';
 import '../matrix_html_text.dart';
 import '../poll_card.dart';
 import '../typing_indicator.dart';
+import '../room_search_panel.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
@@ -548,10 +549,11 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             onSelected: (value) async {
               switch (value) {
                 case 'gallery':
-                  await showRoomMediaGallery(
+                  await showRoomSearchSheet(
                     context,
                     backend,
                     onOpen: _jumpToEvent,
+                    initialSection: RoomSearchSection.media,
                   );
                 case 'saved':
                   await showSavedMessages(
@@ -1129,50 +1131,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   Future<void> _showSearch() async {
-    final controller = TextEditingController();
-    var results = const <ChatMessage>[];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setState) => FractionallySizedBox(
-          heightFactor: 0.88,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              children: [
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                  onSubmitted: (query) async {
-                    final found = await backend.searchRoomHistory(query);
-                    setState(() => results = found);
-                  },
-                ),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: results.length,
-                    itemBuilder: (context, index) => ListTile(
-                      title: Text(results[index].sender),
-                      subtitle: Text(results[index].body, maxLines: 2),
-                      onTap: () async {
-                        Navigator.pop(sheetContext);
-                        await backend.jumpToEvent(results[index].id);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    controller.dispose();
+    await showRoomSearchSheet(context, backend, onOpen: _jumpToEvent);
   }
 }
 

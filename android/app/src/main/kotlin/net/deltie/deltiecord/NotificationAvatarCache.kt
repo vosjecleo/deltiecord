@@ -2,7 +2,6 @@ package net.deltie.deltiecord
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import java.io.File
 import java.security.MessageDigest
 
@@ -13,7 +12,12 @@ object NotificationAvatarCache {
     private const val MAX_BYTES = 2 * 1024 * 1024
 
     fun put(context: Context, roomId: String, bytes: ByteArray): Boolean {
-        if (roomId.isBlank() || bytes.isEmpty() || bytes.size > MAX_BYTES) return false
+        if (
+            roomId.isBlank() ||
+            bytes.isEmpty() ||
+            bytes.size > MAX_BYTES ||
+            !NotificationBitmapDecoder.hasSafeBounds(bytes)
+        ) return false
         val directory = File(context.cacheDir, DIRECTORY).apply { mkdirs() }
         val target = File(directory, key(roomId))
         val temporary = File(directory, "${target.name}.tmp")
@@ -37,7 +41,7 @@ object NotificationAvatarCache {
         val file = File(File(context.cacheDir, DIRECTORY), key(roomId))
         if (!file.isFile || file.length() !in 1..MAX_BYTES.toLong()) return null
         file.setLastModified(System.currentTimeMillis())
-        return BitmapFactory.decodeFile(file.absolutePath)
+        return NotificationBitmapDecoder.decode(file, 192)
     }
 
     private fun trim(directory: File) {

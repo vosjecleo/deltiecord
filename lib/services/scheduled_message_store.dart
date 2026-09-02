@@ -6,6 +6,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/chat_models.dart';
+import 'private_file_store.dart';
 
 /// Private, durable queue for messages waiting to be sent by this device.
 ///
@@ -18,18 +19,16 @@ class ScheduledMessageStore {
 
   File? _file;
   final Map<String, ScheduledMessageSummary> _messages = {};
+  Future<void> _writes = Future.value();
 
   Future<void> initialize() async {
     if (_file == null) {
       final support = await getApplicationSupportDirectory();
       final directory = Directory(path.join(support.path, 'deltiecord'));
-      await directory.create(recursive: true);
-      if (Platform.isLinux || Platform.isMacOS) {
-        await Process.run('chmod', ['700', directory.path]);
-      }
+      await ensurePrivateDirectory(directory);
       _file = File(path.join(directory.path, 'scheduled-messages.json'));
     } else {
-      await _file!.parent.create(recursive: true);
+      await ensurePrivateDirectory(_file!.parent);
     }
     final file = _file!;
     if (!await file.exists()) return;
@@ -56,7 +55,8 @@ class ScheduledMessageStore {
         );
       }
     } catch (_) {
-      // A corrupt queue is ignored rather than blocking session restoration.
+      // A corrupt queue cannot be delivered and should not retain plaintext.
+      await deletePrivateFile(file);
     }
   }
 
@@ -84,6 +84,7 @@ class ScheduledMessageStore {
   Future<void> _persist() async {
     final file = _file;
     if (file == null) return;
+    final empty = _messages.isEmpty;
     final encoded = jsonEncode([
       for (final message in messages)
         {
@@ -95,9 +96,22 @@ class ScheduledMessageStore {
             'reply_to': message.replyToMessageId,
         },
     ]);
-    await file.writeAsString(encoded, flush: true);
-    if (Platform.isLinux || Platform.isMacOS) {
-      await Process.run('chmod', ['600', file.path]);
-    }
+    _writes = _writes.then(
+      (_) async {
+        if (empty) {
+          await deletePrivateFile(file);
+        } else {
+          await writePrivateTextFile(file, encoded);
+        }
+      },
+      onError: (_) async {
+        if (empty) {
+          await deletePrivateFile(file);
+        } else {
+          await writePrivateTextFile(file, encoded);
+        }
+      },
+    );
+    await _writes;
   }
 }

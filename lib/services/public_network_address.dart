@@ -30,6 +30,14 @@ bool isPublicInternetAddress(InternetAddress address) {
       raw[3] <= 0x1f) {
     return false; // 2001:10::/28 (ORCHID)
   }
+  // Transition mechanisms can encapsulate an otherwise-blocked IPv4 target.
+  // Reject them rather than attempting error-prone recursive extraction.
+  if (raw[0] == 0x20 && raw[1] == 0x01 && raw[2] == 0 && raw[3] == 0) {
+    return false; // 2001::/32 (Teredo)
+  }
+  if (raw[0] == 0x00 && raw[1] == 0x64 && raw[2] == 0xff && raw[3] == 0x9b) {
+    return false; // 64:ff9b::/96 and local-use 64:ff9b:1::/48
+  }
   // IPv4-mapped IPv6 addresses must receive the IPv4 private-range checks.
   final mapped =
       raw.length == 16 &&

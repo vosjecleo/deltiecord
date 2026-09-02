@@ -22,6 +22,10 @@ void main() {
         {'insert': 'room two\n'},
       ]);
       await writer.dispose();
+      if (Platform.isLinux || Platform.isMacOS) {
+        expect((await file.stat()).mode & 0x1ff, 0x180); // 0600
+        expect((await directory.stat()).mode & 0x1ff, 0x1c0); // 0700
+      }
 
       final reader = DraftStore(file);
       await reader.initialize();
@@ -46,4 +50,24 @@ void main() {
       await finalReader.dispose();
     },
   );
+
+  test('clear removes the plaintext draft file', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'deltiecord-draft-clear-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/drafts.json');
+    final store = DraftStore(file);
+    await store.initialize();
+    store.write('!private:example.org', [
+      {'insert': 'private text\n'},
+    ]);
+    await store.dispose();
+    expect(file.existsSync(), isTrue);
+
+    final reloaded = DraftStore(file);
+    await reloaded.initialize();
+    await reloaded.clear();
+    expect(file.existsSync(), isFalse);
+  });
 }

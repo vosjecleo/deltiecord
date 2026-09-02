@@ -77,20 +77,28 @@ extension _MatrixMessages on MatrixBackend {
     }
   }
 
-  ChatMessage _searchResultFromEvent(Event event) => ChatMessage(
-    id: event.eventId,
-    sender: event.senderFromMemoryOrFallback.calcDisplayname(),
-    senderId: event.senderId,
-    body: event.calcUnlocalizedBody(
-      hideReply: true,
-      hideEdit: true,
-      plaintextBody: true,
-    ),
-    timestamp: event.originServerTs,
-    pending: false,
-    own: event.senderId == _matrix.userID,
-    avatarBytes: _senderAvatarBytes[event.senderId],
-  );
+  ChatMessage _searchResultFromEvent(Event event) {
+    final attachment = _attachmentFor(event);
+    return ChatMessage(
+      id: event.eventId,
+      sender: event.senderFromMemoryOrFallback.calcDisplayname(),
+      senderId: event.senderId,
+      body:
+          attachment?.caption ??
+          (attachment == null
+              ? event.calcUnlocalizedBody(
+                  hideReply: true,
+                  hideEdit: true,
+                  plaintextBody: true,
+                )
+              : ''),
+      timestamp: event.originServerTs,
+      pending: false,
+      own: event.senderId == _matrix.userID,
+      avatarBytes: _senderAvatarBytes[event.senderId],
+      attachment: attachment,
+    );
+  }
 
   Future<void> _loadMoreHistory({String? anchorEventId}) async {
     final timeline = _timeline;

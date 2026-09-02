@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -229,14 +231,5 @@ final class AvatarMediaPool {
   String _key(Uri uri, int dimension) => '${uri.toString()}|$dimension';
 
   String _fileName(Uri uri, int dimension) =>
-      '${_fnv1a32(uri.toString()).toRadixString(16).padLeft(8, '0')}-$dimension.bin';
-
-  int _fnv1a32(String value) {
-    var hash = 0x811c9dc5;
-    for (final byte in value.codeUnits) {
-      hash ^= byte;
-      hash = (hash * 0x01000193) & 0xffffffff;
-    }
-    return hash;
-  }
+      '${sha256.convert(utf8.encode(uri.toString()))}-$dimension.bin';
 }

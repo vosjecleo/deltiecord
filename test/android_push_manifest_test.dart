@@ -72,6 +72,10 @@ void main() {
     expect(publisher, contains('ALERT_COOLDOWN_MS'));
     expect(publisher, contains('setShortcutId(shortcutId)'));
     expect(worker, contains('cancelBackgroundWorkNotification'));
+    expect(worker, contains('NetworkType.CONNECTED'));
+    expect(worker, contains('BackoffPolicy.EXPONENTIAL'));
+    expect(worker, contains('ExistingWorkPolicy.REPLACE'));
+    expect(worker, contains('event_not_resolved_attempt_'));
     expect(publisher, contains('RemoteInput.Builder'));
     expect(publisher, contains('"reply", mutable = true'));
     expect(publisher, contains('"read", "Mark read"'));

@@ -55,6 +55,7 @@ extension _MatrixSession on MatrixBackend {
             previousStatus != ConnectionStatus.online) {
           unawaited(_retryOfflineSends());
           unawaited(_sendDueScheduledMessages());
+          if (Platform.isAndroid) unawaited(_restoreUnifiedPushPusher());
         }
       });
       await _matrix.init();
@@ -147,6 +148,9 @@ extension _MatrixSession on MatrixBackend {
       _avatarBytes.clear();
       _avatarUris.clear();
       _senderAvatarBytes.clear();
+      _spaceProfileAvatarBytes.clear();
+      _spaceProfileBannerBytes.clear();
+      _spaceProfileVoiceBackgroundBytes.clear();
       _senderAvatarUris.clear();
       await _avatarMediaPool.clear();
       _decryptedPreviews.clear();
@@ -191,6 +195,9 @@ extension _MatrixSession on MatrixBackend {
       _profileAvatarBytes = null;
       _profilePresence = UserPresence.offline;
       _profileStatusMessage = null;
+      _ownProfileHydrated = false;
+      _lastUnifiedPushRestore = null;
+      _unifiedPushRestoreRunning = false;
       _profileColor = null;
       _profileCache.clear();
       _profileRequests.clear();
@@ -917,7 +924,9 @@ extension _MatrixSession on MatrixBackend {
     _desktopActivityLeaseTimer?.cancel();
     unawaited(_publishDesktopActivityLease(idle));
     final userId = _matrix.userID;
-    if (userId != null) {
+    // The activity watcher can fire before the own profile has restored the
+    // existing status. Publishing presence before then would erase it.
+    if (userId != null && _ownProfileHydrated) {
       final presence = !_preferences.sharePresence
           ? PresenceType.offline
           : switch (_presenceMode) {
@@ -1050,6 +1059,14 @@ extension _MatrixSession on MatrixBackend {
     final userId = _matrix.userID;
     final platform = UnifiedPushPlatform.instance;
     if (userId == null || !platform.supported) return;
+    final lastRestore = _lastUnifiedPushRestore;
+    if (_unifiedPushRestoreRunning ||
+        (lastRestore != null &&
+            DateTime.now().difference(lastRestore) <
+                const Duration(minutes: 10))) {
+      return;
+    }
+    _unifiedPushRestoreRunning = true;
     try {
       await platform.ensureDefaultDistributor(userId);
       var state = await platform.state(userId);
@@ -1060,9 +1077,12 @@ extension _MatrixSession on MatrixBackend {
         if (state.error != null) break;
       }
       await _reconcileUnifiedPushState(userId);
+      _lastUnifiedPushRestore = DateTime.now();
     } catch (_) {
       // Push is an optional background optimization. Distributor absence or a
       // stale endpoint must never prevent an otherwise healthy Matrix login.
+    } finally {
+      _unifiedPushRestoreRunning = false;
     }
   }
 

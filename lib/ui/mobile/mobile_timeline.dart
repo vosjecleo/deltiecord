@@ -18,6 +18,7 @@ import '../advanced_chat_dialogs.dart';
 import '../advanced_chat_views.dart';
 import '../matrix_html_text.dart';
 import '../poll_card.dart';
+import '../typing_indicator.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
@@ -63,7 +64,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   bool _restoringScrollAnchor = false;
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
-  _TimelineScrollAnchor? _pendingPageAnchor;
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
   int _navigationGeneration = 0;
@@ -243,9 +243,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
 
   void _handleScroll() {
     if (!_scroll.hasClients || _restoringScrollAnchor) return;
-    if (_pageLoadInFlight) {
-      _pendingPageAnchor = _captureScrollAnchor() ?? _pendingPageAnchor;
-    }
     final position = _scroll.position;
     backend.setConversationAtPresent(
       position.pixels <= 48 && backend.atTimelinePresent,
@@ -276,19 +273,13 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     _suppressPaginationUntil = DateTime.now().add(
       const Duration(milliseconds: 700),
     );
-    final anchor = _captureScrollAnchor();
-    _pendingPageAnchor = anchor;
     try {
       if (older) {
-        await backend.loadMoreHistory(anchorEventId: anchor?.eventId);
+        await backend.loadMoreHistory();
       } else {
-        await backend.loadMoreFuture(anchorEventId: anchor?.eventId);
+        await backend.loadMoreFuture();
       }
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      _restoreScrollAnchor(_pendingPageAnchor ?? anchor);
     } finally {
-      _pendingPageAnchor = null;
       _pageLoadInFlight = false;
     }
   }
@@ -613,13 +604,6 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               ),
               actions: const [SizedBox.shrink()],
             ),
-          if (backend.typingUserNames.isNotEmpty)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-              color: context.deltiecord.elevated,
-              child: Text('${backend.typingUserNames.join(', ')} is typing…'),
-            ),
           Expanded(
             child: backend.timelineLoading && messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
@@ -774,6 +758,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                     ],
                   ),
           ),
+          TypingIndicator(names: backend.typingUserNames),
           _MobileComposer(
             controller: _composer,
             focusNode: _focus,
@@ -1900,18 +1885,24 @@ class _MobileComposerState extends State<_MobileComposer> {
                     onPressed: widget.onEmoji,
                     icon: const Icon(Icons.emoji_emotions_outlined),
                   ),
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onLongPress: widget.sending ? null : widget.onSchedule,
-                    child: IconButton(
-                      tooltip: 'Send · hold to send later',
-                      onPressed: widget.sending ? null : widget.onSend,
-                      icon: widget.sending
-                          ? const SizedBox.square(
-                              dimension: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send),
+                  Semantics(
+                    button: true,
+                    label: 'Send; hold to send later',
+                    child: InkResponse(
+                      onTap: widget.sending ? null : widget.onSend,
+                      onLongPress: widget.sending ? null : widget.onSchedule,
+                      radius: 26,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: widget.sending
+                            ? const SizedBox.square(
+                                dimension: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                      ),
                     ),
                   ),
                 ],

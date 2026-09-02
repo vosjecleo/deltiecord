@@ -598,6 +598,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                             'Last background push: ${received.toLocal()}',
                           if (state?.lastNotificationPosted case final posted?)
                             'Last native alert: ${posted.toLocal()}',
+                          if (state?.lastWorkerResult case final result?)
+                            'Last background result: $result',
                         ].join('\n'),
                 ),
                 trailing: snapshot.connectionState != ConnectionState.done

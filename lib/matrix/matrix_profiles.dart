@@ -84,26 +84,34 @@ extension _MatrixProfiles on MatrixBackend {
     final displayName = content.tryGet<String>('displayname');
     final pronouns = content.tryGet<String>('net.deltiecord.pronouns');
     final accent = content.tryGet<int>('net.deltiecord.accent_color');
+    final key = '$spaceId|${profile.userId}';
     return UserProfileSummary(
       userId: profile.userId,
       displayName: displayName?.trim().isNotEmpty == true
           ? displayName!
           : profile.displayName,
-      avatarBytes:
-          _senderAvatarBytes['${_selectedRoomId ?? spaceId}|${profile.userId}'] ??
-          profile.avatarBytes,
-      bannerBytes: profile.bannerBytes,
+      avatarBytes: _spaceProfileAvatarBytes[key] ?? profile.avatarBytes,
+      bannerBytes: _spaceProfileBannerBytes[key] ?? profile.bannerBytes,
       presence: profile.presence,
-      bio: profile.bio,
+      bio: content.tryGet<String>('net.deltiecord.bio') ?? profile.bio,
       pronouns: pronouns?.trim().isNotEmpty == true
           ? pronouns
           : profile.pronouns,
-      timezone: profile.timezone,
-      statusMessage: profile.statusMessage,
+      timezone:
+          content.tryGet<String>('net.deltiecord.timezone') ?? profile.timezone,
+      statusMessage:
+          content.tryGet<String>('net.deltiecord.status') ??
+          profile.statusMessage,
       profileColor: accent ?? profile.profileColor,
-      profileColorSecondary: profile.profileColorSecondary,
-      voiceColor: profile.voiceColor,
-      voiceBackgroundBytes: profile.voiceBackgroundBytes,
+      profileColorSecondary:
+          content.tryGet<int>('net.deltiecord.accent_color_secondary') ??
+          profile.profileColorSecondary,
+      voiceColor:
+          content.tryGet<int>('net.deltiecord.voice_color') ??
+          profile.voiceColor,
+      voiceBackgroundBytes:
+          _spaceProfileVoiceBackgroundBytes[key] ??
+          profile.voiceBackgroundBytes,
       extensibleFieldsSupported: profile.extensibleFieldsSupported,
       blocked: profile.blocked,
     );
@@ -423,6 +431,7 @@ extension _MatrixProfiles on MatrixBackend {
     _profilePresence = profile.presence;
     _profileStatusMessage = profile.statusMessage;
     _profileColor = profile.profileColor;
+    _ownProfileHydrated = true;
   }
 
   Future<Uint8List?> _profileMedia(Uri? mxc, int width, int height) async {

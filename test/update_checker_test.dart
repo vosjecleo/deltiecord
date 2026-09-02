@@ -42,4 +42,28 @@ void main() {
       throwsFormatException,
     );
   });
+
+  test('startup checks infer only the stable channel from artifacts', () {
+    final result = parseReleaseManifest(
+      '''
+      {
+        "version":"0.9.24",
+        "build":76,
+        "release":"latest",
+        "platforms":{
+          "android":{"stable":[
+            {"name":"deltiecord-0.9.23+74-android-arm64-v8a.apk"}
+          ]}
+        }
+      }
+      ''',
+      currentVersion: '0.9.23',
+      currentBuild: 74,
+      stableOnly: true,
+    );
+
+    expect(result.version, '0.9.23');
+    expect(result.build, 74);
+    expect(result.updateAvailable, isFalse);
+  });
 }

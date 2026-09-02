@@ -97,21 +97,6 @@ extension _MatrixMessages on MatrixBackend {
     if (timeline == null || _historyLoading || !canLoadMoreHistory) {
       return;
     }
-    final loadedWindowEnd = _timelineWindowStart + _timelineWindowCapacity;
-    if (loadedWindowEnd < timeline.events.length) {
-      _setTimelineWindowStartPreserving(
-        timeline,
-        TimelineWindowPolicy.moveOlder(
-          currentStart: _timelineWindowStart,
-          eventCount: timeline.events.length,
-          capacity: _timelineWindowCapacity,
-          pageSize: _preferences.timelineChunkSize,
-        ),
-        anchorEventId,
-      );
-      _notifyBackendListeners();
-      return;
-    }
     _historyLoading = true;
     _notifyBackendListeners();
     try {
@@ -146,15 +131,6 @@ extension _MatrixMessages on MatrixBackend {
       }
       if (!identical(timeline, _timeline)) return;
       if (loaded == 0) return;
-      // The SDK keeps the complete active-room event list so its relation and
-      // pagination state remains authoritative. Only Deltiecord's independent
-      // presentation window moves; this avoids corrupting the SDK list while
-      // retaining the configured widget/mapping cap.
-      _setTimelineWindowStartPreserving(
-        timeline,
-        max(0, timeline.events.length - _timelineWindowCapacity),
-        anchorEventId,
-      );
       await _decryptTimelineEvents(timeline);
       if (!identical(timeline, _timeline)) return;
       unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
@@ -226,26 +202,12 @@ extension _MatrixMessages on MatrixBackend {
 
   Future<void> _loadMoreFuture({String? anchorEventId}) async {
     final timeline = _timeline;
-    if (timeline == null ||
-        _historyLoading ||
-        (!_timelineHasPrunedNewerEvents && !timeline.canRequestFuture)) {
+    if (timeline == null || _historyLoading || !timeline.canRequestFuture) {
       return;
     }
     _historyLoading = true;
     _notifyBackendListeners();
     try {
-      if (_timelineWindowStart > 0) {
-        _setTimelineWindowStartPreserving(
-          timeline,
-          TimelineWindowPolicy.moveNewer(
-            currentStart: _timelineWindowStart,
-            pageSize: _preferences.timelineChunkSize,
-          ),
-          anchorEventId,
-        );
-        unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));
-        return;
-      }
       if (timeline.canRequestFuture) {
         await timeline.requestFuture(
           historyCount: _preferences.timelineChunkSize,
@@ -256,7 +218,6 @@ extension _MatrixMessages on MatrixBackend {
         timeline.events,
         (event) => event.eventId,
       );
-      _setTimelineWindowStart(timeline, 0);
       await _decryptTimelineEvents(timeline);
       if (!identical(timeline, _timeline)) return;
       unawaited(_hydrateCurrentTimeline(timeline, _timelineGeneration));

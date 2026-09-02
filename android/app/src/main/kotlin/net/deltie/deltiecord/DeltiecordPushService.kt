@@ -90,7 +90,15 @@ class DeltiecordPushService : MessagingReceiver() {
                 .getLong("last_notification_posted_ms", 0L)
                 .takeIf { it > 0L }
                 ?.toString(),
+            "lastWorkerResult" to preferences(context)
+                .getString("last_worker_result", null),
         )
+
+        fun recordWorkerResult(context: Context, result: String) {
+            preferences(context).edit()
+                .putString("last_worker_result", result.take(96))
+                .apply()
+        }
 
         fun clear(context: Context, instance: String) {
             preferences(context).edit()

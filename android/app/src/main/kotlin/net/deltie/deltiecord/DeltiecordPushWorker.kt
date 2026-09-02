@@ -2,9 +2,12 @@ package net.deltie.deltiecord
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -18,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import java.util.concurrent.TimeUnit
 
 /** Active UI engine, reused so Matrix never opens its crypto store twice. */
 object DeltiecordEngineRegistry {
@@ -82,6 +86,10 @@ class DeltiecordPushWorker(
                     inputData.getString(KEY_REPLY),
                 )
                 return if (completed || runAttemptCount >= 1) {
+                    DeltiecordPushService.recordWorkerResult(
+                        applicationContext,
+                        if (completed) "action_completed" else "action_failed",
+                    )
                     Result.success()
                 } else {
                     Result.retry()
@@ -91,13 +99,33 @@ class DeltiecordPushWorker(
                 val message = resolution?.let(DeltiecordNotificationPublisher::fromMap)
                 if (message != null) {
                     DeltiecordNotificationPublisher.publish(applicationContext, message)
+                    DeltiecordPushService.recordWorkerResult(
+                        applicationContext,
+                        "notification_posted",
+                    )
+                } else {
+                    DeltiecordPushService.recordWorkerResult(
+                        applicationContext,
+                        "event_not_resolved_attempt_${runAttemptCount + 1}",
+                    )
+                    return if (runAttemptCount < MAX_RETRIES) {
+                        Result.retry()
+                    } else {
+                        Result.success()
+                    }
                 }
             }
             return Result.success()
         } catch (_: Throwable) {
-            // The receiver's generic notification remains visible. Retry once
-            // so transient sync/key-delivery races can still enrich it.
-            return if (runAttemptCount < 1) Result.retry() else Result.success()
+            DeltiecordPushService.recordWorkerResult(
+                applicationContext,
+                "worker_failed_attempt_${runAttemptCount + 1}",
+            )
+            return if (runAttemptCount < MAX_RETRIES) {
+                Result.retry()
+            } else {
+                Result.success()
+            }
         } finally {
             DeltiecordNotificationPublisher.cancelBackgroundWorkNotification(
                 applicationContext,
@@ -199,19 +227,31 @@ class DeltiecordPushWorker(
         private const val KEY_EVENT_ID = "event_id"
         private const val KEY_ACTION = "notification_action"
         private const val KEY_REPLY = "notification_reply"
+        private const val MAX_RETRIES = 3
+
+        private fun request(data: Data) =
+            OneTimeWorkRequestBuilder<DeltiecordPushWorker>()
+                .setInputData(data)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
 
         fun enqueue(context: Context, roomId: String, eventId: String) {
             val data = Data.Builder()
                 .putString(KEY_ROOM_ID, roomId)
                 .putString(KEY_EVENT_ID, eventId)
                 .build()
-            val request = OneTimeWorkRequestBuilder<DeltiecordPushWorker>()
-                .setInputData(data)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                .build()
+            val request = request(data)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "deltiecord-push-${roomId.hashCode()}",
-                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                // Only the most recent event per room needs resolution. A
+                // stalled encrypted-event lookup must not block later pushes.
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
         }
@@ -229,10 +269,7 @@ class DeltiecordPushWorker(
                 .putString(KEY_ACTION, action)
                 .putString(KEY_REPLY, reply)
                 .build()
-            val request = OneTimeWorkRequestBuilder<DeltiecordPushWorker>()
-                .setInputData(data)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-                .build()
+            val request = request(data)
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "deltiecord-action-${roomId.hashCode()}",
                 ExistingWorkPolicy.APPEND_OR_REPLACE,

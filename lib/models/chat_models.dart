@@ -705,14 +705,28 @@ class SpaceProfileOverride {
     this.nickname,
     this.pronouns,
     this.avatarBytes,
+    this.bannerBytes,
+    this.bio,
+    this.statusMessage,
+    this.timezone,
     this.accentColor,
+    this.accentColorSecondary,
+    this.voiceColor,
+    this.voiceBackgroundBytes,
   });
 
   final String spaceId;
   final String? nickname;
   final String? pronouns;
   final Uint8List? avatarBytes;
+  final Uint8List? bannerBytes;
+  final String? bio;
+  final String? statusMessage;
+  final String? timezone;
   final int? accentColor;
+  final int? accentColorSecondary;
+  final int? voiceColor;
+  final Uint8List? voiceBackgroundBytes;
 }
 
 class ReceiptReaderSummary {

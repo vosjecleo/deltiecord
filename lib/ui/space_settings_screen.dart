@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import 'deltiecord_theme.dart';
+import 'profile_card.dart';
+import 'profile_editor_dialog.dart';
 
 enum _SpaceSettingsPage { basic, channels, roles, pages, serverProfile }
 
@@ -122,10 +124,9 @@ class _SpaceSettingsViewState extends State<_SpaceSettingsView> {
   );
   final _welcome = TextEditingController();
   final _rules = TextEditingController();
-  final _nickname = TextEditingController();
-  final _pronouns = TextEditingController();
   Uint8List? _spaceAvatar;
-  Uint8List? _profileAvatar;
+  UserProfileSummary? _globalProfile;
+  SpaceProfileOverride? _spaceProfileOverride;
   RoomNotificationMode _suggested = RoomNotificationMode.mentionsOnly;
   late bool _spaceMuted = widget.space.muted;
   late int _layoutPowerLevel = backend.spaceChannelLayoutPowerLevel(
@@ -145,14 +146,15 @@ class _SpaceSettingsViewState extends State<_SpaceSettingsView> {
   Future<void> _load() async {
     final pages = await backend.getSpacePages(widget.space.id);
     final profile = await backend.getSpaceProfileOverride(widget.space.id);
+    final userId = backend.userId;
+    final global = userId == null ? null : await backend.getUserProfile(userId);
     if (!mounted) return;
     setState(() {
       _welcome.text = pages.welcome;
       _rules.text = pages.rules;
       _suggested = pages.suggestedNotificationMode;
-      _nickname.text = profile?.nickname ?? '';
-      _pronouns.text = profile?.pronouns ?? '';
-      _profileAvatar = profile?.avatarBytes;
+      _spaceProfileOverride = profile;
+      _globalProfile = global;
       _loading = false;
     });
   }
@@ -163,8 +165,6 @@ class _SpaceSettingsViewState extends State<_SpaceSettingsView> {
     _description.dispose();
     _welcome.dispose();
     _rules.dispose();
-    _nickname.dispose();
-    _pronouns.dispose();
     super.dispose();
   }
 
@@ -597,35 +597,68 @@ class _SpaceSettingsViewState extends State<_SpaceSettingsView> {
   ]);
 
   Widget _serverProfile() => _section('Server profile', [
-    Center(
-      child: CircleAvatar(
-        radius: 42,
-        backgroundImage: _profileAvatar == null
-            ? null
-            : MemoryImage(_profileAvatar!),
-        child: _profileAvatar == null ? const Icon(Icons.person) : null,
+    if (_globalProfile case final profile?) ...[
+      DeltiecordProfileCard(profile: _effectiveServerProfile(profile)),
+      const SizedBox(height: 14),
+      FilledButton.icon(
+        onPressed: () => _editServerProfile(profile),
+        icon: const Icon(Icons.edit_outlined),
+        label: const Text('Edit server profile'),
       ),
-    ),
-    TextButton.icon(
-      onPressed: () => _pickImage((bytes) => _profileAvatar = bytes),
-      icon: const Icon(Icons.image_outlined),
-      label: const Text('Choose server avatar'),
-    ),
-    TextField(
-      controller: _nickname,
-      decoration: const InputDecoration(labelText: 'Nickname'),
-    ),
-    const SizedBox(height: 12),
-    TextField(
-      controller: _pronouns,
-      decoration: const InputDecoration(labelText: 'Pronouns'),
-    ),
-    const SizedBox(height: 18),
-    FilledButton(
-      onPressed: _saveProfile,
-      child: const Text('Save server profile'),
-    ),
+      const SizedBox(height: 8),
+      TextButton.icon(
+        onPressed: _spaceProfileOverride == null
+            ? null
+            : () async {
+                await backend.setSpaceProfileOverride(
+                  SpaceProfileOverride(spaceId: widget.space.id),
+                );
+                await _reloadServerProfile();
+              },
+        icon: const Icon(Icons.restart_alt),
+        label: const Text('Reset every field to general profile'),
+      ),
+    ] else
+      const Center(child: CircularProgressIndicator()),
   ]);
+
+  UserProfileSummary _effectiveServerProfile(UserProfileSummary global) {
+    final override = _spaceProfileOverride;
+    return UserProfileSummary(
+      userId: global.userId,
+      displayName: override?.nickname ?? global.displayName,
+      avatarBytes: override?.avatarBytes ?? global.avatarBytes,
+      bannerBytes: override?.bannerBytes ?? global.bannerBytes,
+      presence: global.presence,
+      bio: override?.bio ?? global.bio,
+      pronouns: override?.pronouns ?? global.pronouns,
+      timezone: override?.timezone ?? global.timezone,
+      statusMessage: override?.statusMessage ?? global.statusMessage,
+      profileColor: override?.accentColor ?? global.profileColor,
+      profileColorSecondary:
+          override?.accentColorSecondary ?? global.profileColorSecondary,
+      voiceColor: override?.voiceColor ?? global.voiceColor,
+      voiceBackgroundBytes:
+          override?.voiceBackgroundBytes ?? global.voiceBackgroundBytes,
+      extensibleFieldsSupported: global.extensibleFieldsSupported,
+    );
+  }
+
+  Future<void> _editServerProfile(UserProfileSummary profile) async {
+    final changed = await showSpaceProfileEditor(
+      context,
+      backend,
+      profile,
+      _spaceProfileOverride,
+      widget.space.id,
+    );
+    if (changed) await _reloadServerProfile();
+  }
+
+  Future<void> _reloadServerProfile() async {
+    final override = await backend.getSpaceProfileOverride(widget.space.id);
+    if (mounted) setState(() => _spaceProfileOverride = override);
+  }
 
   Future<void> _pickImage(ValueChanged<Uint8List> onPicked) async {
     final result = await FilePicker.pickFiles(
@@ -667,18 +700,6 @@ class _SpaceSettingsViewState extends State<_SpaceSettingsView> {
         welcome: _welcome.text.trim(),
         rules: _rules.text.trim(),
         suggestedNotificationMode: _suggested,
-      ),
-    );
-    _saved();
-  }
-
-  Future<void> _saveProfile() async {
-    await backend.setSpaceProfileOverride(
-      SpaceProfileOverride(
-        spaceId: widget.space.id,
-        nickname: _nickname.text.trim(),
-        pronouns: _pronouns.text.trim(),
-        avatarBytes: _profileAvatar,
       ),
     );
     _saved();

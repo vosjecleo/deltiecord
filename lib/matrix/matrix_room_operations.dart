@@ -428,7 +428,6 @@ extension _MatrixRoomOperations on MatrixBackend {
         (event) => event.eventId,
       );
       _timeline = timeline;
-      _setTimelineWindowStart(timeline, 0);
       _timelineDatabaseOffset = timeline.events.length;
       _captureFirstUnread(room, timeline);
       // The SDK already decrypts locally-available events while constructing
@@ -497,7 +496,6 @@ extension _MatrixRoomOperations on MatrixBackend {
         (event) => event.eventId,
       );
       _timeline = timeline;
-      _setTimelineWindowStart(timeline, 0);
       _timelineDatabaseOffset = timeline.events.length;
       _timelineDatabaseExhausted = true;
       await _decryptTimelineEvents(timeline);

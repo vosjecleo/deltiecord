@@ -143,6 +143,31 @@ void main() {
     expect(find.text('Profile gradient — bottom'), findsOneWidget);
   });
 
+  testWidgets(
+    'Android profile editor separates preview from scrollable fields',
+    (tester) async {
+      final backend = FakeBackend()
+        ..currentStatus = SessionStatus.signedIn
+        ..testProfile = const UserProfileSummary(
+          userId: '@deltie:example.org',
+          displayName: 'Deltie',
+          bio: 'Existing biography',
+        );
+      await _pumpMobile(tester, backend);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Account'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Edit profile'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Edit profile — live preview'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Display name'), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('shows an explicit offline state', (tester) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
@@ -332,6 +357,42 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Copy Space link'), findsOneWidget);
+  });
+
+  testWidgets('Space profiles reuse the full profile editor with inheritance', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..testProfile = const UserProfileSummary(
+        userId: '@deltie:example.org',
+        displayName: 'General name',
+        bio: 'General bio',
+        statusMessage: 'General status',
+      )
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Deltie'),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(
+      find.byKey(const ValueKey('space-button-Deltie')),
+      buttons: kSecondaryButton,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Space settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Server profile'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Edit server profile'));
+    await tester.pump();
+    await tester.tap(find.text('Edit server profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit server profile — live preview'), findsOneWidget);
+    expect(find.text('Use general top colour'), findsOneWidget);
+    expect(find.text('Use general avatar'), findsOneWidget);
+    expect(find.text('Use general voice tile'), findsOneWidget);
   });
 
   testWidgets('Space categories collapse and expose accessible ordering', (
@@ -1018,7 +1079,10 @@ void main() {
     await tester.pump();
 
     expect(tester.getTopLeft(anchor).dy, closeTo(before, 1));
-    expect(backend.lastHistoryAnchor, isNotNull);
+    // Appending to one stable reversed list must preserve the row naturally;
+    // pagination no longer reconstructs the timeline around a synthetic
+    // event anchor.
+    expect(backend.lastHistoryAnchor, isNull);
   });
 
   testWidgets('delayed preview hydration preserves the visible event offset', (
@@ -1182,7 +1246,9 @@ void main() {
     expect(timeline.position.pixels, 0);
   });
 
-  testWidgets('historical windows expose a load newer control', (tester) async {
+  testWidgets('historical timelines expose a load newer control', (
+    tester,
+  ) async {
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..moreFuture = true
@@ -1214,7 +1280,7 @@ void main() {
     await tester.tap(find.byKey(const Key('load-newer-messages')));
     await tester.pump();
     expect(backend.futureRequests, 1);
-    expect(backend.lastFutureAnchor, r'$historical');
+    expect(backend.lastFutureAnchor, isNull);
   });
 
   testWidgets('sends composer text and clears it after success', (
@@ -1623,9 +1689,9 @@ void main() {
     final composerTop = tester.getTopLeft(composerPanel).dy;
 
     backend.setTypingNames(const ['Alice']);
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 150));
 
-    expect(find.text('Alice is typing…'), findsOneWidget);
+    expect(find.text('Alice is typing'), findsOneWidget);
     expect(tester.getTopLeft(composerPanel).dy, composerTop);
     expect(
       tester.getSize(find.byKey(const Key('typing-indicator'))).width,
@@ -2892,6 +2958,34 @@ void main() {
     expect(find.text('room A draft'), findsOneWidget);
   });
 
+  testWidgets('Android long press on send opens scheduling controls', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!schedule:test',
+          name: 'Schedule',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Schedule'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('mobile-composer-field')),
+      'Send tomorrow',
+    );
+
+    await tester.longPress(find.bySemanticsLabel('Send; hold to send later'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+  });
+
   testWidgets('Android keeps an RTC island while browsing another room', (
     tester,
   ) async {
@@ -2924,8 +3018,12 @@ void main() {
 }
 
 Future<void> _pumpMobile(WidgetTester tester, FakeBackend backend) async {
-  await tester.binding.setSurfaceSize(const Size(430, 900));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = const Size(430, 900);
+  addTearDown(() {
+    tester.view.resetDevicePixelRatio();
+    tester.view.resetPhysicalSize();
+  });
   await tester.pumpWidget(
     DeltiecordApp(backend: backend, platformOverride: TargetPlatform.android),
   );

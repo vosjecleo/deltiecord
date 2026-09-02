@@ -20,6 +20,7 @@ import '../services/message_search.dart';
 import '../services/link_preview_policy.dart';
 import '../services/link_preview_service.dart';
 import '../services/profile_refresh_policy.dart';
+import '../services/poll_tally.dart';
 import '../services/secret_redaction.dart';
 import '../services/scheduled_message_store.dart';
 import '../services/timeline_window_policy.dart';
@@ -85,6 +86,8 @@ class MatrixBackend extends ChatBackend {
   StreamSubscription<Object?>? _syncStatusSubscription;
   StreamSubscription<NotificationTarget>? _notificationSubscription;
   StreamSubscription<String>? _unifiedPushSubscription;
+  bool _unifiedPushRestoreRunning = false;
+  DateTime? _lastUnifiedPushRestore;
   SessionStatus _status = SessionStatus.starting;
   ConnectionStatus _connectionStatus = ConnectionStatus.connecting;
   String? _error;
@@ -96,15 +99,15 @@ class MatrixBackend extends ChatBackend {
   int _timelineDatabaseOffset = 0;
   bool _timelineDatabaseExhausted = false;
   bool _timelineServerExhausted = false;
-  bool _timelineHasPrunedNewerEvents = false;
-  int _timelineWindowStart = 0;
-  String? _timelineWindowHeadEventId;
   bool _timelineHydrationRunning = false;
   bool _timelineHydrationRequested = false;
   final Set<String> _loadedBackupRoomIds = {};
   final Map<String, Uint8List> _avatarBytes = {};
   final Map<String, Uri?> _avatarUris = {};
   final Map<String, Uint8List> _senderAvatarBytes = {};
+  final Map<String, Uint8List> _spaceProfileAvatarBytes = {};
+  final Map<String, Uint8List> _spaceProfileBannerBytes = {};
+  final Map<String, Uint8List> _spaceProfileVoiceBackgroundBytes = {};
   final Map<String, Uri?> _senderAvatarUris = {};
   final Map<String, String> _decryptedPreviews = {};
   final Map<String, ReplyPreview> _replyPreviews = {};
@@ -157,6 +160,7 @@ class MatrixBackend extends ChatBackend {
   Uint8List? _profileAvatarBytes;
   UserPresence _profilePresence = UserPresence.offline;
   String? _profileStatusMessage;
+  bool _ownProfileHydrated = false;
   int? _profileColor;
   bool _profileLoading = false;
   int _profileRevision = 0;
@@ -254,14 +258,10 @@ class MatrixBackend extends ChatBackend {
   bool get canLoadMoreHistory {
     final timeline = _timeline;
     if (timeline == null) return false;
-    if (_timelineWindowStart + _timelineWindowCapacity <
-        timeline.events.length) {
-      return true;
-    }
     if (_timelineServerExhausted) return false;
     // The SDK's canRequestHistory flag only describes its own database cursor.
-    // Deltiecord owns a separate bounded-window cursor, which may still have
-    // local events even after the SDK considers its initial page exhausted.
+    // Deltiecord also walks its persisted-event cursor before falling back to
+    // the room continuation token, so any one signal can still have history.
     return !_timelineDatabaseExhausted ||
         timeline.canRequestHistory ||
         timeline.chunk.prevBatch.isNotEmpty ||
@@ -269,11 +269,9 @@ class MatrixBackend extends ChatBackend {
   }
 
   @override
-  bool get canLoadMoreFuture =>
-      _timelineHasPrunedNewerEvents || (_timeline?.canRequestFuture ?? false);
+  bool get canLoadMoreFuture => _timeline?.canRequestFuture ?? false;
   @override
-  bool get atTimelinePresent =>
-      !_timelineHasPrunedNewerEvents && !(_timeline?.canRequestFuture ?? false);
+  bool get atTimelinePresent => !(_timeline?.canRequestFuture ?? false);
   @override
   String? get firstUnreadMessageId => _firstUnreadEventIds[_selectedRoomId];
   @override
@@ -541,6 +539,9 @@ class MatrixBackend extends ChatBackend {
   void setApplicationForeground(bool foreground) {
     if (_applicationForeground == foreground) return;
     _applicationForeground = foreground;
+    if (foreground && Platform.isAndroid) {
+      unawaited(_restoreUnifiedPushPusher());
+    }
     if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
   }
 
@@ -1079,9 +1080,6 @@ class MatrixBackend extends ChatBackend {
     _timelineDatabaseOffset = 0;
     _timelineDatabaseExhausted = false;
     _timelineServerExhausted = false;
-    _timelineHasPrunedNewerEvents = false;
-    _timelineWindowStart = 0;
-    _timelineWindowHeadEventId = null;
     _replyPreviews.clear();
     _linkPreviews.clear();
     _mediaPlaybackSources.clear();

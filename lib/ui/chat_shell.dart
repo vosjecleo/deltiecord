@@ -41,6 +41,7 @@ import 'poll_card.dart';
 import 'member_management.dart';
 import 'presence_controls.dart';
 import 'space_settings_screen.dart';
+import 'typing_indicator.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';

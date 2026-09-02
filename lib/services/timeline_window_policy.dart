@@ -2,11 +2,12 @@ import 'dart:math';
 
 enum TimelinePageDirection { older, newer }
 
-/// Applies Deltiecord's bounded presentation-window rules to newest-first events.
+/// Stateless helpers for Matrix timeline pagination and deduplication.
 ///
-/// Matrix timelines expose index zero as the newest event. Deltiecord leaves
-/// the SDK-owned list intact and moves a UI window over it. The legacy trim
-/// helper remains for isolated list-policy tests and non-SDK callers.
+/// The active UI deliberately keeps one stable SDK-owned event list. The
+/// window-moving helpers remain only for isolated list consumers and policy
+/// regression tests; they must not be used to replace both ends of a live
+/// Flutter sliver because doing so destroys its scroll anchor.
 abstract final class TimelineWindowPolicy {
   static int hardCap({required int chunkSize, required int chunkCap}) =>
       min(120, max(1, chunkSize) * max(1, chunkCap));

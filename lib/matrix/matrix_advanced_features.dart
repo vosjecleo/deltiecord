@@ -604,27 +604,61 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         .accountData[MatrixBackend._spaceProfileAccountDataType]
         ?.content
         .tryGetMap<String, Object?>(spaceId);
-    final value = memberContent == null
-        ? legacy
-        : <String, Object?>{
-            'nickname': memberContent['displayname'],
-            'pronouns': memberContent['net.deltiecord.pronouns'],
-            'avatar_url': memberContent['avatar_url'],
-            'accent_color': memberContent['net.deltiecord.accent_color'],
-          };
+    final value =
+        legacy ??
+        (memberContent == null
+            ? null
+            : <String, Object?>{
+                'nickname': memberContent['displayname'],
+                'pronouns': memberContent['net.deltiecord.pronouns'],
+                'avatar_url': memberContent['avatar_url'],
+                'accent_color': memberContent['net.deltiecord.accent_color'],
+              });
     if (value == null) return null;
     Uint8List? avatar;
     final avatarUri = Uri.tryParse(value.tryGet<String>('avatar_url') ?? '');
     if (avatarUri != null && avatarUri.isScheme('mxc')) {
       avatar = await _avatarMedia(avatarUri, AvatarMediaPool.profileDimension);
     }
-    return SpaceProfileOverride(
+    Future<Uint8List?> media(String key) async {
+      final uri = Uri.tryParse(value.tryGet<String>(key) ?? '');
+      return uri != null && uri.isScheme('mxc')
+          ? _profileOriginalMedia(uri)
+          : null;
+    }
+
+    final result = SpaceProfileOverride(
       spaceId: spaceId,
       nickname: value.tryGet<String>('nickname'),
       pronouns: value.tryGet<String>('pronouns'),
       avatarBytes: avatar,
+      bannerBytes: await media('banner_url'),
+      bio: value.tryGet<String>('bio'),
+      statusMessage: value.tryGet<String>('status'),
+      timezone: value.tryGet<String>('timezone'),
       accentColor: value.tryGet<int>('accent_color'),
+      accentColorSecondary: value.tryGet<int>('accent_color_secondary'),
+      voiceColor: value.tryGet<int>('voice_color'),
+      voiceBackgroundBytes: await media('voice_background_url'),
     );
+    final cacheKey = '$spaceId|$userId';
+    if (result.avatarBytes != null) {
+      _spaceProfileAvatarBytes[cacheKey] = result.avatarBytes!;
+    } else {
+      _spaceProfileAvatarBytes.remove(cacheKey);
+    }
+    if (result.bannerBytes != null) {
+      _spaceProfileBannerBytes[cacheKey] = result.bannerBytes!;
+    } else {
+      _spaceProfileBannerBytes.remove(cacheKey);
+    }
+    if (result.voiceBackgroundBytes != null) {
+      _spaceProfileVoiceBackgroundBytes[cacheKey] =
+          result.voiceBackgroundBytes!;
+    } else {
+      _spaceProfileVoiceBackgroundBytes.remove(cacheKey);
+    }
+    return result;
   }
 
   Future<void> _setSpaceProfileOverride(SpaceProfileOverride profile) async {
@@ -633,7 +667,6 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     final current = _matrix
         .accountData[MatrixBackend._spaceProfileAccountDataType]
         ?.content;
-    final previous = current?.tryGetMap<String, Object?>(profile.spaceId);
     Uri? avatarUri;
     if (profile.avatarBytes != null) {
       avatarUri = await _matrix.uploadContent(
@@ -642,11 +675,23 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         contentType: 'image/png',
       );
     }
+    Future<Uri?> upload(Uint8List? bytes, String filename) => bytes == null
+        ? Future.value(null)
+        : _matrix.uploadContent(
+            bytes,
+            filename: filename,
+            contentType: 'image/png',
+          );
+    final bannerUri = await upload(
+      profile.bannerBytes,
+      'space-profile-banner.png',
+    );
+    final voiceBackgroundUri = await upload(
+      profile.voiceBackgroundBytes,
+      'space-profile-voice-background.png',
+    );
     final globalProfile = await _matrix.getProfileFromUserId(userId);
-    final effectiveAvatarUri =
-        avatarUri ??
-        Uri.tryParse(previous?.tryGet<String>('avatar_url') ?? '') ??
-        globalProfile.avatarUrl;
+    final effectiveAvatarUri = avatarUri ?? globalProfile.avatarUrl;
     final nickname = profile.nickname?.trim();
     final pronouns = profile.pronouns?.trim();
     final space = _matrix.getRoomById(profile.spaceId);
@@ -661,42 +706,89 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       for (final room in targets) {
         final existing = room.getState(EventTypes.RoomMember, userId)?.content;
         try {
-          await _matrix
-              .setRoomStateWithKey(room.id, EventTypes.RoomMember, userId, {
-                ...?existing,
-                'membership': 'join',
-                'displayname': nickname?.isNotEmpty == true
-                    ? nickname
-                    : globalProfile.displayName,
-                if (effectiveAvatarUri != null)
-                  'avatar_url': effectiveAvatarUri.toString(),
-                if (pronouns?.isNotEmpty == true)
-                  'net.deltiecord.pronouns': pronouns
-                else
-                  'net.deltiecord.pronouns': null,
-                if (profile.accentColor != null)
-                  'net.deltiecord.accent_color': profile.accentColor,
-              });
+          await _matrix.setRoomStateWithKey(
+            room.id,
+            EventTypes.RoomMember,
+            userId,
+            {
+              ...?existing,
+              'membership': 'join',
+              'displayname': nickname?.isNotEmpty == true
+                  ? nickname
+                  : globalProfile.displayName,
+              'avatar_url': effectiveAvatarUri?.toString(),
+              if (pronouns?.isNotEmpty == true)
+                'net.deltiecord.pronouns': pronouns
+              else
+                'net.deltiecord.pronouns': null,
+              if (profile.accentColor != null)
+                'net.deltiecord.accent_color': profile.accentColor
+              else
+                'net.deltiecord.accent_color': null,
+              'net.deltiecord.bio': profile.bio,
+              'net.deltiecord.status': profile.statusMessage,
+              'net.deltiecord.timezone': profile.timezone,
+              'net.deltiecord.accent_color_secondary':
+                  profile.accentColorSecondary,
+              'net.deltiecord.voice_color': profile.voiceColor,
+              'net.deltiecord.banner': bannerUri?.toString(),
+              'net.deltiecord.voice_background': voiceBackgroundUri?.toString(),
+            },
+          );
         } catch (_) {
           // A child room may restrict member-profile changes independently.
           // Continue applying the override to the remaining Space rooms.
         }
       }
     }
+    final updated = <String, Object?>{...?current};
+    final override = <String, Object?>{
+      if (nickname?.isNotEmpty == true) 'nickname': nickname,
+      if (pronouns?.isNotEmpty == true) 'pronouns': pronouns,
+      if (avatarUri != null) 'avatar_url': avatarUri.toString(),
+      if (bannerUri != null) 'banner_url': bannerUri.toString(),
+      if (profile.bio?.trim().isNotEmpty == true) 'bio': profile.bio!.trim(),
+      if (profile.statusMessage?.trim().isNotEmpty == true)
+        'status': profile.statusMessage!.trim(),
+      if (profile.timezone?.trim().isNotEmpty == true)
+        'timezone': profile.timezone!.trim(),
+      if (profile.accentColor != null) 'accent_color': profile.accentColor,
+      if (profile.accentColorSecondary != null)
+        'accent_color_secondary': profile.accentColorSecondary,
+      if (profile.voiceColor != null) 'voice_color': profile.voiceColor,
+      if (voiceBackgroundUri != null)
+        'voice_background_url': voiceBackgroundUri.toString(),
+    };
+    if (override.isEmpty) {
+      // Keep an explicit inheritance marker so old member-state fallbacks are
+      // not mistaken for a custom override after the user presses Reset.
+      updated[profile.spaceId] = const <String, Object?>{'inherit': true};
+    } else {
+      updated[profile.spaceId] = override;
+    }
     await _matrix.setAccountData(
       userId,
       MatrixBackend._spaceProfileAccountDataType,
-      {
-        ...?current,
-        profile.spaceId: {
-          if (nickname?.isNotEmpty == true) 'nickname': nickname,
-          if (pronouns?.isNotEmpty == true) 'pronouns': pronouns,
-          if (effectiveAvatarUri != null)
-            'avatar_url': effectiveAvatarUri.toString(),
-          if (profile.accentColor != null) 'accent_color': profile.accentColor,
-        },
-      },
+      updated,
     );
+    final cacheKey = '${profile.spaceId}|$userId';
+    if (profile.avatarBytes != null) {
+      _spaceProfileAvatarBytes[cacheKey] = profile.avatarBytes!;
+    } else {
+      _spaceProfileAvatarBytes.remove(cacheKey);
+    }
+    if (profile.bannerBytes != null) {
+      _spaceProfileBannerBytes[cacheKey] = profile.bannerBytes!;
+    } else {
+      _spaceProfileBannerBytes.remove(cacheKey);
+    }
+    if (profile.voiceBackgroundBytes != null) {
+      _spaceProfileVoiceBackgroundBytes[cacheKey] =
+          profile.voiceBackgroundBytes!;
+    } else {
+      _spaceProfileVoiceBackgroundBytes.remove(cacheKey);
+    }
+    _notifyBackendListeners();
   }
 
   List<InboxItemSummary> _buildUnifiedInbox() {

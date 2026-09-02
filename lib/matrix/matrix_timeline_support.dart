@@ -6,55 +6,10 @@ part of 'matrix_backend.dart';
 /// are serialized because sync bursts can otherwise duplicate network work and
 /// let stale room results outlive a fast room switch.
 extension _MatrixTimelineSupport on MatrixBackend {
-  int get _timelineWindowCapacity => TimelineWindowPolicy.hardCap(
-    chunkSize: _preferences.timelineChunkSize,
-    chunkCap: _preferences.timelineChunkCap,
-  );
-
-  List<Event> _timelineWindowEvents(Timeline timeline) {
-    final start = _timelineWindowStart.clamp(0, timeline.events.length);
-    final end = min(timeline.events.length, start + _timelineWindowCapacity);
-    return timeline.events.sublist(start, end);
-  }
-
-  void _setTimelineWindowStart(Timeline timeline, int start) {
-    final maximum = TimelineWindowPolicy.maximumWindowStart(
-      eventCount: timeline.events.length,
-      capacity: _timelineWindowCapacity,
-    );
-    _timelineWindowStart = start.clamp(0, maximum);
-    _timelineHasPrunedNewerEvents = _timelineWindowStart > 0;
-    _timelineWindowHeadEventId = timeline.events.isEmpty
-        ? null
-        : timeline.events[_timelineWindowStart].eventId;
-  }
-
-  void _setTimelineWindowStartPreserving(
-    Timeline timeline,
-    int start,
-    String? anchorEventId,
-  ) {
-    final anchorIndex = anchorEventId == null
-        ? null
-        : timeline.events.indexWhere((event) => event.eventId == anchorEventId);
-    _setTimelineWindowStart(
-      timeline,
-      TimelineWindowPolicy.preserveAnchor(
-        desiredStart: start,
-        eventCount: timeline.events.length,
-        capacity: _timelineWindowCapacity,
-        anchorIndex: anchorIndex == -1 ? null : anchorIndex,
-      ),
-    );
-  }
-
-  void _stabilizeTimelineWindow(Timeline timeline) {
-    if (!_timelineHasPrunedNewerEvents) return;
-    final head = _timelineWindowHeadEventId;
-    if (head == null) return;
-    final index = timeline.events.indexWhere((event) => event.eventId == head);
-    if (index >= 0) _setTimelineWindowStart(timeline, index);
-  }
+  // Flutter's lazy sliver materializes only visible rows. Keep stable event
+  // identities in that sliver instead of replacing both ends of a bounded UI
+  // window; the latter made the scroll position irrecoverable after paging.
+  List<Event> _timelineWindowEvents(Timeline timeline) => timeline.events;
 
   Future<void> _hydrateSenderAvatars(Timeline timeline) async {
     final missing = <(String, Uri)>[];
@@ -225,7 +180,6 @@ extension _MatrixTimelineSupport on MatrixBackend {
     if (generation != _timelineGeneration) return;
     final timeline = _timeline;
     if (timeline != null) {
-      _stabilizeTimelineWindow(timeline);
       _notifyBackendListeners();
       unawaited(_hydrateCurrentTimeline(timeline, generation));
       unawaited(_markSelectedRoomRead());

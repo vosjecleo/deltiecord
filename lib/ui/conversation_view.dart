@@ -79,7 +79,6 @@ class _ConversationState extends State<_Conversation> {
   DateTime _timelineUserInputUntil = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _suppressPaginationUntil = DateTime.fromMillisecondsSinceEpoch(0);
   int _navigationGeneration = 0;
-  (String, double)? _pendingPageAnchor;
   int? _timelineLayoutFingerprint;
   int _layoutAnchorGeneration = 0;
   String? _newestMessageId;
@@ -106,9 +105,6 @@ class _ConversationState extends State<_Conversation> {
 
   void _loadTimelineNearEdges() {
     if (!_scrollController.hasClients) return;
-    if (_loadingAnchoredHistory) {
-      _pendingPageAnchor = _captureVisibleAnchor() ?? _pendingPageAnchor;
-    }
     final position = _scrollController.position;
     widget.backend.setConversationAtPresent(
       position.pixels <= 48 && widget.backend.atTimelinePresent,
@@ -193,18 +189,11 @@ class _ConversationState extends State<_Conversation> {
     _suppressPaginationUntil = DateTime.now().add(
       const Duration(milliseconds: 700),
     );
-    final anchor = _captureVisibleAnchor();
-    _pendingPageAnchor = anchor;
     try {
-      await load(anchor?.$1);
-      if (!mounted) return;
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      _restoreVisibleAnchor(_pendingPageAnchor ?? anchor);
+      await load(null);
     } catch (_) {
       // The backend reports its user-facing pagination error separately.
     } finally {
-      _pendingPageAnchor = null;
       _loadingAnchoredHistory = false;
     }
   }
@@ -1047,62 +1036,10 @@ class _ConversationState extends State<_Conversation> {
                             ),
                           ),
                         ),
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: 0,
-                        child: IgnorePointer(
-                          child: ClipRect(
-                            child: AnimatedSlide(
-                              duration: backend.preferences.reducedMotion
-                                  ? Duration.zero
-                                  : const Duration(milliseconds: 140),
-                              curve: Curves.easeOut,
-                              offset: backend.typingUserNames.isEmpty
-                                  ? const Offset(0, -1)
-                                  : Offset.zero,
-                              child: AnimatedOpacity(
-                                duration: backend.preferences.reducedMotion
-                                    ? Duration.zero
-                                    : const Duration(milliseconds: 100),
-                                opacity: backend.typingUserNames.isEmpty
-                                    ? 0
-                                    : 1,
-                                child: Container(
-                                  key: const Key('typing-indicator'),
-                                  height: 24,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                  ),
-                                  alignment: Alignment.centerLeft,
-                                  decoration: BoxDecoration(
-                                    color: context.deltiecord.panel,
-                                    border: Border(
-                                      bottom: BorderSide(
-                                        color: context.deltiecord.divider,
-                                      ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    backend.typingUserNames.isEmpty
-                                        ? ''
-                                        : _typingLabel(backend.typingUserNames),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: DeltiecordTypeScale.normal,
-                                      color: context.deltiecord.muted,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),
+                TypingIndicator(names: backend.typingUserNames),
                 if (widget.replyingTo case final message?)
                   _ComposerContext(
                     label: 'Replying to ${message.sender}',
@@ -1176,14 +1113,6 @@ class _ConversationState extends State<_Conversation> {
         ],
       ),
     );
-  }
-
-  String _typingLabel(List<String> names) {
-    if (names.length == 1) return '${names.first} is typing…';
-    if (names.length == 2) {
-      return '${names.first} and ${names.last} are typing…';
-    }
-    return '${names.first}, ${names[1]} and ${names.length - 2} others are typing…';
   }
 }
 

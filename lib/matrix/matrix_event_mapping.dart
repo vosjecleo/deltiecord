@@ -262,9 +262,12 @@ extension _MatrixEventMapping on MatrixBackend {
             PollAnswerSummary(
               id: answer.id,
               text: answer.mText,
-              votes: responses[answer.id]?.length ?? 0,
-              selectedByMe:
-                  responses[answer.id]?.contains(_matrix.userID) ?? false,
+              votes: pollVoteCount(responses, answer.id),
+              selectedByMe: pollAnswerSelectedBy(
+                responses,
+                _matrix.userID,
+                answer.id,
+              ),
             ),
         ],
       );

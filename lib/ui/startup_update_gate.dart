@@ -42,6 +42,7 @@ class _StartupUpdateGateState extends State<StartupUpdateGate> {
       final result = await checker.check(
         currentVersion: package.version,
         currentBuild: currentBuild,
+        stableOnly: true,
       );
       if (!mounted || !result.updateAvailable) return;
       await showDialog<void>(

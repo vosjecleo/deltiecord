@@ -14,6 +14,7 @@ final class UnifiedPushState {
     this.error,
     this.lastMessageReceived,
     this.lastNotificationPosted,
+    this.lastWorkerResult,
   });
 
   final String? distributor;
@@ -21,6 +22,7 @@ final class UnifiedPushState {
   final String? error;
   final DateTime? lastMessageReceived;
   final DateTime? lastNotificationPosted;
+  final String? lastWorkerResult;
 
   bool get registered => endpoint?.isNotEmpty == true;
 }
@@ -186,6 +188,7 @@ final class UnifiedPushPlatform {
         lastNotificationPosted: _dateFromMilliseconds(
           result?['lastNotificationPosted'],
         ),
+        lastWorkerResult: result?['lastWorkerResult'] as String?,
       );
 
   DateTime? _dateFromMilliseconds(Object? value) {

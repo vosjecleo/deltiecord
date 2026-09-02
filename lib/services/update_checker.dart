@@ -19,6 +19,7 @@ class UpdateChecker {
   Future<ReleaseCheckResult> check({
     required String currentVersion,
     required int currentBuild,
+    bool stableOnly = false,
   }) async {
     final request = await _client
         .getUrl(Uri.parse(_releaseManifestUrl))
@@ -47,6 +48,7 @@ class UpdateChecker {
       utf8.decode(bytes),
       currentVersion: currentVersion,
       currentBuild: currentBuild,
+      stableOnly: stableOnly,
     );
   }
 
@@ -69,13 +71,23 @@ ReleaseCheckResult parseReleaseManifest(
   String source, {
   required String currentVersion,
   required int currentBuild,
+  bool stableOnly = false,
 }) {
   final decoded = jsonDecode(source);
   if (decoded is! Map<String, dynamic>) {
     throw const FormatException('Invalid release manifest.');
   }
-  final version = decoded['version'];
-  final buildValue = decoded['build'];
+  var version = decoded['version'];
+  var buildValue = decoded['build'];
+  if (stableOnly) {
+    version = decoded['stable_version'];
+    buildValue = decoded['stable_build'];
+    if (version == null || buildValue == null) {
+      final inferred = _inferStableRelease(decoded);
+      version = inferred?.$1;
+      buildValue = inferred?.$2;
+    }
+  }
   final build = buildValue is int
       ? buildValue
       : int.tryParse(buildValue?.toString() ?? '');
@@ -95,7 +107,37 @@ ReleaseCheckResult parseReleaseManifest(
   );
 }
 
+(String, int)? _inferStableRelease(Map<String, dynamic> manifest) {
+  final platforms = manifest['platforms'];
+  if (platforms is! Map) return null;
+  final candidates = <(String, int)>[];
+  for (final platform in platforms.values) {
+    if (platform is! Map) continue;
+    final stable = platform['stable'];
+    if (stable is! List) continue;
+    for (final artifact in stable) {
+      if (artifact is! Map) continue;
+      final name = artifact['name']?.toString();
+      if (name == null) continue;
+      final match = _artifactVersionPattern.firstMatch(name);
+      final version = match?.group(1);
+      final build = int.tryParse(match?.group(2) ?? '');
+      if (version != null && build != null) candidates.add((version, build));
+    }
+  }
+  if (candidates.isEmpty) return null;
+  candidates.sort((left, right) {
+    final version = compareVersions(left.$1, right.$1);
+    return version != 0 ? version : left.$2.compareTo(right.$2);
+  });
+  return candidates.last;
+}
+
 final _versionPattern = RegExp(r'^\d+(?:\.\d+){1,3}(?:[-+][0-9A-Za-z.-]+)?$');
+final _artifactVersionPattern = RegExp(
+  r'^deltiecord-(\d+(?:\.\d+){1,3})\+(\d+)-',
+  caseSensitive: false,
+);
 
 int compareVersions(String left, String right) {
   List<int> parts(String value) => value

@@ -11,10 +11,9 @@
   comparison/confirmation surface is not finished. Use another established
   Matrix client when a verification flow requires UI that Deltiecord does not
   yet show.
-- The unified inbox currently resolves room invitations, mentions, and replies
-  from locally available history. Complete cross-room reaction and missed-call
-  history needs a dedicated indexed activity store and is not claimed in this
-  build.
+- The unified inbox resolves room invitations, mentions, replies, and reactions
+  from locally available history. Complete missed-call history needs a
+  dedicated indexed activity store and is not claimed in this build.
 - Moderation timeouts use standard Matrix power levels plus a documented
   Deltiecord restoration state because Matrix has no standard timeout event.
   If a room permits power-level changes but denies writes to the restoration

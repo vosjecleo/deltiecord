@@ -120,7 +120,7 @@ jobs:
 
           This release adds interoperable Matrix polls, scheduled text sending, personal bookmarks, richer unread and per-room notification controls, moderation and invitation tools, session trust management, Android notification actions, improved call controls, filtered search, room media galleries, FluffyChat-compatible stickers, explicit presence modes, Space settings/pages and per-Space profiles, a unified activity inbox, and Matrix-native user/room mentions.
 
-          Scheduled messages remain device-local until sent. Please review the known-issues document for the current limitations around full SAS verification UI, indexed reaction/call history, timeout restoration permissions, and sticker-pack authoring.
+          Scheduled messages remain device-local until sent. Please review the known-issues document for the current limitations around full SAS verification UI, indexed missed-call history, timeout restoration permissions, and sticker-pack authoring.
 
           Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
 

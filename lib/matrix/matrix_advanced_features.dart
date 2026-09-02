@@ -723,7 +723,32 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       final room = _matrix.getRoomById(entry.key);
       if (room == null) continue;
       for (final message in entry.value) {
-        if (message.own || message.system) continue;
+        if (message.own) {
+          for (final reaction in message.reactions) {
+            final senderId = reaction.latestSenderId;
+            final sender = reaction.latestSender;
+            final timestamp = reaction.latestTimestamp;
+            if (senderId == null || sender == null || timestamp == null) {
+              continue;
+            }
+            items.add(
+              InboxItemSummary(
+                id: 'reaction:${message.id}:${reaction.key}',
+                roomId: room.id,
+                roomName: room.getLocalizedDisplayname(),
+                kind: InboxItemKind.reaction,
+                timestamp: timestamp,
+                preview: '$sender reacted ${reaction.key} to your message',
+                eventId: message.id,
+                avatarBytes:
+                    _senderAvatarBytes['${room.id}|$senderId'] ??
+                    _senderAvatarBytes[senderId],
+              ),
+            );
+          }
+          continue;
+        }
+        if (message.system) continue;
         final mention =
             message.body.contains(userId) ||
             (displayName?.isNotEmpty == true &&

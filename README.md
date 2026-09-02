@@ -115,7 +115,8 @@ Notable features include:
 - Search filters such as `from:`, `before:`, `after:`, `has:`, and `in:`
 - Per-room image, video, file, and link galleries
 - Online, idle, Do Not Disturb, and invisible presence modes
-- A unified activity inbox for supported mentions, replies, and invitations
+- A unified activity inbox for supported mentions, replies, reactions, and
+  invitations
 - Space welcome/rules pages, channel management, suggested notifications, and
   per-Space nickname, avatar, and pronoun overrides
 - `@user`, `@everyone`, and online-only `@all` mentions
@@ -173,7 +174,7 @@ Some features are still missing or incomplete, including:
 
 - Named Space/server roles. Matrix power levels remain the interoperable
   permission mechanism in build 75.
-- complete reaction and missed-call history in the unified inbox
+- complete missed-call history in the unified inbox
 - final interactive SAS confirmation UI for device verification requests
 - background delivery of locally scheduled messages while Deltiecord is fully
   stopped; overdue entries are sent on the next connected launch

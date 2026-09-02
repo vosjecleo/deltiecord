@@ -280,13 +280,22 @@ extension _MatrixEventMapping on MatrixBackend {
     );
     final counts = <String, int>{};
     final mine = <String>{};
+    final latestOthers = <String, Event>{};
     for (final reaction in reactions.where((reaction) => !reaction.redacted)) {
       final key = reaction.content
           .tryGetMap<String, Object?>('m.relates_to')
           ?.tryGet<String>('key');
       if (key == null || key.isEmpty) continue;
       counts.update(key, (count) => count + 1, ifAbsent: () => 1);
-      if (reaction.senderId == _matrix.userID) mine.add(key);
+      if (reaction.senderId == _matrix.userID) {
+        mine.add(key);
+      } else if (latestOthers[key] case final previous?) {
+        if (reaction.originServerTs.isAfter(previous.originServerTs)) {
+          latestOthers[key] = reaction;
+        }
+      } else {
+        latestOthers[key] = reaction;
+      }
     }
     final summaries = counts.entries
         .map(
@@ -294,6 +303,10 @@ extension _MatrixEventMapping on MatrixBackend {
             key: entry.key,
             count: entry.value,
             reactedByMe: mine.contains(entry.key),
+            latestSenderId: latestOthers[entry.key]?.senderId,
+            latestSender: latestOthers[entry.key]?.senderFromMemoryOrFallback
+                .calcDisplayname(),
+            latestTimestamp: latestOthers[entry.key]?.originServerTs,
           ),
         )
         .toList(growable: false);

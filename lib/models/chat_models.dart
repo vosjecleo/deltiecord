@@ -821,11 +821,17 @@ class ReactionSummary {
     required this.key,
     required this.count,
     required this.reactedByMe,
+    this.latestSenderId,
+    this.latestSender,
+    this.latestTimestamp,
   });
 
   final String key;
   final int count;
   final bool reactedByMe;
+  final String? latestSenderId;
+  final String? latestSender;
+  final DateTime? latestTimestamp;
 }
 
 class ReplyPreview {

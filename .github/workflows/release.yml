@@ -118,7 +118,9 @@ jobs:
           cat >release-notes.md <<EOF
           Deltiecord ${version} build ${build} is the latest desktop and Android prerelease for Matrix.
 
-          This release adds interoperable Matrix polls, scheduled text sending, personal bookmarks, richer unread and per-room notification controls, moderation and invitation tools, session trust management, Android notification actions, improved call controls, filtered search, room media galleries, FluffyChat-compatible stickers, explicit presence modes, Space settings/pages and per-Space profiles, a unified activity inbox, and Matrix-native user/room mentions.
+          This build fixes Matrix poll vote tallying, removes the sliding timeline window that could trap scrolling after newer events were unloaded, restores mobile hold-to-schedule, moves typing activity beside the composer, prevents early desktop presence updates from erasing status, makes the mobile profile editor use the full viewport, and unifies per-Space profile editing with field-by-field inheritance controls.
+
+          Android background notification resolution now waits for network, retries bounded transient failures with exponential backoff, renews its Matrix pusher after foreground/reconnect transitions, and exposes the last background-worker result in Settings for diagnosis.
 
           Scheduled messages remain device-local until sent. Please review the known-issues document for the current limitations around full SAS verification UI, indexed missed-call history, timeout restoration permissions, and sticker-pack authoring.
 

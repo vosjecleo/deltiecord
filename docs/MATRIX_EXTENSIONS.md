@@ -82,7 +82,7 @@ participant volumes, and other Deltiecord presentation preferences. Unknown
 keys are preserved where possible. Other clients can ignore the entire event.
 It contains no passwords, access tokens, recovery keys, media keys, or drafts.
 
-Build 75 also stores these presentation and lifecycle values in the same
+Build 76 also stores these presentation and lifecycle values in the same
 account-data object:
 
 ```json
@@ -191,7 +191,7 @@ clients can ignore the state; the power-level restriction remains visible and
 interoperable. Rooms that deny the moderator permission to write this custom
 state can only restore automatically while the initiating client remains open.
 
-## Standard interoperable events used by build 75
+## Standard interoperable events used by build 76
 
 Polls use Matrix poll events from MSC3381 through matrix-dart-sdk. Stickers are
 sent as `m.sticker`; packs are read from the established FluffyChat-compatible

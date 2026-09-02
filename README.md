@@ -1,8 +1,8 @@
 # Deltiecord
 
-> **Current release: version 0.9.24 build 75, latest prerelease**
+> **Current release: version 0.9.24 build 76, latest prerelease**
 >
-> Deltiecord is available for desktop and Android. Build 75 is deliberately on
+> Deltiecord is available for desktop and Android. Build 76 is deliberately on
 > the latest/prerelease channel while its expanded collaboration features receive
 > cross-client and real-device testing.
 
@@ -173,7 +173,7 @@ Deltiecord is not finished yet.
 Some features are still missing or incomplete, including:
 
 - Named Space/server roles. Matrix power levels remain the interoperable
-  permission mechanism in build 75.
+  permission mechanism in build 76.
 - complete missed-call history in the unified inbox
 - final interactive SAS confirmation UI for device verification requests
 - background delivery of locally scheduled messages while Deltiecord is fully
@@ -183,7 +183,7 @@ Some features are still missing or incomplete, including:
 - broader interoperability testing
 - complete testing across all supported desktop environments and hardware combinations
 
-Build 75 returns the current release to the prerelease channel because it adds
+Build 76 returns the current release to the prerelease channel because it adds
 several new interoperable and namespaced Matrix workflows at once. The version
 remains below 1.0 while broader platform and hardware validation continues.
 
@@ -261,4 +261,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.24 build 75, latest prerelease**
+**Current release: v0.9.24 build 76, latest prerelease**

@@ -1,6 +1,26 @@
 # Known issues
 
-## v0.9.24 build 75 prerelease notes
+## v0.9.24 build 76 prerelease notes
+
+- Fixed in build 76: poll response maps are tallied by voter as defined by the
+  Matrix SDK, so disclosed poll counts and the current user's choice update.
+- Fixed in build 76: the active timeline no longer replaces both ends of a
+  sliding 120-event presentation window. It keeps stable event identities in
+  one lazy list while paging older/newer history, preventing the post-eviction
+  scroll trap.
+- Fixed in build 76: Android hold-to-send-later owns the long-press gesture and
+  opens the date/time picker instead of allowing a tooltip to consume it.
+- Fixed in build 76: mobile general and per-Space profile editors use the full
+  root viewport. Per-Space profiles share the general editor and expose reset
+  controls for every inherited field.
+- Fixed in build 76: desktop activity publication waits for the own profile to
+  hydrate, preventing early presence updates from erasing an existing status.
+- Hardened in build 76: Android notification resolution requires network,
+  retries bounded transient failures with exponential backoff, and reports its
+  last worker result in Settings. Delivery still depends on the selected
+  UnifiedPush distributor being exempt from vendor battery restrictions.
+- Changed in build 76: automatic startup update prompts follow Stable only.
+  The explicit About-page update check continues to report Latest builds.
 
 - Scheduled messages are stored privately on the originating device and use
   the normal encrypted send path while Deltiecord is connected. Android does

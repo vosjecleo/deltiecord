@@ -142,5 +142,4 @@ jobs:
             --title "Deltiecord ${version} build ${build}" \
             --notes-file release-notes.md \
             --prerelease \
-            --latest \
             --verify-tag

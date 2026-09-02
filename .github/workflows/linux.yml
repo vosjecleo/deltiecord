@@ -51,7 +51,18 @@ jobs:
           echo /opt/flutter/bin >> "$GITHUB_PATH"
       - name: Validate and build Debian/AppImage releases
         run: |
-          flutter pub get
+          # pub.dev occasionally closes a fresh CI connection before dependency
+          # resolution completes. Retry only this idempotent network boundary;
+          # analyzer, tests, and packaging failures must still fail immediately.
+          for attempt in 1 2 3; do
+            if flutter pub get; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            sleep "$((attempt * 5))"
+          done
           dart format --output=none --set-exit-if-changed .
           flutter analyze
           flutter test --concurrency=1

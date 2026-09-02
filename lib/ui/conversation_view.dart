@@ -9,6 +9,9 @@ class _Conversation extends StatefulWidget {
     required this.replyingTo,
     required this.editingMessage,
     required this.onSend,
+    required this.onSchedule,
+    required this.onPoll,
+    required this.onSticker,
     required this.onReply,
     required this.onEdit,
     required this.onCancelComposerAction,
@@ -36,6 +39,9 @@ class _Conversation extends StatefulWidget {
   final ChatMessage? replyingTo;
   final ChatMessage? editingMessage;
   final VoidCallback onSend;
+  final VoidCallback onSchedule;
+  final VoidCallback onPoll;
+  final VoidCallback onSticker;
   final ValueChanged<ChatMessage> onReply;
   final ValueChanged<ChatMessage> onEdit;
   final VoidCallback onCancelComposerAction;
@@ -656,6 +662,67 @@ class _ConversationState extends State<_Conversation> {
                             size: 19,
                           ),
                         ),
+                      PopupMenuButton<String>(
+                        tooltip: 'Room tools',
+                        icon: const Icon(Icons.more_horiz, size: 20),
+                        onSelected: (value) async {
+                          switch (value) {
+                            case 'saved':
+                              await showSavedMessages(
+                                context,
+                                backend,
+                                onOpen: (roomId, eventId) async {
+                                  if (backend.selectedRoom?.id != roomId) {
+                                    await backend.selectRoom(roomId);
+                                  }
+                                  await backend.jumpToEvent(eventId);
+                                },
+                              );
+                            case 'media':
+                              await showRoomMediaGallery(
+                                context,
+                                backend,
+                                onOpen: _jumpToEvent,
+                              );
+                            case 'inbox':
+                              await showUnifiedInbox(
+                                context,
+                                backend,
+                                onOpen: (item) async {
+                                  if (backend.selectedRoom?.id != item.roomId) {
+                                    await backend.selectRoom(item.roomId);
+                                  }
+                                  if (item.eventId != null) {
+                                    await backend.jumpToEvent(item.eventId!);
+                                  }
+                                },
+                              );
+                          }
+                        },
+                        itemBuilder: (context) => const [
+                          PopupMenuItem(
+                            value: 'saved',
+                            child: ListTile(
+                              leading: Icon(Icons.bookmarks_outlined),
+                              title: Text('Saved and scheduled'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'media',
+                            child: ListTile(
+                              leading: Icon(Icons.perm_media_outlined),
+                              title: Text('Media and links'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'inbox',
+                            child: ListTile(
+                              leading: Icon(Icons.inbox_outlined),
+                              title: Text('Inbox'),
+                            ),
+                          ),
+                        ],
+                      ),
                       IconButton(
                         tooltip: 'Search',
                         onPressed: showSearch,
@@ -693,10 +760,41 @@ class _ConversationState extends State<_Conversation> {
                         ),
                         onSelected: (value) {
                           switch (value) {
-                            case 'mute':
-                              backend.setSelectedRoomMuted(
-                                !backend.selectedRoomMuted,
+                            case 'all':
+                              backend.setRoomNotificationMode(
+                                room.id,
+                                RoomNotificationMode.allMessages,
                               );
+                            case 'mentions':
+                              backend.setRoomNotificationMode(
+                                room.id,
+                                RoomNotificationMode.mentionsOnly,
+                              );
+                            case 'mute':
+                              backend.setRoomNotificationMode(
+                                room.id,
+                                RoomNotificationMode.muted,
+                              );
+                            case 'hour':
+                              backend.muteRoomUntil(
+                                room.id,
+                                DateTime.now().add(const Duration(hours: 1)),
+                              );
+                            case 'tomorrow':
+                              final now = DateTime.now();
+                              backend.muteRoomUntil(
+                                room.id,
+                                DateTime(now.year, now.month, now.day + 1, 9),
+                              );
+                            case 'unread':
+                              backend.markRoomUnread(
+                                room.id,
+                                !room.markedUnread,
+                              );
+                            case 'invite':
+                              showInviteMember(context, backend);
+                            case 'aliases':
+                              showRoomAliasEditor(context, backend, room);
                             case 'previews':
                               backend.setNotificationPreviewsEnabled(
                                 !backend.notificationPreviewsEnabled,
@@ -704,13 +802,47 @@ class _ConversationState extends State<_Conversation> {
                           }
                         },
                         itemBuilder: (context) => [
-                          PopupMenuItem(
+                          CheckedPopupMenuItem(
+                            value: 'all',
+                            checked:
+                                room.notificationMode ==
+                                RoomNotificationMode.allMessages,
+                            child: const Text('All messages'),
+                          ),
+                          CheckedPopupMenuItem(
+                            value: 'mentions',
+                            checked:
+                                room.notificationMode ==
+                                RoomNotificationMode.mentionsOnly,
+                            child: const Text('Mentions only'),
+                          ),
+                          CheckedPopupMenuItem(
                             value: 'mute',
-                            child: Text(
-                              backend.selectedRoomMuted
-                                  ? 'Unmute this room'
-                                  : 'Mute this room',
-                            ),
+                            checked:
+                                room.notificationMode ==
+                                RoomNotificationMode.muted,
+                            child: const Text('Mute'),
+                          ),
+                          const PopupMenuDivider(),
+                          const PopupMenuItem(
+                            value: 'hour',
+                            child: Text('Mute for 1 hour'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'tomorrow',
+                            child: Text('Mute until tomorrow'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'unread',
+                            child: Text('Toggle read / unread'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'invite',
+                            child: Text('Invite member'),
+                          ),
+                          const PopupMenuItem(
+                            value: 'aliases',
+                            child: Text('Room aliases'),
                           ),
                           CheckedPopupMenuItem(
                             value: 'previews',
@@ -999,6 +1131,9 @@ class _ConversationState extends State<_Conversation> {
                   enabled: !widget.sending,
                   sendWithCtrlEnter: backend.preferences.sendWithCtrlEnter,
                   onSend: widget.onSend,
+                  onSchedule: widget.onSchedule,
+                  onPoll: widget.onPoll,
+                  onSticker: widget.onSticker,
                   onAttach: widget.onAttach,
                   onGif: widget.onGif,
                   onPasteImage: widget.onPasteImage,
@@ -1062,6 +1197,7 @@ class _ConversationPresence extends StatelessWidget {
     final (label, color) = switch (presence) {
       UserPresence.online => ('Online', const Color(0xff43b581)),
       UserPresence.away => ('Away', const Color(0xffffc857)),
+      UserPresence.doNotDisturb => ('Do not disturb', const Color(0xffe5484d)),
       UserPresence.offline => ('Offline', const Color(0xff747680)),
     };
     return Semantics(

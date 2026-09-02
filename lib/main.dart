@@ -45,6 +45,11 @@ Future<void> main() async {
         await initialization;
         await backend.openAndroidPushTarget(target);
       },
+      performAction: (roomId, eventId, action, reply) async {
+        await initialization;
+        if (backend.status != SessionStatus.signedIn) return false;
+        return backend.performAndroidPushAction(roomId, eventId, action, reply);
+      },
     ),
   );
   await initialization;
@@ -62,7 +67,10 @@ Future<void> deltiecordPushBackgroundMain() async {
   timezone_data.initializeTimeZones();
   await vodozemac.init();
   final resolver = HeadlessAndroidPushResolver();
-  await AndroidPushBridge.bind(resolve: resolver.resolve);
+  await AndroidPushBridge.bind(
+    resolve: resolver.resolve,
+    performAction: resolver.perform,
+  );
   await Completer<void>().future;
 }
 

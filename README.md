@@ -1,9 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.23 build 74 stable release**
+> **Current release: version 0.9.24 build 75, latest prerelease**
 >
-> Deltiecord is available for desktop and Android. Build 74 is the first release
-> on the stable channel, although broader hardware testing continues before v1.0.
+> Deltiecord is available for desktop and Android. Build 75 is deliberately on
+> the latest/prerelease channel while its expanded collaboration features receive
+> cross-client and real-device testing.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -102,6 +103,22 @@ Notable features include:
 - Fullscreen media viewer
 - Message search
 - Pinned messages
+- Personal saved messages and a local scheduled-send queue
+- Matrix polls, including disclosed and undisclosed results
+- FluffyChat-compatible Matrix sticker packs
+- Per-room notification modes, temporary mutes, manual unread markers, and a
+  persistent first-unread separator
+- Member moderation, invitations, join-request handling, aliases, and power
+  level editing where the Matrix room grants permission
+- Matrix session and device trust inspection, verification requests, and
+  individual-device sign-out
+- Search filters such as `from:`, `before:`, `after:`, `has:`, and `in:`
+- Per-room image, video, file, and link galleries
+- Online, idle, Do Not Disturb, and invisible presence modes
+- A unified activity inbox for supported mentions, replies, and invitations
+- Space welcome/rules pages, channel management, suggested notifications, and
+  per-Space nickname, avatar, and pronoun overrides
+- `@user`, `@everyone`, and online-only `@all` mentions
 - Typing indicators
 - Presence
 - Read receipts
@@ -154,16 +171,20 @@ Deltiecord is not finished yet.
 
 Some features are still missing or incomplete, including:
 
-- Space/server roles and richer permission management
+- Named Space/server roles. Matrix power levels remain the interoperable
+  permission mechanism in build 75.
+- complete reaction and missed-call history in the unified inbox
+- final interactive SAS confirmation UI for device verification requests
+- background delivery of locally scheduled messages while Deltiecord is fully
+  stopped; overdue entries are sent on the next connected launch
 - complete cross-client synchronization of all Deltiecord preferences
-- additional presence states such as Idle and Do Not Disturb
 - further performance and memory optimization
 - broader interoperability testing
 - complete testing across all supported desktop environments and hardware combinations
 
-Build 74 is the first `0.9.x` release promoted to the stable channel. The
-version remains below 1.0 while broader platform and hardware validation
-continues.
+Build 75 returns the current release to the prerelease channel because it adds
+several new interoperable and namespaced Matrix workflows at once. The version
+remains below 1.0 while broader platform and hardware validation continues.
 
 The intended meaning of the version numbers is roughly:
 
@@ -239,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.23 build 74, stable release**
+**Current release: v0.9.24 build 75, latest prerelease**

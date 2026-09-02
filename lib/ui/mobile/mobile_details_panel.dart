@@ -4,6 +4,7 @@ import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
+import '../member_management.dart';
 
 class MobileDetailsPanel extends StatelessWidget {
   const MobileDetailsPanel({
@@ -61,6 +62,16 @@ class MobileDetailsPanel extends StatelessWidget {
             value: !backend.selectedRoomMuted,
             onChanged: (enabled) => backend.setSelectedRoomMuted(!enabled),
           ),
+          ListTile(
+            leading: const Icon(Icons.person_add_outlined),
+            title: const Text('Invite member'),
+            onTap: () => showInviteMember(context, backend),
+          ),
+          ListTile(
+            leading: const Icon(Icons.alternate_email),
+            title: const Text('Room aliases'),
+            onTap: () => showRoomAliasEditor(context, backend, room),
+          ),
           const Divider(height: 28),
           Text(
             'Members — ${backend.selectedRoomMembers.length}',
@@ -85,6 +96,7 @@ class MobileDetailsPanel extends StatelessWidget {
               ),
               onTap: () =>
                   showMobileProfileSheet(context, backend, member.userId),
+              onLongPress: () => showMemberManagement(context, backend, member),
             ),
         ],
       ),

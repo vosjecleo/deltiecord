@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.24" date="2026-09-02" type="development">
+      <description>
+        <p>Adds interoperable polls and stickers, scheduled sending, richer room controls and moderation, device trust management, advanced search and galleries, presence modes, Space settings, per-Space profiles, and an activity inbox.</p>
+      </description>
+    </release>
     <release version="0.9.23" date="2026-09-02" type="stable">
       <description>
         <p>Repairs encrypted video playback and seeking, stabilizes timeline anchoring, refines notification ownership, and promotes Deltiecord's first stable-channel build.</p>

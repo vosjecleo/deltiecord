@@ -7,6 +7,9 @@ class _RichComposer extends StatefulWidget {
     required this.roomName,
     required this.enabled,
     required this.onSend,
+    required this.onSchedule,
+    required this.onPoll,
+    required this.onSticker,
     required this.onAttach,
     required this.onGif,
     required this.onPasteImage,
@@ -27,6 +30,9 @@ class _RichComposer extends StatefulWidget {
   final String roomName;
   final bool enabled;
   final VoidCallback onSend;
+  final VoidCallback onSchedule;
+  final VoidCallback onPoll;
+  final VoidCallback onSticker;
   final VoidCallback onAttach;
   final VoidCallback onGif;
   final Future<bool> Function() onPasteImage;
@@ -367,6 +373,10 @@ class _RichComposerState extends State<_RichComposer> {
                               showEmojiPicker();
                             case 'gif':
                               widget.onGif();
+                            case 'poll':
+                              widget.onPoll();
+                            case 'sticker':
+                              widget.onSticker();
                           }
                         },
                         itemBuilder: (context) => const [
@@ -392,6 +402,22 @@ class _RichComposerState extends State<_RichComposer> {
                               dense: true,
                               leading: Icon(Icons.gif_box_outlined),
                               title: Text('Sticker / GIF'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'poll',
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(Icons.poll_outlined),
+                              title: Text('Poll'),
+                            ),
+                          ),
+                          PopupMenuItem(
+                            value: 'sticker',
+                            child: ListTile(
+                              dense: true,
+                              leading: Icon(Icons.emoji_emotions_outlined),
+                              title: Text('Sticker pack'),
                             ),
                           ),
                         ],
@@ -581,14 +607,21 @@ class _RichComposerState extends State<_RichComposer> {
                     SizedBox(
                       width: 40,
                       height: controlHeight,
-                      child: IconButton(
-                        tooltip: 'Send',
-                        padding: EdgeInsets.zero,
-                        onPressed: widget.enabled ? widget.onSend : null,
-                        icon: Icon(
-                          Icons.send,
-                          size: 25,
-                          color: Theme.of(context).colorScheme.primary,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onSecondaryTap: widget.enabled
+                            ? widget.onSchedule
+                            : null,
+                        onLongPress: widget.enabled ? widget.onSchedule : null,
+                        child: IconButton(
+                          tooltip: 'Send',
+                          padding: EdgeInsets.zero,
+                          onPressed: widget.enabled ? widget.onSend : null,
+                          icon: Icon(
+                            Icons.send,
+                            size: 25,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
                         ),
                       ),
                     ),

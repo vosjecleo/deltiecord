@@ -1,5 +1,28 @@
 # Known issues
 
+## v0.9.24 build 75 prerelease notes
+
+- Scheduled messages are stored privately on the originating device and use
+  the normal encrypted send path while Deltiecord is connected. Android does
+  not yet keep a permanent background scheduler alive; an overdue message is
+  sent after the next connected launch.
+- Device verification can start a Matrix SAS verification request and exposes
+  current trust/cross-signing state, but Deltiecord's complete interactive SAS
+  comparison/confirmation surface is not finished. Use another established
+  Matrix client when a verification flow requires UI that Deltiecord does not
+  yet show.
+- The unified inbox currently resolves room invitations, mentions, and replies
+  from locally available history. Complete cross-room reaction and missed-call
+  history needs a dedicated indexed activity store and is not claimed in this
+  build.
+- Moderation timeouts use standard Matrix power levels plus a documented
+  Deltiecord restoration state because Matrix has no standard timeout event.
+  If a room permits power-level changes but denies writes to the restoration
+  state, the initiating client must remain online to restore the previous
+  level automatically.
+- Sticker pack discovery supports the established FluffyChat-compatible
+  `im.ponies.*_emotes` formats. Pack authoring/import UI is not included yet.
+
 ## Fixed in v0.9.20 build 66
 
 - Timeline pages are de-duplicated by Matrix event ID, repeated pagination tokens are exhausted, and mobile history changes preserve a stable visible event anchor.

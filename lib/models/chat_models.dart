@@ -14,6 +14,10 @@ enum DeltiecordThemeMode { light, dark, oled }
 
 enum NotificationAlertCadence { fiveMinuteCooldown, everyMessage, silent }
 
+enum RoomNotificationMode { allMessages, mentionsOnly, muted }
+
+enum PresenceMode { online, idle, doNotDisturb, invisible }
+
 enum AppShortcutAction {
   openSettings,
   toggleMicrophone,
@@ -60,6 +64,7 @@ class AppPreferences {
     this.sendReadReceipts = true,
     this.sendTypingNotifications = true,
     this.sharePresence = true,
+    this.desktopIdleMinutes = 5,
     this.fetchDirectLinkPreviews = false,
     this.improveTwitterLinks = true,
     this.accentColor = 0xff6975d9,
@@ -104,6 +109,7 @@ class AppPreferences {
   final bool sendReadReceipts;
   final bool sendTypingNotifications;
   final bool sharePresence;
+  final int desktopIdleMinutes;
 
   /// Allows privacy-sensitive fallback preview requests to linked websites.
   ///
@@ -153,6 +159,7 @@ class AppPreferences {
     bool? sendReadReceipts,
     bool? sendTypingNotifications,
     bool? sharePresence,
+    int? desktopIdleMinutes,
     bool? fetchDirectLinkPreviews,
     bool? improveTwitterLinks,
     int? accentColor,
@@ -198,6 +205,7 @@ class AppPreferences {
     sendTypingNotifications:
         sendTypingNotifications ?? this.sendTypingNotifications,
     sharePresence: sharePresence ?? this.sharePresence,
+    desktopIdleMinutes: desktopIdleMinutes ?? this.desktopIdleMinutes,
     fetchDirectLinkPreviews:
         fetchDirectLinkPreviews ?? this.fetchDirectLinkPreviews,
     improveTwitterLinks: improveTwitterLinks ?? this.improveTwitterLinks,
@@ -342,6 +350,8 @@ class DeviceSessionSummary {
     required this.current,
     this.lastSeenAt,
     this.lastSeenIp,
+    this.verified = false,
+    this.crossSigned = false,
   });
 
   final String id;
@@ -349,9 +359,11 @@ class DeviceSessionSummary {
   final bool current;
   final DateTime? lastSeenAt;
   final String? lastSeenIp;
+  final bool verified;
+  final bool crossSigned;
 }
 
-enum UserPresence { online, away, offline }
+enum UserPresence { online, away, doNotDisturb, offline }
 
 class RoomMemberSummary {
   const RoomMemberSummary({
@@ -362,6 +374,9 @@ class RoomMemberSummary {
     this.powerLevel = 0,
     this.canChangePowerLevel = false,
     this.maxAssignablePowerLevel = 0,
+    this.membership = 'join',
+    this.canKick = false,
+    this.canBan = false,
   });
 
   final String userId;
@@ -371,6 +386,9 @@ class RoomMemberSummary {
   final int powerLevel;
   final bool canChangePowerLevel;
   final int maxAssignablePowerLevel;
+  final String membership;
+  final bool canKick;
+  final bool canBan;
 }
 
 class UserProfileSummary {
@@ -465,6 +483,9 @@ class RoomSummary {
     this.topic = '',
     this.isDirect = false,
     this.presence = UserPresence.offline,
+    this.notificationMode = RoomNotificationMode.allMessages,
+    this.mutedUntil,
+    this.markedUnread = false,
   });
 
   final String id;
@@ -478,6 +499,9 @@ class RoomSummary {
   final String topic;
   final bool isDirect;
   final UserPresence presence;
+  final RoomNotificationMode notificationMode;
+  final DateTime? mutedUntil;
+  final bool markedUnread;
 
   bool get isVoice => presentation == RoomPresentation.voice;
 }
@@ -507,6 +531,9 @@ class ChatMessage {
     this.senderId,
     this.blocked = false,
     this.queued = false,
+    this.poll,
+    this.bookmarked = false,
+    this.pinned = false,
   });
 
   final String id;
@@ -537,6 +564,155 @@ class ChatMessage {
   final String? senderId;
   final bool blocked;
   final bool queued;
+  final PollSummary? poll;
+  final bool bookmarked;
+  final bool pinned;
+}
+
+class PollSummary {
+  const PollSummary({
+    required this.question,
+    required this.answers,
+    required this.maxSelections,
+    required this.ended,
+    required this.disclosed,
+  });
+
+  final String question;
+  final List<PollAnswerSummary> answers;
+  final int maxSelections;
+  final bool ended;
+  final bool disclosed;
+}
+
+class PollAnswerSummary {
+  const PollAnswerSummary({
+    required this.id,
+    required this.text,
+    required this.votes,
+    this.selectedByMe = false,
+  });
+
+  final String id;
+  final String text;
+  final int votes;
+  final bool selectedByMe;
+}
+
+class PollDraft {
+  const PollDraft({
+    required this.question,
+    required this.answers,
+    this.maxSelections = 1,
+    this.disclosed = false,
+  });
+
+  final String question;
+  final List<String> answers;
+  final int maxSelections;
+  final bool disclosed;
+}
+
+class ScheduledMessageSummary {
+  const ScheduledMessageSummary({
+    required this.id,
+    required this.roomId,
+    required this.body,
+    required this.sendAt,
+    this.replyToMessageId,
+  });
+
+  final String id;
+  final String roomId;
+  final String body;
+  final DateTime sendAt;
+  final String? replyToMessageId;
+}
+
+enum InboxItemKind { mention, reply, reaction, missedCall, invite }
+
+class InboxItemSummary {
+  const InboxItemSummary({
+    required this.id,
+    required this.roomId,
+    required this.roomName,
+    required this.kind,
+    required this.timestamp,
+    required this.preview,
+    this.eventId,
+    this.avatarBytes,
+  });
+
+  final String id;
+  final String roomId;
+  final String roomName;
+  final InboxItemKind kind;
+  final DateTime timestamp;
+  final String preview;
+  final String? eventId;
+  final Uint8List? avatarBytes;
+}
+
+class StickerPackSummary {
+  const StickerPackSummary({
+    required this.id,
+    required this.name,
+    required this.stickers,
+    this.roomScoped = false,
+  });
+
+  final String id;
+  final String name;
+  final List<StickerSummary> stickers;
+  final bool roomScoped;
+}
+
+class StickerSummary {
+  const StickerSummary({
+    required this.id,
+    required this.name,
+    required this.mxcUri,
+    this.body,
+    this.width,
+    this.height,
+    this.previewBytes,
+  });
+
+  final String id;
+  final String name;
+  final Uri mxcUri;
+  final String? body;
+  final int? width;
+  final int? height;
+  final Uint8List? previewBytes;
+}
+
+class SpacePagesSummary {
+  const SpacePagesSummary({
+    this.welcome = '',
+    this.rules = '',
+    this.suggestedNotificationMode = RoomNotificationMode.mentionsOnly,
+  });
+
+  final String welcome;
+  final String rules;
+  final RoomNotificationMode suggestedNotificationMode;
+}
+
+class SpaceProfileOverride {
+  const SpaceProfileOverride({
+    required this.spaceId,
+    this.nickname,
+    this.pronouns,
+    this.avatarBytes,
+    this.accentColor,
+  });
+
+  final String spaceId;
+  final String? nickname;
+  final String? pronouns;
+  final Uint8List? avatarBytes;
+  final int? accentColor;
 }
 
 class ReceiptReaderSummary {

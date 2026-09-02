@@ -109,14 +109,18 @@ jobs:
           (cd release-assets && sha256sum -- * >SHA256SUMS)
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 10
 
-      - name: Publish GitHub stable release
+      - name: Publish GitHub latest prerelease
         shell: bash
         run: |
           set -euo pipefail
           version="${{ steps.release.outputs.version }}"
           build="${{ steps.release.outputs.build }}"
           cat >release-notes.md <<EOF
-          Deltiecord ${version} build ${build} is the first stable-channel desktop and Android release for Matrix.
+          Deltiecord ${version} build ${build} is the latest desktop and Android prerelease for Matrix.
+
+          This release adds interoperable Matrix polls, scheduled text sending, personal bookmarks, richer unread and per-room notification controls, moderation and invitation tools, session trust management, Android notification actions, improved call controls, filtered search, room media galleries, FluffyChat-compatible stickers, explicit presence modes, Space settings/pages and per-Space profiles, a unified activity inbox, and Matrix-native user/room mentions.
+
+          Scheduled messages remain device-local until sent. Please review the known-issues document for the current limitations around full SAS verification UI, indexed reaction/call history, timeout restoration permissions, and sticker-pack authoring.
 
           Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
 
@@ -137,5 +141,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "Deltiecord ${version} build ${build}" \
             --notes-file release-notes.md \
+            --prerelease \
             --latest \
             --verify-tag

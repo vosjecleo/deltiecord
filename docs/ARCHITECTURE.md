@@ -35,6 +35,9 @@ services.
   only short-lived presentation state such as hover, selection, and editors.
 - `DraftStore` owns private per-room composer drafts on the local filesystem.
   Drafts are never written to Matrix room state.
+- `ScheduledMessageStore` owns the private local send-later queue. Due entries
+  use the normal encrypted send path while connected; overdue entries retry on
+  the next launch. The queue is not advertised as server-side scheduling.
 - Account preferences are mirrored to `net.deltiecord.settings` account data.
 
 ## Session lifecycle
@@ -94,6 +97,20 @@ device and local-volume preferences, reconnects when selected devices vanish,
 and releases capture/playback resources on leave or dispose. Persistent voice
 channels remain ordinary Matrix rooms with MatrixRTC membership state; the UI
 simply suppresses their text timeline.
+
+Joining from another Deltiecord device updates a short-lived owner hint in
+account data. A previously connected Deltiecord client then leaves its local
+call; MatrixRTC media state and credentials never enter that hint.
+
+## Interoperable collaboration features
+
+Polls, room pins, push rules, manual unread state, moderation, invitations,
+aliases, and power levels use Matrix protocol/MSC representations supported by
+matrix-dart-sdk. Sticker packs consume the established
+`im.ponies.*_emotes` formats and send standard `m.sticker` events.
+Deltiecord-only Space pages, personal bookmarks, profile overrides, presence
+UI state, and call handoff hints are isolated in documented `net.deltiecord.*`
+state or account data so other clients can ignore them safely.
 
 ## Caching and cleanup
 

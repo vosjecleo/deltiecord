@@ -55,10 +55,13 @@ class DeltiecordPushWorker(
             ?: return Result.failure()
         val eventId = inputData.getString(KEY_EVENT_ID)?.takeIf { it.isNotBlank() }
             ?: return Result.failure()
+        val notificationAction = inputData.getString(KEY_ACTION)
         // The live Dart session emits its own in-app banner. Posting an Android
         // notification as well duplicates the alert and can mark a visible
         // conversation as externally notified.
-        if (DeltiecordEngineRegistry.appInForeground) return Result.success()
+        if (notificationAction == null && DeltiecordEngineRegistry.appInForeground) {
+            return Result.success()
+        }
         var ownsEngine = false
         var engine = DeltiecordEngineRegistry.engine
         try {
@@ -70,10 +73,25 @@ class DeltiecordPushWorker(
                 ownsEngine = true
                 engine = startHeadlessEngine()
             }
-            val resolution = invokeResolver(engine, roomId, eventId)
-            val message = resolution?.let(DeltiecordNotificationPublisher::fromMap)
-            if (message != null) {
-                DeltiecordNotificationPublisher.publish(applicationContext, message)
+            if (notificationAction != null) {
+                val completed = invokeAction(
+                    engine,
+                    roomId,
+                    eventId,
+                    notificationAction,
+                    inputData.getString(KEY_REPLY),
+                )
+                return if (completed || runAttemptCount >= 1) {
+                    Result.success()
+                } else {
+                    Result.retry()
+                }
+            } else {
+                val resolution = invokeResolver(engine, roomId, eventId)
+                val message = resolution?.let(DeltiecordNotificationPublisher::fromMap)
+                if (message != null) {
+                    DeltiecordNotificationPublisher.publish(applicationContext, message)
+                }
             }
             return Result.success()
         } catch (_: Throwable) {
@@ -142,10 +160,45 @@ class DeltiecordPushWorker(
         withTimeout(45_000) { completed.await() }
     }
 
+    private suspend fun invokeAction(
+        engine: FlutterEngine,
+        roomId: String,
+        eventId: String,
+        action: String,
+        reply: String?,
+    ): Boolean = withContext(Dispatchers.Main) {
+        val completed = CompletableDeferred<Boolean>()
+        MethodChannel(engine.dartExecutor.binaryMessenger, CHANNEL).invokeMethod(
+            "performNotificationAction",
+            mapOf(
+                "roomId" to roomId,
+                "eventId" to eventId,
+                "action" to action,
+                "reply" to reply,
+            ),
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    completed.complete(result == true)
+                }
+
+                override fun error(code: String, message: String?, details: Any?) {
+                    completed.complete(false)
+                }
+
+                override fun notImplemented() {
+                    completed.complete(false)
+                }
+            },
+        )
+        withTimeout(45_000) { completed.await() }
+    }
+
     companion object {
         private const val CHANNEL = "net.deltie.deltiecord/background_push"
         private const val KEY_ROOM_ID = "room_id"
         private const val KEY_EVENT_ID = "event_id"
+        private const val KEY_ACTION = "notification_action"
+        private const val KEY_REPLY = "notification_reply"
 
         fun enqueue(context: Context, roomId: String, eventId: String) {
             val data = Data.Builder()
@@ -158,6 +211,30 @@ class DeltiecordPushWorker(
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 "deltiecord-push-${roomId.hashCode()}",
+                ExistingWorkPolicy.APPEND_OR_REPLACE,
+                request,
+            )
+        }
+
+        fun enqueueAction(
+            context: Context,
+            roomId: String,
+            eventId: String,
+            action: String,
+            reply: String?,
+        ) {
+            val data = Data.Builder()
+                .putString(KEY_ROOM_ID, roomId)
+                .putString(KEY_EVENT_ID, eventId)
+                .putString(KEY_ACTION, action)
+                .putString(KEY_REPLY, reply)
+                .build()
+            val request = OneTimeWorkRequestBuilder<DeltiecordPushWorker>()
+                .setInputData(data)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "deltiecord-action-${roomId.hashCode()}",
                 ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request,
             )

@@ -57,6 +57,9 @@ class _SpaceBar extends StatelessWidget {
     builder: (context) => _SpaceSearchDialog(backend: backend),
   );
 
+  // Retained temporarily for compatibility with older widget tests while the
+  // multi-page settings surface replaces this dialog.
+  // ignore: unused_element
   Future<void> _editSpace(BuildContext context, SpaceSummary space) async {
     final name = TextEditingController(text: space.name);
     final topic = TextEditingController(text: space.topic);
@@ -427,6 +430,13 @@ class _SpaceBar extends StatelessWidget {
           ),
         ),
         const PopupMenuItem(
+          value: 'server-profile',
+          child: _RoomContextMenuEntry(
+            icon: Icons.person_outline,
+            label: 'Server profile',
+          ),
+        ),
+        const PopupMenuItem(
           value: 'copy-link',
           child: _RoomContextMenuEntry(
             icon: Icons.link,
@@ -451,7 +461,14 @@ class _SpaceBar extends StatelessWidget {
       case 'notifications':
         await _showSpaceNotificationSettings(context, space);
       case 'settings':
-        await _editSpace(context, space);
+        await showSpaceSettings(context, backend, space);
+      case 'server-profile':
+        await showSpaceSettings(
+          context,
+          backend,
+          space,
+          openServerProfile: true,
+        );
       case 'copy-link':
         await Clipboard.setData(
           ClipboardData(text: 'https://matrix.to/#/${space.id}'),
@@ -966,6 +983,13 @@ class _RoomPanelState extends State<_RoomPanel> {
                             ),
                           ),
                         ),
+                        if (backend.selectedSpaceId case final spaceId?)
+                          IconButton(
+                            tooltip: 'Welcome and rules',
+                            onPressed: () =>
+                                showSpacePages(context, backend, spaceId),
+                            icon: const Icon(Icons.info_outline, size: 19),
+                          ),
                         PopupMenuButton<String>(
                           tooltip: backend.selectedSpaceId == null
                               ? 'Start chat or create room'
@@ -1145,6 +1169,8 @@ class _CurrentUserPanel extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onTap: () => showOwnProfile(context, backend),
+            onLongPress: () => showPresenceControls(context, backend),
+            onSecondaryTap: () => showPresenceControls(context, backend),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Row(
@@ -1183,6 +1209,9 @@ class _CurrentUserPanel extends StatelessWidget {
                               color: switch (backend.profilePresence) {
                                 UserPresence.online => const Color(0xff43b581),
                                 UserPresence.away => const Color(0xffffc857),
+                                UserPresence.doNotDisturb => const Color(
+                                  0xffe5484d,
+                                ),
                                 UserPresence.offline => const Color(0xff747680),
                               },
                               border: Border.all(
@@ -2233,6 +2262,7 @@ class _RoomIcon extends StatelessWidget {
                   color: switch (room.presence) {
                     UserPresence.online => const Color(0xff43b581),
                     UserPresence.away => const Color(0xffffc857),
+                    UserPresence.doNotDisturb => const Color(0xffe5484d),
                     UserPresence.offline => const Color(0xff747680),
                   },
                   border: Border.all(color: context.deltiecord.panel, width: 2),

@@ -33,12 +33,22 @@ abstract class ChatBackend extends ChangeNotifier {
   List<RoomSummary> get rooms;
   RoomSummary? get selectedRoom;
   bool get selectedRoomMuted;
+  RoomNotificationMode get selectedRoomNotificationMode => selectedRoomMuted
+      ? RoomNotificationMode.muted
+      : RoomNotificationMode.allMessages;
+  DateTime? get selectedRoomMutedUntil => null;
   bool get notificationPreviewsEnabled;
   List<ChatMessage> get messages;
   List<MentionSuggestion> get mentionSuggestions;
   List<String> get typingUserNames;
   List<RoomMemberSummary> get selectedRoomMembers;
   List<ChatMessage> get pinnedMessages;
+  List<ChatMessage> get bookmarkedMessages => const [];
+  String? roomIdForMessage(String eventId) => selectedRoom?.id;
+  List<ScheduledMessageSummary> get scheduledMessages => const [];
+  List<InboxItemSummary> get unifiedInbox => const [];
+  List<StickerPackSummary> get stickerPacks => const [];
+  PresenceMode get presenceMode => PresenceMode.online;
   bool get timelineLoading;
   bool get historyLoading;
   bool get canLoadMoreHistory;
@@ -145,6 +155,30 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> setRoomAvatar(String roomId, Uint8List? bytes);
   Future<void> leaveRoom(String roomId);
   Future<void> setMemberPowerLevel(String userId, int powerLevel);
+  Future<void> kickMember(String userId, {String? reason}) async =>
+      throw UnsupportedError('Kicking members is unavailable');
+  Future<void> banMember(String userId, {String? reason}) async =>
+      throw UnsupportedError('Banning members is unavailable');
+  Future<void> timeoutMember(String userId, DateTime until) async =>
+      throw UnsupportedError('Member timeouts are unavailable');
+  Future<void> unbanMember(String userId) async =>
+      throw UnsupportedError('Unbanning members is unavailable');
+  Future<void> inviteMember(String userId, {String? reason}) async =>
+      throw UnsupportedError('Inviting members is unavailable');
+  Future<void> acceptRoomInvite(String roomId) async =>
+      throw UnsupportedError('Joining invited rooms is unavailable');
+  Future<void> rejectRoomInvite(String roomId) async =>
+      throw UnsupportedError('Rejecting room invitations is unavailable');
+  Future<void> approveKnock(String userId) async => inviteMember(userId);
+  Future<void> rejectKnock(String userId) async =>
+      kickMember(userId, reason: 'Join request declined');
+  Future<List<String>> getRoomAliases(String roomId) async => const [];
+  Future<void> addRoomAlias(String roomId, String alias) async =>
+      throw UnsupportedError('Room aliases are unavailable');
+  Future<void> deleteRoomAlias(String alias) async =>
+      throw UnsupportedError('Room aliases are unavailable');
+  Future<void> setRoomCanonicalAlias(String roomId, String? alias) async =>
+      throw UnsupportedError('Room aliases are unavailable');
 
   /// Returns a field-aware cached profile.
   ///
@@ -191,6 +225,8 @@ abstract class ChatBackend extends ChangeNotifier {
     String mimeType = 'image/png',
   });
   Future<void> removeDevice(String deviceId, String password);
+  Future<void> requestDeviceVerification(String deviceId) async =>
+      throw UnsupportedError('Device verification is unavailable');
   Future<void> deleteAccount(String password);
   Future<void> refreshStorageUsage();
   Future<void> clearMediaCache();
@@ -207,6 +243,13 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<List<ChatMessage>> searchRoomHistory(String query);
   Future<void> setSelectedRoomMuted(bool muted);
   Future<void> setRoomMuted(String roomId, bool muted);
+  Future<void> setRoomNotificationMode(
+    String roomId,
+    RoomNotificationMode mode,
+  ) async => setRoomMuted(roomId, mode == RoomNotificationMode.muted);
+  Future<void> muteRoomUntil(String roomId, DateTime? until) async =>
+      setRoomMuted(roomId, until != null);
+  Future<void> markRoomUnread(String roomId, bool unread) async {}
   Future<void> setNotificationPreviewsEnabled(bool enabled);
 
   /// Registers the private UnifiedPush capability endpoint with Matrix.
@@ -218,6 +261,8 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> loadMoreHistory({String? anchorEventId});
   Future<void> loadMoreFuture({String? anchorEventId});
   Future<List<ChatMessage>> loadPinnedMessages();
+  Future<void> toggleMessagePinned(String messageId) async {}
+  Future<void> toggleMessageBookmarked(String messageId) async {}
   Future<void> jumpToPresent();
   Future<void> jumpToEvent(String eventId);
   Future<void> sendMessage(
@@ -227,6 +272,29 @@ abstract class ChatBackend extends ChangeNotifier {
     String? replyToMessageId,
     String? editMessageId,
   });
+  Future<void> scheduleMessage(
+    String text,
+    DateTime sendAt, {
+    String? roomId,
+    String? replyToMessageId,
+  }) async => throw UnsupportedError('Scheduled sending is unavailable');
+  Future<void> cancelScheduledMessage(String scheduledMessageId) async {}
+  Future<void> sendPoll(PollDraft poll, {String? roomId}) async =>
+      throw UnsupportedError('Polls are unavailable');
+  Future<void> answerPoll(String messageId, List<String> answerIds) async =>
+      throw UnsupportedError('Polls are unavailable');
+  Future<void> endPoll(String messageId) async =>
+      throw UnsupportedError('Polls are unavailable');
+  Future<void> sendSticker(StickerSummary sticker, {String? roomId}) async =>
+      throw UnsupportedError('Stickers are unavailable');
+  Future<void> refreshStickerPacks() async {}
+  Future<void> setPresenceMode(PresenceMode mode) async {}
+  Future<SpacePagesSummary> getSpacePages(String spaceId) async =>
+      const SpacePagesSummary();
+  Future<void> setSpacePages(String spaceId, SpacePagesSummary pages) async {}
+  Future<SpaceProfileOverride?> getSpaceProfileOverride(String spaceId) async =>
+      null;
+  Future<void> setSpaceProfileOverride(SpaceProfileOverride profile) async {}
   Future<void> redactMessage(String messageId);
   Future<void> retryMessage(String messageId);
   Future<void> cancelPendingMessage(String messageId);

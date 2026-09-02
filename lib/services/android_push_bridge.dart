@@ -13,6 +13,13 @@ typedef AndroidPushResolver =
     Future<Map<String, Object?>?> Function(String roomId, String eventId);
 typedef AndroidPushActivation =
     Future<void> Function(NotificationTarget target);
+typedef AndroidPushAction =
+    Future<bool> Function(
+      String roomId,
+      String eventId,
+      String action,
+      String? reply,
+    );
 
 /// Bidirectional boundary used by Android's background push worker.
 ///
@@ -30,6 +37,7 @@ final class AndroidPushBridge {
   static Future<void> bind({
     required AndroidPushResolver resolve,
     AndroidPushActivation? activate,
+    AndroidPushAction? performAction,
   }) async {
     if (!_supported) return;
     _channel.setMethodCallHandler((call) async {
@@ -49,6 +57,23 @@ final class AndroidPushBridge {
         if (roomId is String && eventId is String) {
           await activate(NotificationTarget(roomId: roomId, eventId: eventId));
         }
+      }
+      if (call.method == 'performNotificationAction' && performAction != null) {
+        final arguments = call.arguments;
+        if (arguments is! Map) return false;
+        final roomId = arguments['roomId'];
+        final eventId = arguments['eventId'];
+        final action = arguments['action'];
+        final reply = arguments['reply'];
+        if (roomId is String && eventId is String && action is String) {
+          return performAction(
+            roomId,
+            eventId,
+            action,
+            reply is String ? reply : null,
+          );
+        }
+        return false;
       }
       return null;
     });
@@ -245,23 +270,62 @@ final class HeadlessAndroidPushResolver {
   final AvatarMediaPool _avatarPool = AvatarMediaPool();
 
   Future<Map<String, Object?>?> resolve(String roomId, String eventId) async {
-    var client = _client;
-    if (client == null) {
-      client = await createMatrixClient();
-      client.backgroundSync = false;
-      await client.init();
-      if (!client.isLogged()) {
-        await client.dispose();
-        return null;
-      }
-      _client = client;
-    }
+    final client = await _readyClient();
+    if (client == null) return null;
     return resolveAndroidPushNotification(
       client,
       roomId,
       eventId,
       avatarPool: _avatarPool,
     );
+  }
+
+  Future<bool> perform(
+    String roomId,
+    String eventId,
+    String action,
+    String? reply,
+  ) async {
+    final client = await _readyClient();
+    final room = client?.getRoomById(roomId);
+    if (client == null || room == null) return false;
+    try {
+      switch (action) {
+        case 'reply':
+          final body = reply?.trim() ?? '';
+          if (body.isEmpty) return false;
+          final replyEvent = await room.getEventById(eventId);
+          await room.sendTextEvent(
+            body,
+            inReplyTo: replyEvent,
+            parseCommands: false,
+            parseMarkdown: false,
+          );
+        case 'read':
+          await room.setReadMarker(eventId, mRead: eventId);
+        case 'mute':
+          await room.setPushRuleState(PushRuleState.dontNotify);
+        default:
+          return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<Client?> _readyClient() async {
+    var client = _client;
+    if (client != null) return client;
+    client = await createMatrixClient();
+    client.backgroundSync = false;
+    await client.init();
+    if (!client.isLogged()) {
+      await client.dispose();
+      return null;
+    }
+    _client = client;
+    return client;
   }
 }
 

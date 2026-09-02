@@ -82,6 +82,7 @@ class MobileAvatar extends StatelessWidget {
                 color: switch (presence) {
                   UserPresence.online => const Color(0xff23c483),
                   UserPresence.away => const Color(0xffe3a53a),
+                  UserPresence.doNotDisturb => const Color(0xffe5484d),
                   UserPresence.offline => const Color(0xff70737d),
                 },
                 border: Border.all(
@@ -120,5 +121,6 @@ class _SquarcleClipper extends CustomClipper<Path> {
 String mobilePresenceLabel(UserPresence presence) => switch (presence) {
   UserPresence.online => 'Online',
   UserPresence.away => 'Away',
+  UserPresence.doNotDisturb => 'Do not disturb',
   UserPresence.offline => 'Offline',
 };

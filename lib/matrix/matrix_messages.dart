@@ -31,15 +31,18 @@ extension _MatrixMessages on MatrixBackend {
     if (normalized.isEmpty || room == null) return const [];
     final roomId = room.id;
     try {
-      final result = await room.searchEvents(
-        searchTerm: normalized,
-        limit: max(100, _preferences.timelineChunkSize),
-      );
+      final parsed = MessageSearchQuery.parse(normalized);
+      final result = parsed.serverTerm.isEmpty
+          ? null
+          : await room.searchEvents(
+              searchTerm: parsed.serverTerm,
+              limit: max(100, _preferences.timelineChunkSize),
+            );
       if (_selectedRoomId != roomId) return const [];
       final matches = <String, ChatMessage>{
         for (final message in searchMessages(normalized)) message.id: message,
       };
-      for (var event in result.events) {
+      for (var event in result?.events ?? const <Event>[]) {
         if (event.type == EventTypes.Encrypted && _matrix.encryption != null) {
           try {
             event = await _matrix.encryption!.decryptRoomEvent(event);
@@ -53,6 +56,10 @@ extension _MatrixMessages on MatrixBackend {
           body: message.body,
           sender: message.sender,
           query: normalized,
+          senderId: message.senderId,
+          roomName: room.getLocalizedDisplayname(),
+          timestamp: message.timestamp,
+          attachment: message.attachment,
         )) {
           continue;
         }
@@ -287,7 +294,9 @@ extension _MatrixMessages on MatrixBackend {
           formattedBody != null && _preferences.improveTwitterLinks
           ? rewriteTwitterLinks(formattedBody)
           : formattedBody;
-      if (outgoingFormattedBody == null || outgoingFormattedBody.isEmpty) {
+      final mentions = _mentionsFor(value, replyEvent, room);
+      if ((outgoingFormattedBody == null || outgoingFormattedBody.isEmpty) &&
+          mentions.isEmpty) {
         operation = room.sendTextEvent(
           value,
           txid: transactionId,
@@ -306,8 +315,11 @@ extension _MatrixMessages on MatrixBackend {
             'msgtype': MessageTypes.Text,
             'body': value,
             'format': 'org.matrix.custom.html',
-            'formatted_body': outgoingFormattedBody,
-            ..._mentionsFor(value, replyEvent),
+            if (outgoingFormattedBody?.isNotEmpty == true) ...{
+              'format': 'org.matrix.custom.html',
+              'formatted_body': outgoingFormattedBody,
+            },
+            ...mentions,
           },
           inReplyTo: replyEvent,
           editEventId: editMessageId,
@@ -389,7 +401,7 @@ extension _MatrixMessages on MatrixBackend {
     }
   }
 
-  Map<String, Object> _mentionsFor(String text, Event? replyEvent) {
+  Map<String, Object> _mentionsFor(String text, Event? replyEvent, Room room) {
     final userIds = RegExp(r'@[A-Za-z0-9._=\-/]+:[^\s<>()]+')
         .allMatches(text)
         .map((match) => match.group(0)!)
@@ -398,12 +410,21 @@ extension _MatrixMessages on MatrixBackend {
     if (replyEvent != null && replyEvent.senderId != _matrix.userID) {
       userIds.add(replyEvent.senderId);
     }
-    final room = RegExp(r'(^|\s)@room(?=\s|$)').hasMatch(text);
-    if (userIds.isEmpty && !room) return const {};
+    final everyone = RegExp(r'(^|\s)@(room|everyone)(?=\s|$)').hasMatch(text);
+    if (RegExp(r'(^|\s)@all(?=\s|$)').hasMatch(text)) {
+      for (final member in room.getParticipants()) {
+        // ignore: deprecated_member_use
+        if (_matrix.presences[member.id]?.presence == PresenceType.online &&
+            member.id != _matrix.userID) {
+          userIds.add(member.id);
+        }
+      }
+    }
+    if (userIds.isEmpty && !everyone) return const {};
     return {
       'm.mentions': {
         if (userIds.isNotEmpty) 'user_ids': userIds.toList(growable: false),
-        if (room) 'room': true,
+        if (everyone) 'room': true,
       },
     };
   }

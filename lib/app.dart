@@ -361,7 +361,7 @@ class _DesktopActivityReporterState extends State<_DesktopActivityReporter>
     widget.backend.setDesktopIdle(false);
     _idleTimer?.cancel();
     _idleTimer = Timer(
-      const Duration(minutes: 5),
+      Duration(minutes: widget.backend.preferences.desktopIdleMinutes),
       () => widget.backend.setDesktopIdle(true),
     );
   }

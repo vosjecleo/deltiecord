@@ -45,6 +45,10 @@ void main() {
       'android/app/src/main/kotlin/net/deltie/deltiecord/'
       'DeltiecordPushWorker.kt',
     ).readAsStringSync();
+    final actionReceiver = File(
+      'android/app/src/main/kotlin/net/deltie/deltiecord/'
+      'DeltiecordNotificationActionReceiver.kt',
+    ).readAsStringSync();
 
     expect(
       publisher,
@@ -68,5 +72,11 @@ void main() {
     expect(publisher, contains('ALERT_COOLDOWN_MS'));
     expect(publisher, contains('setShortcutId(shortcutId)'));
     expect(worker, contains('cancelBackgroundWorkNotification'));
+    expect(publisher, contains('RemoteInput.Builder'));
+    expect(publisher, contains('"reply", mutable = true'));
+    expect(publisher, contains('"read", "Mark read"'));
+    expect(publisher, contains('"mute", "Mute"'));
+    expect(actionReceiver, contains('DeltiecordPushWorker.enqueueAction'));
+    expect(worker, contains('performNotificationAction'));
   });
 }

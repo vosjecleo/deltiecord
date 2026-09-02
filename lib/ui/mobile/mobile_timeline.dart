@@ -14,7 +14,10 @@ import '../../services/emoji_completion.dart';
 import '../../services/emoji_repository.dart';
 import '../../services/giphy_service.dart';
 import '../deltiecord_theme.dart';
+import '../advanced_chat_dialogs.dart';
+import '../advanced_chat_views.dart';
 import '../matrix_html_text.dart';
+import '../poll_card.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
@@ -72,6 +75,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   int? _emojiStart;
   int _emojiGeneration = 0;
   bool _replacingEmoji = false;
+  List<MentionSuggestion> _mentionMatches = const [];
+  int? _mentionStart;
 
   ChatBackend get backend => widget.backend;
 
@@ -110,6 +115,56 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     widget.onDraftChanged(_composer.text);
     unawaited(backend.setComposerTyping(_composer.text.isNotEmpty));
     if (!_replacingEmoji) _updateEmojiCompletion();
+    _updateMentionCompletion();
+  }
+
+  void _updateMentionCompletion() {
+    final cursor = _composer.selection.isValid
+        ? _composer.selection.extentOffset.clamp(0, _composer.text.length)
+        : _composer.text.length;
+    final before = _composer.text.substring(0, cursor);
+    final match = RegExp(r'(?:^|\s)@([^\s@]*)$').firstMatch(before);
+    if (match == null) {
+      if (_mentionMatches.isNotEmpty || _mentionStart != null) {
+        setState(() {
+          _mentionMatches = const [];
+          _mentionStart = null;
+        });
+      }
+      return;
+    }
+    final query = (match.group(1) ?? '').toLowerCase();
+    final matches = backend.mentionSuggestions
+        .where(
+          (suggestion) =>
+              suggestion.displayName.toLowerCase().contains(query) ||
+              suggestion.matrixId.toLowerCase().contains(query),
+        )
+        .take(6)
+        .toList(growable: false);
+    setState(() {
+      _mentionStart = match.start + (match.group(0)!.startsWith(' ') ? 1 : 0);
+      _mentionMatches = matches;
+    });
+  }
+
+  void _acceptMention(MentionSuggestion suggestion) {
+    final start = _mentionStart;
+    if (start == null) return;
+    final cursor = _composer.selection.extentOffset.clamp(
+      start,
+      _composer.text.length,
+    );
+    final replacement = '${suggestion.matrixId} ';
+    _composer.value = TextEditingValue(
+      text: _composer.text.replaceRange(start, cursor, replacement),
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    setState(() {
+      _mentionMatches = const [];
+      _mentionStart = null;
+    });
+    _focus.requestFocus();
   }
 
   void _updateEmojiCompletion() {
@@ -478,14 +533,72 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             icon: const Icon(Icons.search),
           ),
           IconButton(
-            tooltip: backend.selectedRoomMuted ? 'Unmute room' : 'Mute room',
+            tooltip: 'Notification settings',
             onPressed: () =>
-                backend.setSelectedRoomMuted(!backend.selectedRoomMuted),
+                showRoomNotificationControls(context, backend, widget.room),
             icon: Icon(
               backend.selectedRoomMuted
                   ? Icons.notifications_off_outlined
                   : Icons.notifications_outlined,
             ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) async {
+              switch (value) {
+                case 'gallery':
+                  await showRoomMediaGallery(
+                    context,
+                    backend,
+                    onOpen: _jumpToEvent,
+                  );
+                case 'saved':
+                  await showSavedMessages(
+                    context,
+                    backend,
+                    onOpen: (roomId, eventId) async {
+                      if (backend.selectedRoom?.id != roomId) {
+                        await backend.selectRoom(roomId);
+                      }
+                      await backend.jumpToEvent(eventId);
+                    },
+                  );
+                case 'pinned':
+                  await showPinnedMessages(
+                    context,
+                    backend,
+                    onOpen: _jumpToEvent,
+                  );
+                case 'inbox':
+                  await showUnifiedInbox(
+                    context,
+                    backend,
+                    onOpen: (item) async {
+                      if (backend.selectedRoom?.id != item.roomId) {
+                        await backend.selectRoom(item.roomId);
+                      }
+                      if (item.eventId != null) {
+                        await backend.jumpToEvent(item.eventId!);
+                      }
+                    },
+                  );
+                case 'unread':
+                  await backend.markRoomUnread(
+                    widget.room.id,
+                    !widget.room.markedUnread,
+                  );
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'gallery', child: Text('Media and links')),
+              PopupMenuItem(value: 'saved', child: Text('Saved and scheduled')),
+              PopupMenuItem(value: 'pinned', child: Text('Pinned messages')),
+              PopupMenuItem(value: 'inbox', child: Text('Inbox')),
+              PopupMenuItem(
+                value: 'unread',
+                child: Text('Toggle read / unread'),
+              ),
+            ],
           ),
         ],
       ),
@@ -690,6 +803,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             onAdd: _showAddMenu,
             onEmoji: _showEmojiPicker,
             onSend: _send,
+            onSchedule: _scheduleCurrentMessage,
             emojiMatches: _emojiMatches,
             emojiCompletionActive: _emojiStart != null,
             emojiSelection: _emojiSelection,
@@ -697,6 +811,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             onEmojiSelectionChanged: (index) =>
                 setState(() => _emojiSelection = index),
             onDismissEmojiCompletion: _clearEmojiCompletion,
+            mentionMatches: _mentionMatches,
+            onMentionSelected: _acceptMention,
           ),
         ],
       ),
@@ -809,6 +925,36 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     }
   }
 
+  Future<void> _scheduleCurrentMessage() async {
+    final text = _composer.text.trim();
+    if (_sending || text.isEmpty) return;
+    if (_attachments.isNotEmpty || _edit != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Scheduled sending currently supports new text messages.',
+          ),
+        ),
+      );
+      return;
+    }
+    final sendAt = await showSchedulePicker(context);
+    if (sendAt == null || !mounted) return;
+    await backend.scheduleMessage(
+      text,
+      sendAt,
+      roomId: widget.room.id,
+      replyToMessageId: _reply?.id,
+    );
+    _composer.clear();
+    setState(() => _reply = null);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Message scheduled for ${sendAt.toLocal()}')),
+      );
+    }
+  }
+
   Future<void> _showAddMenu() async {
     final choice = await showModalBottomSheet<String>(
       context: context,
@@ -841,11 +987,34 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               title: const Text('GIF'),
               onTap: () => Navigator.pop(context, 'gif'),
             ),
+            ListTile(
+              leading: const Icon(Icons.poll_outlined),
+              title: const Text('Poll'),
+              onTap: () => Navigator.pop(context, 'poll'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.emoji_emotions_outlined),
+              title: const Text('Sticker pack'),
+              onTap: () => Navigator.pop(context, 'sticker'),
+            ),
           ],
         ),
       ),
     );
+    if (!mounted) return;
     if (choice == 'gif') return _showGifPicker();
+    if (choice == 'poll') {
+      final poll = await showPollComposer(context);
+      if (poll != null) await backend.sendPoll(poll, roomId: widget.room.id);
+      return;
+    }
+    if (choice == 'sticker') {
+      final sticker = await showStickerPicker(context, backend);
+      if (sticker != null) {
+        await backend.sendSticker(sticker, roomId: widget.room.id);
+      }
+      return;
+    }
     if (choice == null) return;
     if (choice == 'camera-photo' || choice == 'camera-video') {
       await _captureMedia(video: choice == 'camera-video');
@@ -1233,7 +1402,7 @@ class _MobileMessageRow extends StatelessWidget {
                             ],
                           ),
                         ),
-                      if (!message.redacted)
+                      if (!message.redacted && message.poll == null)
                         message.formattedBody != null
                             ? MatrixHtmlText(
                                 html: message.formattedBody!,
@@ -1244,10 +1413,15 @@ class _MobileMessageRow extends StatelessWidget {
                                 text: message.body,
                                 selectable: false,
                               )
-                      else
+                      else if (message.redacted)
                         const Text(
                           'Message deleted',
                           style: TextStyle(fontStyle: FontStyle.italic),
+                        ),
+                      if (message.poll != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: PollCard(backend: backend, message: message),
                         ),
                       if (message.attachment != null)
                         Padding(
@@ -1336,6 +1510,23 @@ class _MobileMessageRow extends StatelessWidget {
               onTap: () => Navigator.pop(context, 'copy'),
             ),
             ListTile(
+              leading: Icon(
+                message.bookmarked ? Icons.bookmark : Icons.bookmark_border,
+              ),
+              title: Text(
+                message.bookmarked ? 'Remove bookmark' : 'Save message',
+              ),
+              onTap: () => Navigator.pop(context, 'bookmark'),
+            ),
+            if (message.canRedact)
+              ListTile(
+                leading: Icon(
+                  message.pinned ? Icons.push_pin : Icons.push_pin_outlined,
+                ),
+                title: Text(message.pinned ? 'Unpin message' : 'Pin message'),
+                onTap: () => Navigator.pop(context, 'pin'),
+              ),
+            ListTile(
               leading: const Icon(Icons.link),
               title: const Text('Copy event link'),
               onTap: () => Navigator.pop(context, 'link'),
@@ -1364,6 +1555,10 @@ class _MobileMessageRow extends StatelessWidget {
                 'https://matrix.to/#/${backend.selectedRoom?.id}/${message.id}',
           ),
         );
+      case 'bookmark':
+        await backend.toggleMessageBookmarked(message.id);
+      case 'pin':
+        await backend.toggleMessagePinned(message.id);
       case 'react':
         if (!context.mounted) return;
         final emoji = await showModalBottomSheet<String>(
@@ -1455,12 +1650,15 @@ class _MobileComposer extends StatefulWidget {
     required this.onAdd,
     required this.onEmoji,
     required this.onSend,
+    required this.onSchedule,
     required this.emojiMatches,
     required this.emojiCompletionActive,
     required this.emojiSelection,
     required this.onEmojiSelected,
     required this.onEmojiSelectionChanged,
     required this.onDismissEmojiCompletion,
+    required this.mentionMatches,
+    required this.onMentionSelected,
   });
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -1474,12 +1672,15 @@ class _MobileComposer extends StatefulWidget {
   final VoidCallback onAdd;
   final VoidCallback onEmoji;
   final VoidCallback onSend;
+  final VoidCallback onSchedule;
   final List<EmojiEntry> emojiMatches;
   final bool emojiCompletionActive;
   final int emojiSelection;
   final ValueChanged<EmojiEntry> onEmojiSelected;
   final ValueChanged<int> onEmojiSelectionChanged;
   final VoidCallback onDismissEmojiCompletion;
+  final List<MentionSuggestion> mentionMatches;
+  final ValueChanged<MentionSuggestion> onMentionSelected;
 
   @override
   State<_MobileComposer> createState() => _MobileComposerState();
@@ -1645,6 +1846,24 @@ class _MobileComposerState extends State<_MobileComposer> {
                     },
                   ),
                 ),
+              if (widget.mentionMatches.isNotEmpty)
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 210),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: widget.mentionMatches.length,
+                    itemBuilder: (context, index) {
+                      final mention = widget.mentionMatches[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.alternate_email, size: 18),
+                        title: Text(mention.displayName),
+                        subtitle: Text(mention.matrixId),
+                        onTap: () => widget.onMentionSelected(mention),
+                      );
+                    },
+                  ),
+                ),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
@@ -1681,14 +1900,19 @@ class _MobileComposerState extends State<_MobileComposer> {
                     onPressed: widget.onEmoji,
                     icon: const Icon(Icons.emoji_emotions_outlined),
                   ),
-                  IconButton(
-                    onPressed: widget.sending ? null : widget.onSend,
-                    icon: widget.sending
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.send),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onLongPress: widget.sending ? null : widget.onSchedule,
+                    child: IconButton(
+                      tooltip: 'Send · hold to send later',
+                      onPressed: widget.sending ? null : widget.onSend,
+                      icon: widget.sending
+                          ? const SizedBox.square(
+                              dimension: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.send),
+                    ),
                   ),
                 ],
               ),

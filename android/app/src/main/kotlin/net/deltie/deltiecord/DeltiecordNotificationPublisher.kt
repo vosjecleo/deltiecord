@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
@@ -152,6 +153,9 @@ object DeltiecordNotificationPublisher {
             .setShowWhen(true)
             .setOnlyAlertOnce(!shouldAlert)
             .setStyle(messagingStyle(context, history, decoratedAvatar))
+            .addAction(replyAction(context, data.roomId, latest.optString("eventId")))
+            .addAction(simpleAction(context, data.roomId, latest.optString("eventId"), "read", "Mark read"))
+            .addAction(simpleAction(context, data.roomId, latest.optString("eventId"), "mute", "Mute"))
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             notificationBuilder.setShortcutId(shortcutId)
         } else if (!shouldAlert) {
@@ -165,6 +169,62 @@ object DeltiecordNotificationPublisher {
             .putLong("last_notification_posted_ms", System.currentTimeMillis())
             .apply()
         cleanupFiles(context, history)
+    }
+
+    private fun replyAction(
+        context: Context,
+        roomId: String,
+        eventId: String,
+    ): Notification.Action {
+        val input = RemoteInput.Builder(DeltiecordNotificationActionReceiver.KEY_REPLY)
+            .setLabel("Reply")
+            .build()
+        return Notification.Action.Builder(
+            Icon.createWithResource(context, R.drawable.ic_notification),
+            "Reply",
+            actionIntent(context, roomId, eventId, "reply", mutable = true),
+        )
+            .addRemoteInput(input)
+            .setAllowGeneratedReplies(true)
+            .build()
+    }
+
+    private fun simpleAction(
+        context: Context,
+        roomId: String,
+        eventId: String,
+        action: String,
+        label: String,
+    ): Notification.Action = Notification.Action.Builder(
+        Icon.createWithResource(context, R.drawable.ic_notification),
+        label,
+        actionIntent(context, roomId, eventId, action, mutable = false),
+    ).build()
+
+    private fun actionIntent(
+        context: Context,
+        roomId: String,
+        eventId: String,
+        action: String,
+        mutable: Boolean,
+    ): PendingIntent {
+        val intent = Intent(context, DeltiecordNotificationActionReceiver::class.java).apply {
+            putExtra(DeltiecordNotificationActionReceiver.EXTRA_ROOM_ID, roomId)
+            putExtra(DeltiecordNotificationActionReceiver.EXTRA_EVENT_ID, eventId)
+            putExtra(DeltiecordNotificationActionReceiver.EXTRA_ACTION, action)
+        }
+        var flags = PendingIntent.FLAG_UPDATE_CURRENT
+        flags = flags or if (mutable && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_MUTABLE
+        } else {
+            PendingIntent.FLAG_IMMUTABLE
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            ("$roomId|$eventId|$action").hashCode(),
+            intent,
+            flags,
+        )
     }
 
     private fun shouldAlert(context: Context, data: MessageData): Boolean {

@@ -340,6 +340,7 @@ class _RecipientAvatar extends StatelessWidget {
               color: switch (presence) {
                 UserPresence.online => const Color(0xff23d18b),
                 UserPresence.away => const Color(0xffffc857),
+                UserPresence.doNotDisturb => const Color(0xffe5484d),
                 UserPresence.offline => const Color(0xff686a73),
               },
               shape: BoxShape.circle,

@@ -50,6 +50,10 @@
                 <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".DeltiecordNotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.notification_files"

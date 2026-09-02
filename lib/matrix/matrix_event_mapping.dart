@@ -46,8 +46,11 @@ extension _MatrixEventMapping on MatrixBackend {
               : event;
           final isMessage =
               displayEvent.type == EventTypes.Message ||
-              displayEvent.type == EventTypes.Encrypted;
+              displayEvent.type == EventTypes.Encrypted ||
+              displayEvent.type == EventTypes.Sticker ||
+              displayEvent.type == PollEventContent.startType;
           final attachment = _attachmentFor(displayEvent);
+          final poll = _pollFor(displayEvent, timeline);
           final blocked = _matrix.ignoredUsers.contains(event.senderId);
           final body = blocked
               ? 'Message from blocked user'
@@ -55,6 +58,8 @@ extension _MatrixEventMapping on MatrixBackend {
               ? 'Message deleted'
               : displayEvent.type == EventTypes.Encrypted
               ? 'Unable to decrypt this message'
+              : poll != null
+              ? poll.question
               : !isMessage
               ? _systemEventBody(displayEvent)
               : attachment?.caption ??
@@ -106,6 +111,9 @@ extension _MatrixEventMapping on MatrixBackend {
             readBy: _readersFor(event, timeline),
             blocked: blocked,
             queued: _offlineSendRooms.containsKey(event.eventId),
+            poll: poll,
+            bookmarked: _bookmarkedEventIds.contains(event.eventId),
+            pinned: event.room.pinnedEventIds.contains(event.eventId),
           );
         })
         .toList(growable: false);
@@ -143,6 +151,8 @@ extension _MatrixEventMapping on MatrixBackend {
 
   bool _isVisibleTimelineEvent(Event event) =>
       event.type == EventTypes.Message ||
+      event.type == EventTypes.Sticker ||
+      event.type == PollEventContent.startType ||
       event.type == EventTypes.Encrypted ||
       event.type == EventTypes.RoomMember ||
       event.type == EventTypes.RoomName ||
@@ -192,6 +202,19 @@ extension _MatrixEventMapping on MatrixBackend {
   }
 
   ChatAttachment? _attachmentFor(Event event) {
+    if (event.type == EventTypes.Sticker) {
+      final info = event.content.tryGetMap<String, Object?>('info');
+      return ChatAttachment(
+        kind: AttachmentKind.image,
+        name: event.content.tryGet<String>('body') ?? 'Sticker',
+        mimeType: info?.tryGet<String>('mimetype') ?? 'image/png',
+        size: info?.tryGet<int>('size'),
+        encrypted: event.isAttachmentEncrypted,
+        spoiler: false,
+        width: info?.tryGet<int>('w'),
+        height: info?.tryGet<int>('h'),
+      );
+    }
     if (!event.hasAttachment) return null;
     final kind = switch (event.messageType) {
       MessageTypes.Image => AttachmentKind.image,
@@ -222,6 +245,32 @@ extension _MatrixEventMapping on MatrixBackend {
       width: event.infoMap.tryGet<int>('w'),
       height: event.infoMap.tryGet<int>('h'),
     );
+  }
+
+  PollSummary? _pollFor(Event event, Timeline timeline) {
+    if (event.type != PollEventContent.startType) return null;
+    try {
+      final content = event.parsedPollEventContent.pollStartContent;
+      final responses = event.getPollResponses(timeline);
+      return PollSummary(
+        question: content.question.mText,
+        maxSelections: content.maxSelections,
+        ended: event.getPollHasBeenEnded(timeline),
+        disclosed: content.kind == PollKind.disclosed,
+        answers: [
+          for (final answer in content.answers)
+            PollAnswerSummary(
+              id: answer.id,
+              text: answer.mText,
+              votes: responses[answer.id]?.length ?? 0,
+              selectedByMe:
+                  responses[answer.id]?.contains(_matrix.userID) ?? false,
+            ),
+        ],
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   List<ReactionSummary> _reactionSummaries(Event event, Timeline timeline) {

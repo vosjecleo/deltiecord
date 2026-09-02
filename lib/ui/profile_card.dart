@@ -435,11 +435,13 @@ class _ProfileHeader extends StatelessWidget {
 Color _profilePresenceColour(UserPresence presence) => switch (presence) {
   UserPresence.online => const Color(0xff23d887),
   UserPresence.away => const Color(0xffffc857),
+  UserPresence.doNotDisturb => const Color(0xffe5484d),
   UserPresence.offline => const Color(0xff747680),
 };
 
 String _profilePresenceLabel(UserPresence presence) => switch (presence) {
   UserPresence.online => 'Online',
   UserPresence.away => 'Away',
+  UserPresence.doNotDisturb => 'Do not disturb',
   UserPresence.offline => 'Offline',
 };

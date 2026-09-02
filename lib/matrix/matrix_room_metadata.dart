@@ -13,6 +13,9 @@ extension _MatrixRoomMetadata on MatrixBackend {
     topic: room.topic,
     isDirect: room.isDirectChat,
     presence: _roomPresence(room),
+    notificationMode: _notificationModeFor(room),
+    mutedUntil: _temporaryRoomMutes[room.id],
+    markedUnread: room.markedUnread,
   );
 
   UserPresence _roomPresence(Room room) {
@@ -85,6 +88,8 @@ extension _MatrixRoomMetadata on MatrixBackend {
     final decrypted = _decryptedPreviews[event.eventId];
     if (decrypted != null) return decrypted;
     if (event.type == EventTypes.Encrypted) return 'Encrypted message';
+    if (event.type == PollEventContent.startType) return 'Poll';
+    if (event.type == EventTypes.Sticker) return 'Sticker';
     if (event.type != EventTypes.Message) return 'Room activity';
     return _messagePreview(event);
   }

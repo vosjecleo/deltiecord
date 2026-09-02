@@ -62,7 +62,7 @@ extension _MatrixProfiles on MatrixBackend {
           ).then((_) => _notifyBackendListeners()),
         );
       }
-      return Future.value(cached.profile);
+      return Future.value(_profileWithSpaceOverride(cached.profile));
     }
 
     return _refreshProfileCache(
@@ -70,6 +70,42 @@ extension _MatrixProfiles on MatrixBackend {
       refreshMetadata: true,
       refreshStatus: true,
       refreshMedia: refresh || cached == null,
+    ).then(_profileWithSpaceOverride);
+  }
+
+  UserProfileSummary _profileWithSpaceOverride(UserProfileSummary profile) {
+    final spaceId = _selectedSpaceId;
+    if (spaceId == null) return profile;
+    final content = _matrix
+        .getRoomById(spaceId)
+        ?.getState(EventTypes.RoomMember, profile.userId)
+        ?.content;
+    if (content == null) return profile;
+    final displayName = content.tryGet<String>('displayname');
+    final pronouns = content.tryGet<String>('net.deltiecord.pronouns');
+    final accent = content.tryGet<int>('net.deltiecord.accent_color');
+    return UserProfileSummary(
+      userId: profile.userId,
+      displayName: displayName?.trim().isNotEmpty == true
+          ? displayName!
+          : profile.displayName,
+      avatarBytes:
+          _senderAvatarBytes['${_selectedRoomId ?? spaceId}|${profile.userId}'] ??
+          profile.avatarBytes,
+      bannerBytes: profile.bannerBytes,
+      presence: profile.presence,
+      bio: profile.bio,
+      pronouns: pronouns?.trim().isNotEmpty == true
+          ? pronouns
+          : profile.pronouns,
+      timezone: profile.timezone,
+      statusMessage: profile.statusMessage,
+      profileColor: accent ?? profile.profileColor,
+      profileColorSecondary: profile.profileColorSecondary,
+      voiceColor: profile.voiceColor,
+      voiceBackgroundBytes: profile.voiceBackgroundBytes,
+      extensibleFieldsSupported: profile.extensibleFieldsSupported,
+      blocked: profile.blocked,
     );
   }
 

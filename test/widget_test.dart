@@ -777,6 +777,50 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
   });
 
+  testWidgets('renders interoperable polls without leaking hidden results', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!polls:example.org',
+          name: 'polls',
+          lastMessage: 'Pick one',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$poll',
+          sender: 'Alice',
+          body: 'Pick one',
+          timestamp: DateTime(2026, 9, 2, 12),
+          pending: false,
+          poll: const PollSummary(
+            question: 'Pick one',
+            maxSelections: 1,
+            ended: false,
+            disclosed: false,
+            answers: [
+              PollAnswerSummary(id: 'a', text: 'Cats', votes: 4),
+              PollAnswerSummary(id: 'b', text: 'Dogs', votes: 2),
+            ],
+          ),
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('polls'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Pick one'), findsWidgets);
+    expect(find.text('Cats'), findsOneWidget);
+    expect(find.text('Dogs'), findsOneWidget);
+    expect(find.text('Results hidden'), findsOneWidget);
+    expect(find.byIcon(Icons.visibility_off_outlined), findsNWidgets(2));
+  });
+
   testWidgets('edits, deletes, and reacts through message actions', (
     tester,
   ) async {

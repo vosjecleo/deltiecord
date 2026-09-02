@@ -66,6 +66,27 @@ class _MobileVoiceViewState extends State<MobileVoiceView> {
           ),
         ),
         actions: [
+          Tooltip(
+            message: switch (backend.voiceConnectionStatus) {
+              VoiceConnectionStatus.connected => 'Network quality: connected',
+              VoiceConnectionStatus.reconnecting =>
+                'Network quality: reconnecting',
+              VoiceConnectionStatus.error => 'Network quality: poor',
+              _ => 'Call is not connected',
+            },
+            child: Icon(
+              backend.voiceConnectionStatus == VoiceConnectionStatus.connected
+                  ? Icons.signal_cellular_alt
+                  : backend.voiceConnectionStatus ==
+                        VoiceConnectionStatus.reconnecting
+                  ? Icons.signal_cellular_alt_2_bar
+                  : Icons.signal_cellular_alt_1_bar,
+              color:
+                  backend.voiceConnectionStatus == VoiceConnectionStatus.error
+                  ? Theme.of(context).colorScheme.error
+                  : null,
+            ),
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_horiz),
             onSelected: (action) {
@@ -206,6 +227,24 @@ class _MobileVoiceViewState extends State<MobileVoiceView> {
               ),
             ),
             const Divider(),
+            Text('Speaker', style: Theme.of(context).textTheme.titleMedium),
+            RadioGroup<String>(
+              groupValue: widget.backend.selectedAudioOutputId,
+              onChanged: (value) {
+                widget.backend.selectAudioOutput(value);
+                Navigator.pop(context);
+              },
+              child: Column(
+                children: [
+                  for (final output in widget.backend.audioOutputs)
+                    RadioListTile<String>(
+                      value: output.id,
+                      title: Text(output.label),
+                    ),
+                ],
+              ),
+            ),
+            const Divider(),
             Text('Camera', style: Theme.of(context).textTheme.titleMedium),
             RadioGroup<String>(
               groupValue: widget.backend.selectedCameraId,
@@ -221,6 +260,22 @@ class _MobileVoiceViewState extends State<MobileVoiceView> {
                       title: Text(camera.label),
                     ),
                 ],
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Noise suppression'),
+              value: widget.backend.preferences.noiseSuppression,
+              onChanged: (value) => widget.backend.updatePreferences(
+                widget.backend.preferences.copyWith(noiseSuppression: value),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Echo cancellation'),
+              value: widget.backend.preferences.echoCancellation,
+              onChanged: (value) => widget.backend.updatePreferences(
+                widget.backend.preferences.copyWith(echoCancellation: value),
               ),
             ),
             if (widget.backend.audioInputs.isEmpty &&

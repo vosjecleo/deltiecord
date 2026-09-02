@@ -21,6 +21,7 @@ import '../services/link_preview_policy.dart';
 import '../services/link_preview_service.dart';
 import '../services/profile_refresh_policy.dart';
 import '../services/secret_redaction.dart';
+import '../services/scheduled_message_store.dart';
 import '../services/timeline_window_policy.dart';
 import '../services/unified_push.dart';
 import 'matrix_client_factory.dart';
@@ -37,6 +38,7 @@ part 'matrix_room_operations.dart';
 part 'matrix_messages.dart';
 part 'matrix_media.dart';
 part 'matrix_profiles.dart';
+part 'matrix_advanced_features.dart';
 
 /// Matrix integration built on matrix-dart-sdk. Element and FluffyChat were
 /// consulted as behavioral references; no source from either client is copied.
@@ -49,8 +51,15 @@ class MatrixBackend extends ChatBackend {
   static const _settingsAccountDataType = 'net.deltiecord.settings';
   static const _deviceActivityAccountDataType =
       'net.deltiecord.device_activity';
+  static const _activeCallDeviceAccountDataType =
+      'net.deltiecord.active_call_device';
   static const _roomPresentationEventType = deltiecordRoomPresentationEventType;
   static const _spaceChannelsEventType = deltiecordSpaceChannelsEventType;
+  static const _bookmarksAccountDataType = 'net.deltiecord.bookmarks';
+  static const _spacePagesEventType = 'net.deltiecord.space.pages';
+  static const _spaceProfileAccountDataType =
+      'net.deltiecord.space_profile_overrides';
+  static const _roomTimeoutsEventType = 'net.deltiecord.room.timeouts';
 
   MatrixBackend({
     ChatNotificationSink? notifications,
@@ -127,6 +136,16 @@ class MatrixBackend extends ChatBackend {
       LinkedHashMap();
   final Map<String, String> _offlineSendRooms = {};
   final Set<String> _dismissedLocalEchoIds = {};
+  final ScheduledMessageStore _scheduledMessageStore = ScheduledMessageStore();
+  Timer? _scheduledMessageTimer;
+  Timer? _temporaryRoomMuteTimer;
+  final Map<String, Timer> _memberTimeoutTimers = {};
+  bool _restoringMemberTimeouts = false;
+  final Set<String> _bookmarkedEventIds = {};
+  final Map<String, DateTime> _temporaryRoomMutes = {};
+  final Map<String, RoomNotificationMode> _temporaryRoomMuteRestoreModes = {};
+  PresenceMode _presenceMode = PresenceMode.online;
+  List<StickerPackSummary> _stickerPacks = const [];
   bool _retryingOfflineSends = false;
   bool _notificationsPrimed = false;
   bool _notificationPreviewsEnabled = true;
@@ -172,9 +191,29 @@ class MatrixBackend extends ChatBackend {
   @override
   Uri? get homeserver => _client?.homeserver;
   @override
-  String? get profileDisplayName => _profileDisplayName;
+  String? get profileDisplayName {
+    final client = _client;
+    final userId = client?.userID;
+    final spaceId = _selectedSpaceId;
+    final override = userId == null || spaceId == null
+        ? null
+        : client
+              ?.getRoomById(spaceId)
+              ?.getState(EventTypes.RoomMember, userId)
+              ?.content
+              .tryGet<String>('displayname');
+    return override?.trim().isNotEmpty == true ? override : _profileDisplayName;
+  }
+
   @override
-  Uint8List? get profileAvatarBytes => _profileAvatarBytes;
+  Uint8List? get profileAvatarBytes {
+    final userId = _client?.userID;
+    return userId == null
+        ? _profileAvatarBytes
+        : _senderAvatarBytes['${_selectedRoomId ?? _selectedSpaceId}|$userId'] ??
+              _profileAvatarBytes;
+  }
+
   @override
   UserPresence get profilePresence => _profilePresence;
   @override
@@ -292,6 +331,10 @@ class MatrixBackend extends ChatBackend {
           ),
         )
         .toList();
+    suggestions.insertAll(0, const [
+      MentionSuggestion(matrixId: '@everyone', displayName: 'everyone'),
+      MentionSuggestion(matrixId: '@all', displayName: 'all'),
+    ]);
     suggestions.addAll(
       _joinedRooms
           .where((room) => !room.isSpace)
@@ -343,6 +386,15 @@ class MatrixBackend extends ChatBackend {
               _ => UserPresence.offline,
             },
             powerLevel: user.powerLevel.level,
+            membership: user.membership.name,
+            canKick:
+                room.canKick &&
+                user.id != _matrix.userID &&
+                user.powerLevel < room.ownPowerLevel,
+            canBan:
+                room.canBan &&
+                user.id != _matrix.userID &&
+                user.powerLevel < room.ownPowerLevel,
             canChangePowerLevel:
                 room.canChangePowerLevel &&
                 user.id != _matrix.userID &&
@@ -378,6 +430,10 @@ class MatrixBackend extends ChatBackend {
             body: message.body,
             sender: message.sender,
             query: normalized,
+            senderId: message.senderId,
+            roomName: selectedRoom?.name,
+            timestamp: message.timestamp,
+            attachment: message.attachment,
           ),
         )
         .toList(growable: false);
@@ -425,12 +481,44 @@ class MatrixBackend extends ChatBackend {
 
   @override
   bool get selectedRoomMuted => _selectedRoomIsMuted;
+  @override
+  RoomNotificationMode get selectedRoomNotificationMode =>
+      _notificationModeFor(_client?.getRoomById(_selectedRoomId ?? ''));
+  @override
+  DateTime? get selectedRoomMutedUntil => _temporaryRoomMutes[_selectedRoomId];
 
   @override
   List<ChatMessage> get messages {
     if (_timeline != null) return _mappedMessages;
     return _roomMessageCache[_selectedRoomId] ?? const [];
   }
+
+  @override
+  List<ChatMessage> get bookmarkedMessages => _roomMessageCache.values
+      .expand((messages) => messages)
+      .where((message) => _bookmarkedEventIds.contains(message.id))
+      .toList(growable: false);
+
+  @override
+  String? roomIdForMessage(String eventId) {
+    for (final entry in _roomMessageCache.entries) {
+      if (entry.value.any((message) => message.id == eventId)) return entry.key;
+    }
+    return _selectedRoomId;
+  }
+
+  @override
+  List<ScheduledMessageSummary> get scheduledMessages =>
+      _scheduledMessageStore.messages;
+
+  @override
+  List<InboxItemSummary> get unifiedInbox => _buildUnifiedInbox();
+
+  @override
+  List<StickerPackSummary> get stickerPacks => _stickerPacks;
+
+  @override
+  PresenceMode get presenceMode => _presenceMode;
 
   void _cacheCurrentRoomMessages() {
     final roomId = _selectedRoomId;
@@ -491,6 +579,33 @@ class MatrixBackend extends ChatBackend {
   Future<void> openAndroidPushTarget(NotificationTarget target) =>
       _openNotificationTarget(target);
 
+  Future<bool> performAndroidPushAction(
+    String roomId,
+    String eventId,
+    String action,
+    String? reply,
+  ) async {
+    final room = _matrix.getRoomById(roomId);
+    if (room == null) return false;
+    try {
+      switch (action) {
+        case 'reply':
+          final body = reply?.trim() ?? '';
+          if (body.isEmpty) return false;
+          await _sendMessage(body, roomId: roomId, replyToMessageId: eventId);
+        case 'read':
+          await room.setReadMarker(eventId, mRead: eventId);
+        case 'mute':
+          await _setRoomNotificationMode(roomId, RoomNotificationMode.muted);
+        default:
+          return false;
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   @override
   Future<void> login({
     required Uri homeserver,
@@ -540,6 +655,10 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> removeDevice(String deviceId, String password) =>
       _removeDevice(deviceId, password);
+
+  @override
+  Future<void> requestDeviceVerification(String deviceId) =>
+      _requestDeviceVerification(deviceId);
 
   @override
   Future<void> deleteAccount(String password) => _deleteAccount(password);
@@ -703,6 +822,53 @@ class MatrixBackend extends ChatBackend {
       _setMemberPowerLevel(userId, powerLevel);
 
   @override
+  Future<void> kickMember(String userId, {String? reason}) =>
+      _moderateMember(userId, _MemberModerationAction.kick, reason: reason);
+
+  @override
+  Future<void> banMember(String userId, {String? reason}) =>
+      _moderateMember(userId, _MemberModerationAction.ban, reason: reason);
+
+  @override
+  Future<void> timeoutMember(String userId, DateTime until) =>
+      _timeoutMember(userId, until);
+
+  @override
+  Future<void> unbanMember(String userId) =>
+      _moderateMember(userId, _MemberModerationAction.unban);
+
+  @override
+  Future<void> inviteMember(String userId, {String? reason}) =>
+      _inviteMember(userId, reason: reason);
+  @override
+  Future<void> acceptRoomInvite(String roomId) => _acceptRoomInvite(roomId);
+  @override
+  Future<void> rejectRoomInvite(String roomId) => _rejectRoomInvite(roomId);
+  @override
+  Future<void> approveKnock(String userId) => _inviteMember(userId);
+
+  @override
+  Future<void> rejectKnock(String userId) => _moderateMember(
+    userId,
+    _MemberModerationAction.kick,
+    reason: 'Join request declined',
+  );
+
+  @override
+  Future<List<String>> getRoomAliases(String roomId) => _getRoomAliases(roomId);
+
+  @override
+  Future<void> addRoomAlias(String roomId, String alias) =>
+      _matrix.setRoomAlias(alias, roomId);
+
+  @override
+  Future<void> deleteRoomAlias(String alias) => _matrix.deleteRoomAlias(alias);
+
+  @override
+  Future<void> setRoomCanonicalAlias(String roomId, String? alias) =>
+      _setRoomCanonicalAlias(roomId, alias);
+
+  @override
   Future<void> refreshStorageUsage() => _refreshStorageUsage();
 
   @override
@@ -765,6 +931,17 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> setSelectedRoomMuted(bool muted) => _setSelectedRoomMuted(muted);
   @override
+  Future<void> setRoomNotificationMode(
+    String roomId,
+    RoomNotificationMode mode,
+  ) => _setRoomNotificationMode(roomId, mode);
+  @override
+  Future<void> muteRoomUntil(String roomId, DateTime? until) =>
+      _muteRoomUntil(roomId, until);
+  @override
+  Future<void> markRoomUnread(String roomId, bool unread) =>
+      _markRoomUnread(roomId, unread);
+  @override
   Future<void> loadMoreHistory({String? anchorEventId}) =>
       _loadMoreHistory(anchorEventId: anchorEventId);
   @override
@@ -772,6 +949,12 @@ class MatrixBackend extends ChatBackend {
       _loadMoreFuture(anchorEventId: anchorEventId);
   @override
   Future<List<ChatMessage>> loadPinnedMessages() => _loadPinnedMessages();
+  @override
+  Future<void> toggleMessagePinned(String messageId) =>
+      _toggleMessagePinned(messageId);
+  @override
+  Future<void> toggleMessageBookmarked(String messageId) =>
+      _toggleMessageBookmarked(messageId);
   @override
   Future<void> jumpToPresent() => _jumpToPresent();
   @override
@@ -791,6 +974,60 @@ class MatrixBackend extends ChatBackend {
     replyToMessageId: replyToMessageId,
     editMessageId: editMessageId,
   );
+
+  @override
+  Future<void> scheduleMessage(
+    String text,
+    DateTime sendAt, {
+    String? roomId,
+    String? replyToMessageId,
+  }) => _scheduleMessage(
+    text,
+    sendAt,
+    roomId: roomId,
+    replyToMessageId: replyToMessageId,
+  );
+
+  @override
+  Future<void> cancelScheduledMessage(String scheduledMessageId) =>
+      _cancelScheduledMessage(scheduledMessageId);
+
+  @override
+  Future<void> sendPoll(PollDraft poll, {String? roomId}) =>
+      _sendPoll(poll, roomId: roomId);
+
+  @override
+  Future<void> answerPoll(String messageId, List<String> answerIds) =>
+      _answerPoll(messageId, answerIds);
+
+  @override
+  Future<void> endPoll(String messageId) => _endPoll(messageId);
+
+  @override
+  Future<void> sendSticker(StickerSummary sticker, {String? roomId}) =>
+      _sendSticker(sticker, roomId: roomId);
+
+  @override
+  Future<void> refreshStickerPacks() => _refreshStickerPacks();
+
+  @override
+  Future<void> setPresenceMode(PresenceMode mode) => _setPresenceMode(mode);
+
+  @override
+  Future<SpacePagesSummary> getSpacePages(String spaceId) =>
+      _getSpacePages(spaceId);
+
+  @override
+  Future<void> setSpacePages(String spaceId, SpacePagesSummary pages) =>
+      _setSpacePages(spaceId, pages);
+
+  @override
+  Future<SpaceProfileOverride?> getSpaceProfileOverride(String spaceId) =>
+      _getSpaceProfileOverride(spaceId);
+
+  @override
+  Future<void> setSpaceProfileOverride(SpaceProfileOverride profile) =>
+      _setSpaceProfileOverride(profile);
 
   @override
   Future<void> redactMessage(String messageId) => _redactMessage(messageId);
@@ -866,6 +1103,12 @@ class MatrixBackend extends ChatBackend {
     _typingStopTimer?.cancel();
     _settingsSaveTimer?.cancel();
     _desktopActivityLeaseTimer?.cancel();
+    _scheduledMessageTimer?.cancel();
+    _temporaryRoomMuteTimer?.cancel();
+    for (final timer in _memberTimeoutTimers.values) {
+      timer.cancel();
+    }
+    _memberTimeoutTimers.clear();
     _stopProfileRefreshTimer();
     _profileCache.clear();
     _profileRequests.clear();

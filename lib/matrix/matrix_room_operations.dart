@@ -394,6 +394,7 @@ extension _MatrixRoomOperations on MatrixBackend {
     _timelineLoading = true;
     _error = null;
     _notifyBackendListeners();
+    unawaited(_refreshStickerPacks());
     try {
       final room = _matrix.getRoomById(roomId);
       if (room == null) throw StateError('That room is no longer available.');
@@ -702,6 +703,9 @@ extension _MatrixRoomOperations on MatrixBackend {
   }
 
   void _captureFirstUnread(Room room, Timeline timeline) {
+    if (room.markedUnread && _firstUnreadEventIds[room.id] != null) {
+      return;
+    }
     if (!room.hasNewMessages) {
       _firstUnreadEventIds[room.id] = null;
       return;

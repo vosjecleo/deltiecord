@@ -6,6 +6,9 @@ import 'package:file_picker/file_picker.dart';
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../deltiecord_theme.dart';
+import '../advanced_chat_views.dart';
+import '../presence_controls.dart';
+import '../space_settings_screen.dart';
 import 'mobile_widgets.dart';
 import 'mobile_channel_manager.dart';
 
@@ -74,6 +77,22 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                             ),
+                            IconButton(
+                              key: const ValueKey('mobile-inbox'),
+                              tooltip: 'Inbox',
+                              onPressed: () => _openInbox(context),
+                              icon: const Icon(Icons.inbox_outlined),
+                            ),
+                            if (selectedSpace != null)
+                              IconButton(
+                                tooltip: 'Welcome and rules',
+                                onPressed: () => showSpacePages(
+                                  context,
+                                  backend,
+                                  selectedSpace,
+                                ),
+                                icon: const Icon(Icons.info_outline),
+                              ),
                             IconButton(
                               key: const ValueKey('mobile-start-chat'),
                               tooltip: selectedSpace == null
@@ -187,6 +206,17 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
       await backend.startDirectChat(userId);
     }
   }
+
+  Future<void> _openInbox(BuildContext context) => showUnifiedInbox(
+    context,
+    backend,
+    onOpen: (item) async {
+      await backend.selectRoom(item.roomId);
+      final room = backend.selectedRoom;
+      if (room != null) widget.onOpenRoom(room);
+      if (item.eventId != null) await backend.jumpToEvent(item.eventId!);
+    },
+  );
 
   Future<void> _createRoom(BuildContext context) async {
     final controller = TextEditingController();
@@ -324,6 +354,11 @@ class _SpaceRail extends StatelessWidget {
               onTap: () => Navigator.pop(sheetContext, 'settings'),
             ),
             ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: const Text('Server profile'),
+              onTap: () => Navigator.pop(sheetContext, 'server-profile'),
+            ),
+            ListTile(
               leading: Icon(
                 Icons.logout,
                 color: Theme.of(context).colorScheme.error,
@@ -343,7 +378,15 @@ class _SpaceRail extends StatelessWidget {
       case 'mute':
         await backend.setRoomMuted(space.id, !space.muted);
       case 'settings':
-        await _editSpace(context, space);
+        await showSpaceSettings(context, backend, space, mobile: true);
+      case 'server-profile':
+        await showSpaceSettings(
+          context,
+          backend,
+          space,
+          mobile: true,
+          openServerProfile: true,
+        );
       case 'leave':
         final confirmed = await showDialog<bool>(
           context: context,
@@ -368,6 +411,9 @@ class _SpaceRail extends StatelessWidget {
     }
   }
 
+  // Retained temporarily for compatibility with older widget tests while the
+  // multi-page settings surface replaces this dialog.
+  // ignore: unused_element
   Future<void> _editSpace(BuildContext context, SpaceSummary space) async {
     final name = TextEditingController(text: space.name);
     final topic = TextEditingController(text: space.topic);
@@ -614,6 +660,8 @@ class _SpaceRoomList extends StatelessWidget {
       children.add(
         ListTile(
           dense: true,
+          visualDensity: const VisualDensity(vertical: -3),
+          minTileHeight: 36,
           title: Text(category.name.toUpperCase()),
           leading: Icon(
             category.collapsed ? Icons.chevron_right : Icons.expand_more,
@@ -654,21 +702,20 @@ class _SpaceRoomTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     dense: true,
-    minTileHeight: 50,
+    visualDensity: const VisualDensity(vertical: -3),
+    minTileHeight: 40,
     leading: Icon(
       room.isVoice ? Icons.volume_up_outlined : Icons.tag,
       size: 21,
     ),
     title: Text(room.name),
-    subtitle: room.isVoice
+    subtitle: room.isVoice && room.voiceParticipants.isNotEmpty
         ? Text(
             room.voiceParticipants.isEmpty
                 ? 'Nobody connected'
                 : '${room.voiceParticipants.length} connected',
           )
-        : room.lastMessage.isEmpty
-        ? null
-        : Text(room.lastMessage, maxLines: 1, overflow: TextOverflow.ellipsis),
+        : null,
     trailing: room.unreadCount == 0
         ? null
         : Badge(label: Text('${room.unreadCount}')),
@@ -699,6 +746,7 @@ class _MobileUserIsland extends StatelessWidget {
       ),
       child: InkWell(
         onTap: onOpenProfile,
+        onLongPress: () => showPresenceControls(context, backend),
         child: Row(
           children: [
             MobileAvatar(

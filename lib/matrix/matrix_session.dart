@@ -27,6 +27,8 @@ extension _MatrixSession on MatrixBackend {
         _spaceRoomOrderOverrides.clear();
         _applySyncedProfilePresence();
         _loadSettings();
+        unawaited(_enforceCallDeviceHandoff());
+        unawaited(_restoreExpiredMemberTimeouts());
         _notifyBackendListeners();
         unawaited(_refreshRoomMetadata());
         unawaited(_notifyNewMessages());
@@ -52,9 +54,11 @@ extension _MatrixSession on MatrixBackend {
         if (_connectionStatus == ConnectionStatus.online &&
             previousStatus != ConnectionStatus.online) {
           unawaited(_retryOfflineSends());
+          unawaited(_sendDueScheduledMessages());
         }
       });
       await _matrix.init();
+      await _initializeScheduledMessages();
       _initializeVoice();
       _loadSettings();
       _notificationSubscription ??= _notifications.activations.listen(
@@ -161,6 +165,19 @@ extension _MatrixSession on MatrixBackend {
       _roomMessageCache.clear();
       _offlineSendRooms.clear();
       _dismissedLocalEchoIds.clear();
+      _scheduledMessageTimer?.cancel();
+      _scheduledMessageTimer = null;
+      _temporaryRoomMuteTimer?.cancel();
+      _temporaryRoomMuteTimer = null;
+      for (final timer in _memberTimeoutTimers.values) {
+        timer.cancel();
+      }
+      _memberTimeoutTimers.clear();
+      await _scheduledMessageStore.clear();
+      _bookmarkedEventIds.clear();
+      _temporaryRoomMutes.clear();
+      _temporaryRoomMuteRestoreModes.clear();
+      _stickerPacks = const [];
       _notificationsPrimed = false;
       _maximumUploadBytes = null;
       _mediaPlaybackSources.clear();
@@ -252,10 +269,13 @@ extension _MatrixSession on MatrixBackend {
     _notifyBackendListeners();
     try {
       final devices = await _matrix.getDevices() ?? const [];
+      await _matrix.userDeviceKeysLoading;
+      final ownKeys = _matrix.userDeviceKeys[_matrix.userID]?.deviceKeys;
       _deviceSessions =
           devices
-              .map(
-                (device) => DeviceSessionSummary(
+              .map((device) {
+                final keys = ownKeys?[device.deviceId];
+                return DeviceSessionSummary(
                   id: device.deviceId,
                   displayName: device.displayName?.trim().isNotEmpty == true
                       ? device.displayName!.trim()
@@ -265,8 +285,10 @@ extension _MatrixSession on MatrixBackend {
                       ? null
                       : DateTime.fromMillisecondsSinceEpoch(device.lastSeenTs!),
                   lastSeenIp: device.lastSeenIp,
-                ),
-              )
+                  verified: keys?.verified ?? false,
+                  crossSigned: keys?.crossVerified ?? false,
+                );
+              })
               .toList(growable: false)
             ..sort((a, b) {
               if (a.current != b.current) return a.current ? -1 : 1;
@@ -386,11 +408,62 @@ extension _MatrixSession on MatrixBackend {
   Future<void> _joinVoiceRoom(String roomId) async {
     _initializeVoice();
     await _voice?.join(roomId);
+    await _publishActiveCallDevice(roomId);
   }
 
   Future<void> _setVoiceMuted(bool muted) async => _voice?.setMuted(muted);
 
-  Future<void> _leaveVoiceRoom() async => _voice?.leave();
+  Future<void> _leaveVoiceRoom() async {
+    await _voice?.leave();
+    await _clearActiveCallDevice();
+  }
+
+  Future<void> _publishActiveCallDevice(String roomId) async {
+    final userId = _matrix.userID;
+    final deviceId = _matrix.deviceID;
+    if (userId == null || deviceId == null) return;
+    await _matrix.setAccountData(
+      userId,
+      MatrixBackend._activeCallDeviceAccountDataType,
+      {
+        'device_id': deviceId,
+        'room_id': roomId,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+    );
+  }
+
+  Future<void> _clearActiveCallDevice() async {
+    final userId = _matrix.userID;
+    final deviceId = _matrix.deviceID;
+    final content = _matrix
+        .accountData[MatrixBackend._activeCallDeviceAccountDataType]
+        ?.content;
+    if (userId == null || content?['device_id'] != deviceId) return;
+    await _matrix.setAccountData(
+      userId,
+      MatrixBackend._activeCallDeviceAccountDataType,
+      const {},
+    );
+  }
+
+  Future<void> _enforceCallDeviceHandoff() async {
+    final voice = _voice;
+    if (voice?.activeRoomId == null) return;
+    final content = _matrix
+        .accountData[MatrixBackend._activeCallDeviceAccountDataType]
+        ?.content;
+    final owner = content?.tryGet<String>('device_id');
+    final updatedAt = content?.tryGet<int>('updated_at');
+    if (owner == null ||
+        owner == _matrix.deviceID ||
+        updatedAt == null ||
+        DateTime.now().millisecondsSinceEpoch - updatedAt >
+            const Duration(minutes: 10).inMilliseconds) {
+      return;
+    }
+    await voice!.leave();
+  }
 
   Future<void> _setComposerTyping(bool typing) async {
     if (!_preferences.sendTypingNotifications) return;
@@ -414,7 +487,11 @@ extension _MatrixSession on MatrixBackend {
   }
 
   Future<void> _notifyNewMessages() async {
-    if (!_matrix.isLogged() || !_preferences.notificationsEnabled) return;
+    if (!_matrix.isLogged() ||
+        !_preferences.notificationsEnabled ||
+        _presenceMode == PresenceMode.doNotDisturb) {
+      return;
+    }
     final rooms = _joinedRooms.where((room) => !room.isSpace);
     final activeDesktopOwnsExternalNotifications =
         Platform.isAndroid &&
@@ -581,6 +658,7 @@ extension _MatrixSession on MatrixBackend {
         _matrix.accountData[MatrixBackend._settingsAccountDataType]?.content;
     _notificationPreviewsEnabled =
         content?.tryGet<bool>('notification_previews') ?? true;
+    _loadAdvancedAccountData();
     _collapsedChannelCategories
       ..clear()
       ..addEntries(
@@ -642,6 +720,8 @@ extension _MatrixSession on MatrixBackend {
       sendTypingNotifications:
           content?.tryGet<bool>('send_typing_notifications') ?? true,
       sharePresence: content?.tryGet<bool>('share_presence') ?? true,
+      desktopIdleMinutes: (content?.tryGet<int>('desktop_idle_minutes') ?? 5)
+          .clamp(1, 120),
       fetchDirectLinkPreviews:
           content?.tryGet<bool>('fetch_direct_link_previews') ?? false,
       improveTwitterLinks:
@@ -791,6 +871,7 @@ extension _MatrixSession on MatrixBackend {
           'send_read_receipts': preferences.sendReadReceipts,
           'send_typing_notifications': preferences.sendTypingNotifications,
           'share_presence': preferences.sharePresence,
+          'desktop_idle_minutes': preferences.desktopIdleMinutes,
           'fetch_direct_link_previews': preferences.fetchDirectLinkPreviews,
           'improve_twitter_links': preferences.improveTwitterLinks,
           'accent_color': preferences.accentColor,
@@ -835,6 +916,21 @@ extension _MatrixSession on MatrixBackend {
     _desktopIdle = idle;
     _desktopActivityLeaseTimer?.cancel();
     unawaited(_publishDesktopActivityLease(idle));
+    final userId = _matrix.userID;
+    if (userId != null) {
+      final presence = !_preferences.sharePresence
+          ? PresenceType.offline
+          : switch (_presenceMode) {
+              PresenceMode.online =>
+                idle ? PresenceType.unavailable : PresenceType.online,
+              PresenceMode.idle => PresenceType.unavailable,
+              PresenceMode.doNotDisturb => PresenceType.online,
+              PresenceMode.invisible => PresenceType.offline,
+            };
+      unawaited(
+        _matrix.setPresence(userId, presence, statusMsg: _profileStatusMessage),
+      );
+    }
     if (!idle) {
       _desktopActivityLeaseTimer = Timer.periodic(
         const Duration(minutes: 1),

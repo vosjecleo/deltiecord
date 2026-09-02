@@ -35,6 +35,12 @@ import 'rich_message.dart';
 import 'matrix_html_text.dart';
 import 'voice_room_view.dart';
 import 'deltiecord_theme.dart';
+import 'advanced_chat_dialogs.dart';
+import 'advanced_chat_views.dart';
+import 'poll_card.dart';
+import 'member_management.dart';
+import 'presence_controls.dart';
+import 'space_settings_screen.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';
@@ -323,11 +329,13 @@ class _ChatShellState extends State<ChatShell> {
       '$mentionText ',
       TextSelection.collapsed(offset: start + mentionText.length + 1),
     );
-    _message.formatText(
-      start,
-      mentionText.length,
-      LinkAttribute('https://matrix.to/#/${suggestion.matrixId}'),
-    );
+    if (suggestion.matrixId != '@everyone' && suggestion.matrixId != '@all') {
+      _message.formatText(
+        start,
+        mentionText.length,
+        LinkAttribute('https://matrix.to/#/${suggestion.matrixId}'),
+      );
+    }
     setState(() {
       _mentionQuery = null;
       _mentionStart = null;
@@ -424,6 +432,68 @@ class _ChatShellState extends State<ChatShell> {
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _createPoll() async {
+    final poll = await showPollComposer(context);
+    if (poll == null || !mounted) return;
+    await widget.backend.sendPoll(
+      poll,
+      roomId: widget.backend.selectedRoom?.id,
+    );
+    _composerFocus.requestFocus();
+  }
+
+  Future<void> _sendSticker() async {
+    final sticker = await showStickerPicker(context, widget.backend);
+    if (sticker == null || !mounted) return;
+    await widget.backend.sendSticker(
+      sticker,
+      roomId: widget.backend.selectedRoom?.id,
+    );
+    _composerFocus.requestFocus();
+  }
+
+  Future<void> _scheduleCurrentMessage() async {
+    if (_sending) return;
+    final text = serializeRichMessage(_message.document).plainText.trim();
+    if (text.isEmpty) return;
+    if (_pendingAttachments.isNotEmpty || _editingMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Scheduled sending currently supports new text messages.',
+          ),
+        ),
+      );
+      return;
+    }
+    final sendAt = await showSchedulePicker(context);
+    if (sendAt == null || !mounted) return;
+    await widget.backend.scheduleMessage(
+      text,
+      sendAt,
+      roomId: widget.backend.selectedRoom?.id,
+      replyToMessageId: _replyingTo?.id,
+    );
+    _restoringDraft = true;
+    try {
+      _message.clear();
+    } finally {
+      _restoringDraft = false;
+    }
+    setState(() => _replyingTo = null);
+    final roomId = widget.backend.selectedRoom?.id;
+    if (roomId != null) {
+      _memoryDrafts.remove(roomId);
+      _draftStore.remove(roomId);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Message scheduled for ${sendAt.toLocal()}')),
+      );
+      _composerFocus.requestFocus();
     }
   }
 
@@ -739,6 +809,9 @@ class _ChatShellState extends State<ChatShell> {
                                         replyingTo: _replyingTo,
                                         editingMessage: _editingMessage,
                                         onSend: _send,
+                                        onSchedule: _scheduleCurrentMessage,
+                                        onPoll: _createPoll,
+                                        onSticker: _sendSticker,
                                         onReply: _replyTo,
                                         onEdit: _edit,
                                         onCancelComposerAction:

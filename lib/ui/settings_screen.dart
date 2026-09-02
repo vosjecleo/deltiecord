@@ -1075,6 +1075,21 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     final preferences = backend.preferences;
     return _section('Privacy & presence', [
       SwitchListTile(
+        key: const ValueKey('direct-link-previews-toggle'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Fetch link previews directly on this device'),
+        subtitle: const Text(
+          'Direct previews contact websites from your device and may expose '
+          'your IP address and browsing metadata to those sites. This is used '
+          'only when the Matrix homeserver cannot provide a preview. Playing '
+          'an embedded video also contacts its public media host.',
+        ),
+        value: preferences.fetchDirectLinkPreviews,
+        onChanged: (value) => backend.updatePreferences(
+          preferences.copyWith(fetchDirectLinkPreviews: value),
+        ),
+      ),
+      SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Send read receipts'),
         subtitle: const Text('Let rooms know which messages you have read.'),
@@ -1114,21 +1129,19 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           preferences.copyWith(sharePresence: value),
         ),
       ),
-      SwitchListTile(
-        key: const ValueKey('direct-link-previews-toggle'),
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Fetch link previews directly on this device'),
-        subtitle: const Text(
-          'Direct previews contact websites from your device and may expose '
-          'your IP address and browsing metadata to those sites. This is used '
-          'only when the Matrix homeserver cannot provide a preview. Playing '
-          'an embedded video also contacts its public media host.',
+      if (defaultTargetPlatform != TargetPlatform.android) ...[
+        Text('Desktop idle after ${preferences.desktopIdleMinutes} minutes'),
+        Slider(
+          value: preferences.desktopIdleMinutes.toDouble(),
+          min: 1,
+          max: 60,
+          divisions: 59,
+          label: '${preferences.desktopIdleMinutes} min',
+          onChanged: (value) => backend.updatePreferences(
+            preferences.copyWith(desktopIdleMinutes: value.round()),
+          ),
         ),
-        value: preferences.fetchDirectLinkPreviews,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(fetchDirectLinkPreviews: value),
-        ),
-      ),
+      ],
       SwitchListTile(
         key: const ValueKey('improve-twitter-links-toggle'),
         contentPadding: EdgeInsets.zero,
@@ -1299,23 +1312,38 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             subtitle: Text(
               [
                 device.id,
+                device.verified
+                    ? (device.crossSigned ? 'Cross-signed' : 'Verified')
+                    : 'Unverified',
                 if (device.lastSeenAt != null)
                   'Last seen ${_formatDeviceTime(device.lastSeenAt!)}',
                 if (device.lastSeenIp != null) device.lastSeenIp!,
               ].join(' · '),
             ),
-            trailing: device.current
-                ? null
-                : IconButton(
+            trailing: Wrap(
+              spacing: 2,
+              children: [
+                if (!device.verified)
+                  IconButton(
+                    tooltip: 'Verify device',
+                    onPressed: () => _runSettingAction(
+                      () => backend.requestDeviceVerification(device.id),
+                    ),
+                    icon: const Icon(Icons.verified_user_outlined),
+                  ),
+                if (!device.current)
+                  IconButton(
                     tooltip: 'Remove device',
                     onPressed: () => _confirmRemoveDevice(device),
                     icon: const Icon(Icons.logout),
                   ),
+              ],
+            ),
           ),
         ),
     const Text(
-      'Session removal requires interactive Matrix authentication and will be '
-      'added with the permission-aware management pass in v0.5.',
+      'Verification uses Matrix SAS. Signing out a device does not delete '
+      'local data until that device next connects.',
     ),
   ]);
 

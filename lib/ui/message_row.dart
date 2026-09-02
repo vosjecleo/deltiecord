@@ -190,6 +190,16 @@ class _MessageRowState extends State<_MessageRow> {
                   );
                   _hideActions();
                 },
+                onBookmark: () => _performAction(
+                  () => widget.backend.toggleMessageBookmarked(message.id),
+                ),
+                bookmarked: message.bookmarked,
+                onPin: message.canRedact
+                    ? () => _performAction(
+                        () => widget.backend.toggleMessagePinned(message.id),
+                      )
+                    : null,
+                pinned: message.pinned,
                 onEdit: widget.onEdit == null
                     ? null
                     : () => _performAction(widget.onEdit),
@@ -354,7 +364,8 @@ class _MessageRowState extends State<_MessageRow> {
                                     ],
                                   ],
                                 ),
-                              if (message.body.isNotEmpty)
+                              if (message.body.isNotEmpty &&
+                                  message.poll == null)
                                 message.formattedBody != null
                                     ? MatrixHtmlText(
                                         html: message.formattedBody!,
@@ -372,6 +383,14 @@ class _MessageRowState extends State<_MessageRow> {
                                               : null,
                                         ),
                                       ),
+                              if (message.poll != null)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: PollCard(
+                                    backend: widget.backend,
+                                    message: message,
+                                  ),
+                                ),
                               if (message.attachment case final attachment?)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
@@ -570,6 +589,10 @@ class _MessageActions extends StatelessWidget {
   const _MessageActions({
     required this.onReply,
     required this.onCopy,
+    required this.onBookmark,
+    required this.bookmarked,
+    required this.onPin,
+    required this.pinned,
     required this.onEdit,
     required this.onDelete,
     required this.onReact,
@@ -579,6 +602,10 @@ class _MessageActions extends StatelessWidget {
 
   final VoidCallback onReply;
   final VoidCallback onCopy;
+  final VoidCallback onBookmark;
+  final bool bookmarked;
+  final VoidCallback? onPin;
+  final bool pinned;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onReact;
@@ -596,6 +623,27 @@ class _MessageActions extends StatelessWidget {
         onPressed: onReply,
         icon: const Icon(Icons.reply, size: 16),
       ),
+      IconButton(
+        key: const Key('message-action-bookmark'),
+        visualDensity: VisualDensity.compact,
+        tooltip: bookmarked ? 'Remove bookmark' : 'Save message',
+        onPressed: onBookmark,
+        icon: Icon(
+          bookmarked ? Icons.bookmark : Icons.bookmark_border,
+          size: 16,
+        ),
+      ),
+      if (onPin != null)
+        IconButton(
+          key: const Key('message-action-pin'),
+          visualDensity: VisualDensity.compact,
+          tooltip: pinned ? 'Unpin' : 'Pin message',
+          onPressed: onPin,
+          icon: Icon(
+            pinned ? Icons.push_pin : Icons.push_pin_outlined,
+            size: 16,
+          ),
+        ),
       IconButton(
         key: const Key('message-action-copy'),
         visualDensity: VisualDensity.compact,

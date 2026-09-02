@@ -231,64 +231,69 @@ class _MemberSidebarTile extends StatelessWidget {
   final ValueChanged<RoomMemberSummary> onSelected;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.transparent,
-    child: ListTile(
-      dense: true,
-      visualDensity: const VisualDensity(vertical: -2),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      leading: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          CircleAvatar(
-            radius: 16,
-            backgroundColor: context.deltiecord.elevated,
-            backgroundImage: member.avatarBytes == null
-                ? null
-                : MemoryImage(member.avatarBytes!),
-            child: member.avatarBytes == null
-                ? Text(
-                    member.displayName.trim().isEmpty
-                        ? '?'
-                        : member.displayName.characters.first.toUpperCase(),
-                  )
-                : null,
-          ),
-          Positioned(
-            left: -1,
-            bottom: -1,
-            child: Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: switch (member.presence) {
-                  UserPresence.online => const Color(0xff43b581),
-                  UserPresence.away => const Color(0xffffc857),
-                  UserPresence.offline => const Color(0xff747680),
-                },
-                border: Border.all(color: context.deltiecord.panel, width: 2),
+  Widget build(BuildContext context) => GestureDetector(
+    onSecondaryTap: () => showMemberManagement(context, backend, member),
+    child: Material(
+      color: Colors.transparent,
+      child: ListTile(
+        dense: true,
+        visualDensity: const VisualDensity(vertical: -2),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: context.deltiecord.elevated,
+              backgroundImage: member.avatarBytes == null
+                  ? null
+                  : MemoryImage(member.avatarBytes!),
+              child: member.avatarBytes == null
+                  ? Text(
+                      member.displayName.trim().isEmpty
+                          ? '?'
+                          : member.displayName.characters.first.toUpperCase(),
+                    )
+                  : null,
+            ),
+            Positioned(
+              left: -1,
+              bottom: -1,
+              child: Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: switch (member.presence) {
+                    UserPresence.online => const Color(0xff43b581),
+                    UserPresence.away => const Color(0xffffc857),
+                    UserPresence.doNotDisturb => const Color(0xffe5484d),
+                    UserPresence.offline => const Color(0xff747680),
+                  },
+                  border: Border.all(color: context.deltiecord.panel, width: 2),
+                ),
               ),
             ),
-          ),
-        ],
-      ),
-      title: Text(
-        member.displayName,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          fontSize: DeltiecordTypeScale.bigChat,
-          fontWeight: FontWeight.w600,
+          ],
         ),
+        title: Text(
+          member.displayName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: DeltiecordTypeScale.bigChat,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: member.powerLevel >= 50
+            ? Text(
+                member.powerLevel >= 100 ? 'Administrator' : 'Moderator',
+                style: TextStyle(color: context.deltiecord.muted),
+              )
+            : null,
+        onTap: () => onSelected(member),
+        onLongPress: () => showMemberManagement(context, backend, member),
       ),
-      subtitle: member.powerLevel >= 50
-          ? Text(
-              member.powerLevel >= 100 ? 'Administrator' : 'Moderator',
-              style: TextStyle(color: context.deltiecord.muted),
-            )
-          : null,
-      onTap: () => onSelected(member),
     ),
   );
 }

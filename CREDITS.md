@@ -24,6 +24,12 @@ dependency under its own license.
   process-independent delivery path for notifications received while Flutter
   is stopped.
 - [FluffyChat's background push implementation](https://github.com/krille-chan/fluffychat/blob/main/lib/utils/background_push.dart) informed Deltiecord's launch-time pusher reconciliation, custom Matrix-gateway discovery behavior, and privacy-preserving `event_id_only` pusher format. FluffyChat is AGPL-3.0-or-later.
+- [FluffyChat's Matrix sticker-pack integration](https://github.com/krille-chan/fluffychat)
+  was used as an interoperability reference for the widely deployed
+  `im.ponies.user_emotes` and `im.ponies.room_emotes` account-data/state
+  formats. Deltiecord's picker and backend are independently implemented on
+  matrix-dart-sdk and send standard `m.sticker` events; no FluffyChat source or
+  assets are bundled.
 - The compact three-column layout was inspired by Discord UX. Deltiecord does
   not use Discord branding, artwork, source, or proprietary assets.
 

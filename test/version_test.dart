@@ -14,5 +14,13 @@ void main() {
     expect(match, isNotNull);
     expect(deltiecordVersion, match!.group(1));
     expect(deltiecordBuildNumber, match.group(2));
+
+    final archPackage = File('packaging/arch/PKGBUILD').readAsStringSync();
+    final packageRelease = RegExp(
+      r'^pkgrel=(\d+)\s*$',
+      multiLine: true,
+    ).firstMatch(archPackage);
+    expect(packageRelease, isNotNull);
+    expect(packageRelease!.group(1), match.group(2));
   });
 }

@@ -499,10 +499,8 @@ class _SpaceBar extends StatelessWidget {
                   tooltip: 'Home',
                   selected: backend.selectedSpaceId == null,
                   onTap: () => backend.selectSpace(null),
-                  child: _NavigationAttentionBadge(
-                    count: backend.directUnreadCount,
-                    child: const Icon(Icons.home_filled, size: 21),
-                  ),
+                  attentionCount: backend.directUnreadCount,
+                  child: const Icon(Icons.home_filled, size: 21),
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 7, vertical: 5),
@@ -521,31 +519,29 @@ class _SpaceBar extends StatelessWidget {
                       tooltip: space.name,
                       selected: backend.selectedSpaceId == space.id,
                       onTap: () => backend.selectSpace(space.id),
+                      attentionCount: backend.pingCountForSpace(space.id),
                       onSecondaryTapDown: (details) => _showSpaceMenu(
                         context,
                         space,
                         details.globalPosition,
                       ),
-                      child: _NavigationAttentionBadge(
-                        count: backend.pingCountForSpace(space.id),
-                        child: space.avatarBytes == null
-                            ? Text(
-                                _initials(space.name),
-                                maxLines: 1,
-                                overflow: TextOverflow.clip,
-                                style: const TextStyle(
-                                  fontSize: DeltiecordTypeScale.normal,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              )
-                            : Image.memory(
-                                space.avatarBytes!,
-                                width: double.infinity,
-                                height: double.infinity,
-                                fit: BoxFit.cover,
-                                gaplessPlayback: true,
+                      child: space.avatarBytes == null
+                          ? Text(
+                              _initials(space.name),
+                              maxLines: 1,
+                              overflow: TextOverflow.clip,
+                              style: const TextStyle(
+                                fontSize: DeltiecordTypeScale.normal,
+                                fontWeight: FontWeight.w700,
                               ),
-                      ),
+                            )
+                          : Image.memory(
+                              space.avatarBytes!,
+                              width: double.infinity,
+                              height: double.infinity,
+                              fit: BoxFit.cover,
+                              gaplessPlayback: true,
+                            ),
                     ),
                   ),
                 Padding(
@@ -722,22 +718,6 @@ class _SpaceSearchDialogState extends State<_SpaceSearchDialog> {
   );
 }
 
-class _NavigationAttentionBadge extends StatelessWidget {
-  const _NavigationAttentionBadge({required this.count, required this.child});
-
-  final int count;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) => Badge.count(
-    count: count.clamp(0, 999),
-    isLabelVisible: count > 0,
-    backgroundColor: Theme.of(context).colorScheme.primary,
-    textColor: Theme.of(context).colorScheme.onPrimary,
-    child: child,
-  );
-}
-
 class _SpaceButton extends StatelessWidget {
   const _SpaceButton({
     required this.tooltip,
@@ -745,6 +725,7 @@ class _SpaceButton extends StatelessWidget {
     required this.onTap,
     required this.child,
     this.onSecondaryTapDown,
+    this.attentionCount = 0,
   });
 
   final String tooltip;
@@ -752,6 +733,7 @@ class _SpaceButton extends StatelessWidget {
   final VoidCallback onTap;
   final Widget child;
   final GestureTapDownCallback? onSecondaryTapDown;
+  final int attentionCount;
 
   @override
   Widget build(BuildContext context) {
@@ -761,19 +743,27 @@ class _SpaceButton extends StatelessWidget {
         child: SizedBox.square(
           key: ValueKey('space-button-$tooltip'),
           dimension: 48,
-          child: Material(
-            color: selected
-                ? Theme.of(context).colorScheme.primaryContainer
-                : context.deltiecord.elevated,
-            borderRadius: DeltiecordCorners.borderRadius,
-            clipBehavior: Clip.hardEdge,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onSecondaryTapDown: onSecondaryTapDown,
-              child: InkWell(
-                onTap: onTap,
-                borderRadius: DeltiecordCorners.borderRadius,
-                child: Center(child: child),
+          child: Badge.count(
+            count: attentionCount.clamp(0, 999),
+            isLabelVisible: attentionCount > 0,
+            alignment: Alignment.topRight,
+            offset: const Offset(-1, 1),
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            textColor: Theme.of(context).colorScheme.onPrimary,
+            child: Material(
+              color: selected
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : context.deltiecord.elevated,
+              borderRadius: DeltiecordCorners.borderRadius,
+              clipBehavior: Clip.hardEdge,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onSecondaryTapDown: onSecondaryTapDown,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius: DeltiecordCorners.borderRadius,
+                  child: Center(child: child),
+                ),
               ),
             ),
           ),
@@ -1634,7 +1624,7 @@ class _ChannelCategorySection extends StatelessWidget {
                           ),
                         )
                       else
-                        const SizedBox(width: _gripColumnWidth),
+                        const SizedBox(width: 8),
                       Expanded(
                         child: InkWell(
                           onTap: current == null
@@ -1647,28 +1637,28 @@ class _ChannelCategorySection extends StatelessWidget {
                             alignment: Alignment.centerLeft,
                             child: Row(
                               children: [
-                                if (current != null) ...[
-                                  Icon(
-                                    collapsed
-                                        ? Icons.arrow_right
-                                        : Icons.arrow_drop_down,
-                                    size: 17,
-                                    color: context.deltiecord.muted,
-                                  ),
-                                  const SizedBox(width: 2),
-                                ],
                                 Flexible(
                                   child: Text(
-                                    name.toUpperCase(),
+                                    name,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
                                       color: context.deltiecord.muted,
-                                      fontSize: DeltiecordTypeScale.normal,
+                                      fontSize: DeltiecordTypeScale.normal - 1,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
+                                if (current != null) ...[
+                                  const SizedBox(width: 2),
+                                  Icon(
+                                    collapsed
+                                        ? Icons.chevron_right
+                                        : Icons.expand_more,
+                                    size: 16,
+                                    color: context.deltiecord.muted,
+                                  ),
+                                ],
                               ],
                             ),
                           ),

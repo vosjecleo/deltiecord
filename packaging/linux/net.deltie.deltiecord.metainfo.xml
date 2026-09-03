@@ -22,7 +22,7 @@
   <releases>
     <release version="0.9.26" date="2026-09-03" type="stable">
       <description>
-        <p>Adds a first-run privacy and notification tour, trusted-provider previews, favourites and sticker-pack import, fixes poll aggregation and Android notification cleanup, and removes the unreliable bundled font.</p>
+        <p>Adds a first-run privacy and notification tour, trusted-provider previews, favourites and sticker-pack import, fixes poll aggregation and Android notification cleanup, and refines navigation, timeline, composer, category, and attachment-only layouts.</p>
       </description>
     </release>
     <release version="0.9.25" date="2026-09-02" type="stable">

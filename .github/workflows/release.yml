@@ -118,11 +118,11 @@ jobs:
           cat >release-notes.md <<EOF
           Deltiecord ${version} build ${build} is the current stable and latest desktop and Android release for Matrix.
 
-          Build 81 adds first-run privacy and notification guidance, three link-preview privacy levels, structured mention/reply highlights and badges, favourites for GIFs/emoji/stickers, bounded Matrix-compatible personal sticker-pack import, and refreshed poll aggregation after voting.
+          Build 82 is the stable layout follow-up to build 81. It fixes empty caption rows on attachment-only mobile media, seats attention counters on their full Home/Space buttons, curves the mobile rail separator with the room card, closes the final typing-backdrop seam, and aligns mobile composer input with timeline text.
 
-          Android notification histories now follow Matrix unread counts and clear when their room opens. Foreground banners are mobile-only and stay out of the active room. Lifecycle recovery refreshes stale window insets, interrupted gestures, and UnifiedPush registration without reverting freshly synced settings.
+          Desktop's resize target now overlays the room boundary instead of consuming layout width. The timeline and composer consequently move left together, the user island stops crossing into chat, and slightly smaller avatars centre on the first message entry. Category labels on both layouts preserve their original casing, use a one-pixel-smaller bold face, begin at the panel edge, and place collapse chevrons after their text.
 
-          Direct previews remain opt-in and homeserver-first. The Known providers mode limits fallback connections to a documented allowlist; All public sites retains the existing private-address, redirect, timeout, content-type, and response-size protections. The unreliable bundled font and obsolete settings controls were removed, and reduced motion now also stops automatic GIF playback.
+          Build 82 retains build 81's first-run setup, preview privacy controls, Matrix mention/reply highlights, favourites, sticker-pack import, notification cleanup, lifecycle recovery, and reduced-motion improvements.
 
           Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
 

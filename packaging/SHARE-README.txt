@@ -1,12 +1,12 @@
-Deltiecord v0.9.26 build 81 stable and latest release bundle
+Deltiecord v0.9.26 build 82 stable and latest release bundle
 ====================================================
 
 Linux AppImage:
-  chmod +x deltiecord-0.9.26+81-linux-appimage-x86_64.AppImage
-  ./deltiecord-0.9.26+81-linux-appimage-x86_64.AppImage
+  chmod +x deltiecord-0.9.26+82-linux-appimage-x86_64.AppImage
+  ./deltiecord-0.9.26+82-linux-appimage-x86_64.AppImage
 
 Debian/Ubuntu package:
-  sudo apt install ./deltiecord-0.9.26+81-linux-debian-amd64.deb
+  sudo apt install ./deltiecord-0.9.26+82-linux-debian-amd64.deb
 
 Verify files:
   sha256sum -c SHA256SUMS

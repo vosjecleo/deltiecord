@@ -450,6 +450,55 @@ void main() {
     expect(find.text('Move down'), findsOneWidget);
   });
 
+  testWidgets('Space category labels keep casing with trailing chevrons', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:example.org'
+      ..spaceList = const [
+        SpaceSummary(id: '!space:example.org', name: 'Workspace'),
+      ]
+      ..roomList = const [
+        RoomSummary(
+          id: '!room:example.org',
+          name: 'general',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(
+          id: 'mixed-category',
+          name: 'Mixed Rooms',
+          roomIds: ['!room:example.org'],
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+    final section = find.byKey(const ValueKey('mixed-category'));
+    final label = find.descendant(
+      of: section,
+      matching: find.text('Mixed Rooms'),
+    );
+    final chevron = find.descendant(
+      of: section,
+      matching: find.byIcon(Icons.expand_more),
+    );
+    expect(label, findsOneWidget);
+    expect(find.text('MIXED ROOMS'), findsNothing);
+    expect(chevron, findsOneWidget);
+    expect(
+      tester.getTopLeft(chevron).dx,
+      greaterThan(tester.getTopRight(label).dx),
+    );
+    expect(tester.getTopLeft(label).dx, lessThan(120));
+    final style = tester.widget<Text>(label).style!;
+    expect(style.fontSize, DeltiecordTypeScale.normal - 1);
+    expect(style.fontWeight, FontWeight.w700);
+  });
+
   testWidgets('channel layout controls follow the configured permission', (
     tester,
   ) async {
@@ -1659,6 +1708,15 @@ void main() {
           unreadCount: 0,
           usesChannelIcon: false,
         ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$layout',
+          sender: 'Alice',
+          body: 'Aligned content',
+          timestamp: DateTime(2026, 9, 3, 12),
+          pending: false,
+        ),
       ];
     await tester.pumpWidget(DeltiecordApp(backend: backend));
     await tester.tap(find.text('layout'));
@@ -1689,6 +1747,18 @@ void main() {
       tester.getSize(accountIsland).height,
       tester.getSize(composerIsland).height,
     );
+    final timelineArea = find.byKey(const Key('conversation-timeline-area'));
+    expect(
+      tester.getTopRight(accountPanel).dx,
+      tester.getTopLeft(timelineArea).dx,
+    );
+    final messageContent = find.byKey(
+      const ValueKey(r'message-content-$layout'),
+    );
+    expect(
+      tester.getTopLeft(messageContent).dx,
+      tester.getTopLeft(composerIsland).dx + 55,
+    );
     final composerSurface = tester.widget<Container>(composerIsland);
     final composerBorder =
         (composerSurface.decoration! as BoxDecoration).border;
@@ -1715,6 +1785,48 @@ void main() {
       ),
     );
     expect(indicator.opacity, 1);
+  });
+
+  testWidgets('desktop avatars center on the first message entry', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!avatar-layout:example.org',
+          name: 'avatar layout',
+          lastMessage: 'Aligned content',
+          unreadCount: 0,
+          usesChannelIcon: false,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$avatar-layout',
+          sender: 'Alice',
+          body: 'Aligned content',
+          timestamp: DateTime(2026, 9, 3, 12),
+          pending: false,
+        ),
+      ];
+    await tester.pumpWidget(DeltiecordApp(backend: backend));
+    await tester.tap(find.text('avatar layout'));
+    await tester.pumpAndSettle();
+
+    final avatarRect = tester.getRect(
+      find.byKey(const ValueKey(r'message-avatar-$avatar-layout')),
+    );
+    final senderRect = tester.getRect(
+      find.byKey(const ValueKey(r'message-sender-$avatar-layout')),
+    );
+    final bodyRect = tester.getRect(
+      find.byKey(const ValueKey(r'message-body-$avatar-layout')),
+    );
+    expect(
+      avatarRect.center.dy,
+      closeTo((senderRect.top + bodyRect.bottom) / 2, 1.5),
+    );
   });
 
   testWidgets('multiline composer grows but remains within lower third', (
@@ -2521,6 +2633,120 @@ void main() {
     expect(
       background.color,
       DeltiecordPalette.forMode(DeltiecordThemeMode.dark).rail,
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('mobile-rail-badge-Home'))),
+      const Size.square(54),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('mobile-rail-button-Home'))),
+      const Size.square(54),
+    );
+    final edge = tester.widget<CustomPaint>(
+      find.byKey(const ValueKey('mobile-rail-separator')),
+    );
+    expect(edge.foregroundPainter, isNotNull);
+  });
+
+  testWidgets('Android categories keep casing and place chevrons after text', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..currentSpaceId = '!space:test'
+      ..spaceList = const [SpaceSummary(id: '!space:test', name: 'Friends')]
+      ..roomList = const [
+        RoomSummary(
+          id: '!room:test',
+          name: 'general',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..categoryList = const [
+        ChannelCategorySummary(
+          id: 'mixed',
+          name: 'Mixed Rooms',
+          roomIds: ['!room:test'],
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+
+    final list = find.byKey(const ValueKey('mobile-space-room-list'));
+    final label = find.descendant(of: list, matching: find.text('Mixed Rooms'));
+    final chevron = find.descendant(
+      of: list,
+      matching: find.byIcon(Icons.expand_more),
+    );
+    expect(label, findsOneWidget);
+    expect(find.text('MIXED ROOMS'), findsNothing);
+    expect(chevron, findsOneWidget);
+    expect(
+      tester.getTopLeft(chevron).dx,
+      greaterThan(tester.getTopRight(label).dx),
+    );
+    final style = tester.widget<Text>(label).style!;
+    expect(style.fontSize, DeltiecordTypeScale.normal - 1);
+    expect(style.fontWeight, FontWeight.w700);
+  });
+
+  testWidgets('Android attachment-only rows omit empty caption widgets', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!media:test',
+          name: 'Media',
+          lastMessage: 'photo.jpg',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..messageList = [
+        ChatMessage(
+          id: r'$attachment-only',
+          sender: 'Alice',
+          body: '',
+          timestamp: DateTime(2026, 9, 3, 12),
+          pending: false,
+          attachment: const ChatAttachment(
+            kind: AttachmentKind.image,
+            name: 'photo.jpg',
+            mimeType: 'image/jpeg',
+            size: 128,
+            encrypted: true,
+            spoiler: false,
+            width: 640,
+            height: 480,
+          ),
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('Media'));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey(r'mobile-message-body-$attachment-only')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey(r'mobile-message-attachment-$attachment-only')),
+      findsOneWidget,
+    );
+    final content = find.byKey(
+      const ValueKey(r'mobile-message-content-$attachment-only'),
+    );
+    final editable = find.descendant(
+      of: find.byKey(const ValueKey('mobile-composer-field')),
+      matching: find.byType(EditableText),
+    );
+    expect(editable, findsOneWidget);
+    expect(
+      tester.getTopLeft(editable).dx,
+      closeTo(tester.getTopLeft(content).dx, 0.5),
     );
   });
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## Deltiecord 0.9.26 build 82 — 2026-09-03
+
+- Fixed mobile attachment-only image and video events rendering an empty text
+  row above their media.
+- Anchored Home and Space attention badges to their full navigation buttons.
+- Made mobile's rail separator follow the rounded room-card corner and removed
+  the final physical-pixel seam between the typing backdrop and composer.
+- Aligned mobile composer text with timeline content while tightening its side
+  margins.
+- Removed the desktop resize gutter from layout flow so the timeline and
+  composer move left together and the user island no longer crosses into chat.
+- Slightly reduced and vertically centred desktop timeline avatars.
+- Restyled category labels on desktop and mobile with preserved casing, a
+  one-pixel-smaller bold font, leading-panel alignment, and trailing chevrons.
+
 ## Deltiecord 0.9.26 build 81 — 2026-09-03
 
 - Added per-installation first-run guidance for preview privacy, Matrix
@@ -27,4 +42,3 @@
   remains a separate asset slot for straightforward future replacement.
 - Extended reduced motion to snap navigation/settings transitions and disable
   automatic animated-attachment playback.
-

@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release: version 0.9.26 build 81, stable and latest**
+> **Current release: version 0.9.26 build 82, stable and latest**
 >
 > Deltiecord is available for desktop and Android. Build 81 adds first-run
 > guidance, preview privacy levels, notification/unread corrections, structured
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.26 build 81, stable and latest**
+**Current release: v0.9.26 build 82, stable and latest**

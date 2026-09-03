@@ -450,6 +450,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    final physicalPixel = 1 / MediaQuery.devicePixelRatioOf(context);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _reportTimelineAtPresent(),
     );
@@ -628,6 +629,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                       !backend.historyLoading
                 ? const Center(child: Text('No messages yet'))
                 : Stack(
+                    clipBehavior: Clip.none,
                     children: [
                       KeyedSubtree(
                         key: _timelineViewportKey,
@@ -788,7 +790,9 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                       Positioned(
                         left: 0,
                         right: 0,
-                        bottom: 0,
+                        // Overlap by one physical pixel so fractional device
+                        // scaling cannot expose a seam above the composer.
+                        bottom: -physicalPixel,
                         child: TypingIndicator(names: backend.typingUserNames),
                       ),
                     ],
@@ -1278,6 +1282,7 @@ class _MobileMessageRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
+                    key: ValueKey('mobile-message-content-${message.id}'),
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (message.reply case final reply?)
@@ -1393,17 +1398,22 @@ class _MobileMessageRow extends StatelessWidget {
                             ],
                           ),
                         ),
-                      if (!message.redacted && message.poll == null)
-                        message.formattedBody != null
-                            ? MatrixHtmlText(
-                                html: message.formattedBody!,
-                                fallback: message.body,
-                                selectable: false,
-                              )
-                            : MatrixPlainText(
-                                text: message.body,
-                                selectable: false,
-                              )
+                      if (!message.redacted &&
+                          message.poll == null &&
+                          message.body.isNotEmpty)
+                        KeyedSubtree(
+                          key: ValueKey('mobile-message-body-${message.id}'),
+                          child: message.formattedBody != null
+                              ? MatrixHtmlText(
+                                  html: message.formattedBody!,
+                                  fallback: message.body,
+                                  selectable: false,
+                                )
+                              : MatrixPlainText(
+                                  text: message.body,
+                                  selectable: false,
+                                ),
+                        )
                       else if (message.redacted)
                         const Text(
                           'Message deleted',
@@ -1416,6 +1426,9 @@ class _MobileMessageRow extends StatelessWidget {
                         ),
                       if (message.attachment != null)
                         Padding(
+                          key: ValueKey(
+                            'mobile-message-attachment-${message.id}',
+                          ),
                           padding: const EdgeInsets.only(top: 5),
                           child: MobileAttachmentView(
                             backend: backend,
@@ -1792,7 +1805,7 @@ class _MobileComposerState extends State<_MobileComposer> {
         top: false,
         child: Container(
           key: const ValueKey('mobile-composer'),
-          margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+          margin: const EdgeInsets.fromLTRB(6, 4, 6, 8),
           decoration: BoxDecoration(
             color: context.deltiecord.island,
             borderRadius: DeltiecordCorners.borderRadius,
@@ -1861,7 +1874,7 @@ class _MobileComposerState extends State<_MobileComposer> {
                   IconButton(
                     onPressed: widget.onAdd,
                     constraints: const BoxConstraints.tightFor(
-                      width: 42,
+                      width: 48,
                       height: 48,
                     ),
                     padding: EdgeInsets.zero,
@@ -1887,9 +1900,10 @@ class _MobileComposerState extends State<_MobileComposer> {
                             hintText: 'Message',
                             border: InputBorder.none,
                             filled: false,
-                            // 8 margin + 42 add control + 12 inset = the same
-                            // 62px text column used by timeline messages.
-                            contentPadding: EdgeInsets.only(left: 12, right: 4),
+                            // EditableText keeps a four-pixel caret inset of
+                            // its own. 6 + 48 + 4 + that caret inset lands on
+                            // the 62px text column used by timeline messages.
+                            contentPadding: EdgeInsets.only(left: 4, right: 2),
                           ),
                         ),
                       ),

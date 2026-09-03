@@ -69,124 +69,133 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
                 child: Row(
                   children: [
                     _SpaceRail(backend: backend),
-                    Container(
-                      key: const ValueKey('mobile-rail-separator'),
-                      width: 1,
-                      color: context.deltiecord.divider.withValues(alpha: 0.65),
-                    ),
+                    const SizedBox(width: 1),
                     Expanded(
-                      child: ClipRRect(
-                        key: const ValueKey('mobile-navigation-card'),
-                        borderRadius: const BorderRadius.only(
-                          topLeft: DeltiecordCorners.corner,
+                      child: CustomPaint(
+                        key: const ValueKey('mobile-rail-separator'),
+                        foregroundPainter: _NavigationCardEdgePainter(
+                          context.deltiecord.divider.withValues(alpha: 0.65),
                         ),
-                        child: Material(
-                          color: context.deltiecord.panel,
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  8,
-                                  10,
-                                  6,
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: InkWell(
-                                    borderRadius:
-                                        DeltiecordCorners.borderRadius,
-                                    onTap: selectedSpace == null
-                                        ? null
-                                        : () => showSpacePages(
-                                            context,
-                                            backend,
-                                            selectedSpace,
-                                          ),
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 2,
-                                        vertical: 3,
-                                      ),
-                                      child: Text(
-                                        selectedSpace == null
-                                            ? 'Home'
-                                            : backend.spaces
-                                                      .where(
-                                                        (space) =>
-                                                            space.id ==
-                                                            selectedSpace,
-                                                      )
-                                                      .firstOrNull
-                                                      ?.name ??
-                                                  'Space',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleLarge
-                                            ?.copyWith(
-                                              fontWeight: FontWeight.w700,
+                        child: ClipRRect(
+                          key: const ValueKey('mobile-navigation-card'),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: DeltiecordCorners.corner,
+                          ),
+                          child: Material(
+                            color: context.deltiecord.panel,
+                            child: Column(
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    8,
+                                    10,
+                                    6,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: InkWell(
+                                      borderRadius:
+                                          DeltiecordCorners.borderRadius,
+                                      onTap: selectedSpace == null
+                                          ? null
+                                          : () => showSpacePages(
+                                              context,
+                                              backend,
+                                              selectedSpace,
                                             ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                          vertical: 3,
+                                        ),
+                                        child: Text(
+                                          selectedSpace == null
+                                              ? 'Home'
+                                              : backend.spaces
+                                                        .where(
+                                                          (space) =>
+                                                              space.id ==
+                                                              selectedSpace,
+                                                        )
+                                                        .firstOrNull
+                                                        ?.name ??
+                                                    'Space',
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleLarge
+                                              ?.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(12, 0, 6, 6),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: TextField(
-                                        key: const ValueKey(
-                                          'mobile-room-search',
-                                        ),
-                                        onChanged: (value) =>
-                                            setState(() => _query = value),
-                                        decoration: InputDecoration(
-                                          isDense: true,
-                                          hintText: selectedSpace == null
-                                              ? 'Search direct messages'
-                                              : 'Search rooms',
-                                          prefixIcon: const Icon(
-                                            Icons.search,
-                                            size: 20,
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    12,
+                                    0,
+                                    6,
+                                    6,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: TextField(
+                                          key: const ValueKey(
+                                            'mobile-room-search',
+                                          ),
+                                          onChanged: (value) =>
+                                              setState(() => _query = value),
+                                          decoration: InputDecoration(
+                                            isDense: true,
+                                            hintText: selectedSpace == null
+                                                ? 'Search direct messages'
+                                                : 'Search rooms',
+                                            prefixIcon: const Icon(
+                                              Icons.search,
+                                              size: 20,
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 2),
-                                    IconButton(
-                                      key: const ValueKey('mobile-inbox'),
-                                      tooltip: 'Inbox',
-                                      onPressed: () => _openInbox(context),
-                                      icon: const Icon(Icons.inbox_outlined),
-                                    ),
-                                    IconButton(
-                                      key: const ValueKey('mobile-start-chat'),
-                                      tooltip: selectedSpace == null
-                                          ? 'Start a chat'
-                                          : 'Create a room',
-                                      onPressed: () => selectedSpace == null
-                                          ? _startChat(context)
-                                          : _createRoom(context),
-                                      icon: const Icon(Icons.add),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              Expanded(
-                                child: selectedSpace == null
-                                    ? _RoomList(
-                                        rooms: rooms,
-                                        onOpenRoom: widget.onOpenRoom,
-                                      )
-                                    : _SpaceRoomList(
-                                        backend: backend,
-                                        rooms: rooms,
-                                        onOpenRoom: widget.onOpenRoom,
+                                      const SizedBox(width: 2),
+                                      IconButton(
+                                        key: const ValueKey('mobile-inbox'),
+                                        tooltip: 'Inbox',
+                                        onPressed: () => _openInbox(context),
+                                        icon: const Icon(Icons.inbox_outlined),
                                       ),
-                              ),
-                            ],
+                                      IconButton(
+                                        key: const ValueKey(
+                                          'mobile-start-chat',
+                                        ),
+                                        tooltip: selectedSpace == null
+                                            ? 'Start a chat'
+                                            : 'Create a room',
+                                        onPressed: () => selectedSpace == null
+                                            ? _startChat(context)
+                                            : _createRoom(context),
+                                        icon: const Icon(Icons.add),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  child: selectedSpace == null
+                                      ? _RoomList(
+                                          rooms: rooms,
+                                          onOpenRoom: widget.onOpenRoom,
+                                        )
+                                      : _SpaceRoomList(
+                                          backend: backend,
+                                          rooms: rooms,
+                                          onOpenRoom: widget.onOpenRoom,
+                                        ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -322,10 +331,8 @@ class _SpaceRail extends StatelessWidget {
           selected: backend.selectedSpaceId == null,
           tooltip: 'Home',
           onTap: () => backend.selectSpace(null),
-          child: MobileAttentionBadge(
-            count: backend.directUnreadCount,
-            child: const Icon(Icons.home_rounded),
-          ),
+          attentionCount: backend.directUnreadCount,
+          child: const Icon(Icons.home_rounded),
         ),
         const Divider(indent: 14, endIndent: 14),
         Expanded(
@@ -338,14 +345,12 @@ class _SpaceRail extends StatelessWidget {
                   tooltip: space.name,
                   onTap: () => backend.selectSpace(space.id),
                   onLongPress: () => _showSpaceActions(context, space),
-                  child: MobileAttentionBadge(
-                    count: backend.pingCountForSpace(space.id),
-                    child: MobileAvatar(
-                      bytes: space.avatarBytes,
-                      fallback: space.name,
-                      size: 54,
-                      square: true,
-                    ),
+                  attentionCount: backend.pingCountForSpace(space.id),
+                  child: MobileAvatar(
+                    bytes: space.avatarBytes,
+                    fallback: space.name,
+                    size: 54,
+                    square: true,
                   ),
                 ),
               _RailButton(
@@ -638,6 +643,7 @@ class _RailButton extends StatelessWidget {
     required this.child,
     this.selected = false,
     this.onLongPress,
+    this.attentionCount = 0,
     super.key,
   });
   final String tooltip;
@@ -645,22 +651,33 @@ class _RailButton extends StatelessWidget {
   final Widget child;
   final bool selected;
   final VoidCallback? onLongPress;
+  final int attentionCount;
 
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 8),
     child: Tooltip(
       message: tooltip,
-      child: Material(
-        color: selected
-            ? Theme.of(context).colorScheme.primaryContainer
-            : context.deltiecord.elevated,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          child: SizedBox.square(dimension: 54, child: Center(child: child)),
+      child: Badge.count(
+        key: ValueKey('mobile-rail-badge-$tooltip'),
+        count: attentionCount.clamp(0, 999),
+        isLabelVisible: attentionCount > 0,
+        alignment: Alignment.topRight,
+        offset: const Offset(-2, 2),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        textColor: Theme.of(context).colorScheme.onPrimary,
+        child: Material(
+          key: ValueKey('mobile-rail-button-$tooltip'),
+          color: selected
+              ? Theme.of(context).colorScheme.primaryContainer
+              : context.deltiecord.elevated,
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress,
+            child: SizedBox.square(dimension: 54, child: Center(child: child)),
+          ),
         ),
       ),
     ),
@@ -753,9 +770,28 @@ class _SpaceRoomList extends StatelessWidget {
           dense: true,
           visualDensity: const VisualDensity(vertical: -3),
           minTileHeight: 36,
-          title: Text(category.name.toUpperCase()),
-          leading: Icon(
-            category.collapsed ? Icons.chevron_right : Icons.expand_more,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  category.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: context.deltiecord.muted,
+                    fontSize: DeltiecordTypeScale.normal - 1,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 2),
+              Icon(
+                category.collapsed ? Icons.chevron_right : Icons.expand_more,
+                size: 16,
+                color: context.deltiecord.muted,
+              ),
+            ],
           ),
           onTap: () => backend.setChannelCategoryCollapsed(
             category.id,
@@ -783,6 +819,32 @@ class _SpaceRoomList extends StatelessWidget {
       children: children,
     );
   }
+}
+
+class _NavigationCardEdgePainter extends CustomPainter {
+  const _NavigationCardEdgePainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final radius = DeltiecordCorners.radius;
+    final path = Path()
+      ..moveTo(radius, 0)
+      ..quadraticBezierTo(0, 0, 0, radius)
+      ..lineTo(0, size.height);
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _NavigationCardEdgePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _SpaceRoomTile extends StatelessWidget {

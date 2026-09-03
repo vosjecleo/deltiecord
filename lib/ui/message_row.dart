@@ -271,6 +271,7 @@ class _MessageRowState extends State<_MessageRow> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
+                            key: ValueKey('message-content-${message.id}'),
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               if (message.reply case final reply?)
@@ -380,23 +381,26 @@ class _MessageRowState extends State<_MessageRow> {
                                 ),
                               if (message.body.isNotEmpty &&
                                   message.poll == null)
-                                message.formattedBody != null
-                                    ? MatrixHtmlText(
-                                        html: message.formattedBody!,
-                                        fallback: message.body,
-                                      )
-                                    : MatrixPlainText(
-                                        text: message.body,
-                                        style: TextStyle(
-                                          height: 1.16,
-                                          fontStyle: message.redacted
-                                              ? FontStyle.italic
-                                              : FontStyle.normal,
-                                          color: message.redacted
-                                              ? context.deltiecord.muted
-                                              : null,
+                                KeyedSubtree(
+                                  key: ValueKey('message-body-${message.id}'),
+                                  child: message.formattedBody != null
+                                      ? MatrixHtmlText(
+                                          html: message.formattedBody!,
+                                          fallback: message.body,
+                                        )
+                                      : MatrixPlainText(
+                                          text: message.body,
+                                          style: TextStyle(
+                                            height: 1.16,
+                                            fontStyle: message.redacted
+                                                ? FontStyle.italic
+                                                : FontStyle.normal,
+                                            color: message.redacted
+                                                ? context.deltiecord.muted
+                                                : null,
+                                          ),
                                         ),
-                                      ),
+                                ),
                               if (message.poll != null)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
@@ -503,17 +507,18 @@ class _MessageRowState extends State<_MessageRow> {
                   ),
                   if (widget.startsGroup)
                     Positioned(
-                      // The 38px avatar remains centred in the 60px author
-                      // gutter while the text column stays close to the edge.
+                      // Keep the avatar centred against the sender header and
+                      // first content line. The near-equal outer and inner
+                      // gutters make the timeline read as one aligned column.
                       left: 11,
-                      top: groupTop + 1 + (message.reply == null ? 0 : 22),
+                      top: groupTop - 2 + (message.reply == null ? 0 : 22),
                       child: GestureDetector(
                         key: ValueKey('message-avatar-${message.id}'),
                         onTap: _showSenderProfile,
                         onTapDown: (details) =>
                             _profileAnchorPosition = details.globalPosition,
                         child: CircleAvatar(
-                          radius: 19,
+                          radius: 18,
                           backgroundColor: context.deltiecord.elevated,
                           backgroundImage: message.avatarBytes == null
                               ? null

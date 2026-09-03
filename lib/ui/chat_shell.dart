@@ -739,10 +739,8 @@ class _ChatShellState extends State<ChatShell> {
                       minimumRoomPanelWidth,
                       maximumRoomPanelWidth,
                     );
-                    // Include the resize gutter so the lower controls form one
-                    // uninterrupted strip across rail, room list, and composer.
-                    final navigationWidth =
-                        panelWidth + (showSpaceRail ? 69 : 0) + 5;
+                    final railWidth = showSpaceRail ? 69.0 : 0.0;
+                    final navigationWidth = panelWidth + railWidth;
                     return Stack(
                       children: [
                         Positioned.fill(
@@ -765,37 +763,6 @@ class _ChatShellState extends State<ChatShell> {
                                     topLeft: DeltiecordCorners.corner,
                                   ),
                                   child: _RoomPanel(backend: widget.backend),
-                                ),
-                              ),
-                              MouseRegion(
-                                cursor: SystemMouseCursors.resizeColumn,
-                                child: GestureDetector(
-                                  key: const Key('room-panel-resize-handle'),
-                                  behavior: HitTestBehavior.opaque,
-                                  onHorizontalDragUpdate: (details) {
-                                    final width =
-                                        (widget
-                                                    .backend
-                                                    .preferences
-                                                    .roomPanelWidth +
-                                                details.delta.dx)
-                                            .clamp(
-                                              minimumRoomPanelWidth,
-                                              maximumRoomPanelWidth,
-                                            );
-                                    widget.backend.updatePreferences(
-                                      widget.backend.preferences.copyWith(
-                                        roomPanelWidth: width,
-                                      ),
-                                    );
-                                  },
-                                  child: const SizedBox(
-                                    width: 5,
-                                    child: VerticalDivider(
-                                      width: 1,
-                                      color: Colors.transparent,
-                                    ),
-                                  ),
                                 ),
                               ),
                               Expanded(
@@ -900,6 +867,37 @@ class _ChatShellState extends State<ChatShell> {
                                         ),
                                 ),
                             ],
+                          ),
+                        ),
+                        // The resize target straddles the visual boundary. It
+                        // must not consume layout width: doing so shifted the
+                        // whole conversation and let the lower user panel
+                        // bleed five pixels into it.
+                        Positioned(
+                          left: navigationWidth - 2.5,
+                          top: 0,
+                          bottom: 0,
+                          width: 5,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.resizeColumn,
+                            child: GestureDetector(
+                              key: const Key('room-panel-resize-handle'),
+                              behavior: HitTestBehavior.opaque,
+                              onHorizontalDragUpdate: (details) {
+                                final width =
+                                    (widget.backend.preferences.roomPanelWidth +
+                                            details.delta.dx)
+                                        .clamp(
+                                          minimumRoomPanelWidth,
+                                          maximumRoomPanelWidth,
+                                        );
+                                widget.backend.updatePreferences(
+                                  widget.backend.preferences.copyWith(
+                                    roomPanelWidth: width,
+                                  ),
+                                );
+                              },
+                            ),
                           ),
                         ),
                         Positioned(

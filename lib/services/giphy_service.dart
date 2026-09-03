@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import '../version.dart';
 import 'bounded_http.dart';
 import 'public_network_address.dart';
+import 'private_file_store.dart';
 
 class GifSearchResult {
   const GifSearchResult({
@@ -168,15 +169,15 @@ class GiphyService {
     final nowFavorite = existing < 0;
     if (nowFavorite) {
       _favorites!.insert(0, gif);
+      if (_favorites!.length > 100) _favorites!.removeLast();
     } else {
       _favorites!.removeAt(existing);
     }
     final file = _favoritesFile;
     if (file != null) {
-      await file.parent.create(recursive: true);
-      await file.writeAsString(
+      await writePrivateTextFile(
+        file,
         jsonEncode(_favorites!.map((favorite) => favorite.toJson()).toList()),
-        flush: true,
       );
     }
     return nowFavorite;

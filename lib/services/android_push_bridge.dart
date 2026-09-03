@@ -248,6 +248,9 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
     'alertCadence':
         settings?.tryGet<String>('notification_alert_cadence') ??
         'fiveMinuteCooldown',
+    'unreadCount': room.isDirectChat
+        ? room.notificationCount
+        : room.highlightCount,
   };
 }
 

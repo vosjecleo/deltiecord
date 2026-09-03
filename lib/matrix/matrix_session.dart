@@ -560,6 +560,7 @@ extension _MatrixSession on MatrixBackend {
       if (_applicationForeground && Platform.isAndroid) {
         InAppNotificationCenter.show(
           InAppChatNotification(
+            roomId: room.id,
             title: room.isDirectChat
                 ? sender
                 : '$sender in ${room.getLocalizedDisplayname()}',
@@ -583,7 +584,7 @@ extension _MatrixSession on MatrixBackend {
             (cadence == NotificationAlertCadence.fiveMinuteCooldown &&
                 (previous == null ||
                     now.difference(previous) >= const Duration(minutes: 5)));
-        if (shouldAlert) {
+        if (shouldAlert && !Platform.isAndroid) {
           _lastForegroundAlertAt[room.id] = now;
           if (_preferences.notificationSound) {
             unawaited(AppSounds.notification());
@@ -606,6 +607,9 @@ extension _MatrixSession on MatrixBackend {
         sound: _preferences.notificationSound,
         vibrate: _preferences.notificationVibration,
         alertCadence: _preferences.notificationAlertCadence,
+        unreadCount: room.isDirectChat
+            ? room.notificationCount
+            : room.highlightCount,
       );
     }
   }
@@ -748,8 +752,17 @@ extension _MatrixSession on MatrixBackend {
       sharePresence: content?.tryGet<bool>('share_presence') ?? true,
       desktopIdleMinutes: (content?.tryGet<int>('desktop_idle_minutes') ?? 5)
           .clamp(1, 120),
-      fetchDirectLinkPreviews:
-          content?.tryGet<bool>('fetch_direct_link_previews') ?? false,
+      directLinkPreviewMode:
+          DirectLinkPreviewMode.values
+              .where(
+                (value) =>
+                    value.name ==
+                    content?.tryGet<String>('direct_link_preview_mode'),
+              )
+              .firstOrNull ??
+          ((content?.tryGet<bool>('fetch_direct_link_previews') ?? false)
+              ? DirectLinkPreviewMode.allPublicSites
+              : DirectLinkPreviewMode.none),
       improveTwitterLinks:
           content?.tryGet<bool>('improve_twitter_links') ?? true,
       accentColor: content?.tryGet<int>('accent_color') ?? 0xff6975d9,
@@ -800,15 +813,9 @@ extension _MatrixSession on MatrixBackend {
   }
 
   String _supportedInterfaceFont(String? stored) =>
-      const {
-        'System',
-        'Noto Sans',
-        'DejaVu Sans',
-        'Liberation Sans',
-        'monospace',
-      }.contains(stored)
+      const {'System', 'Noto Sans', 'DejaVu Sans', 'monospace'}.contains(stored)
       ? stored!
-      : 'Liberation Sans';
+      : 'System';
 
   Map<AppShortcutAction, String> _shortcutBindingsFrom(
     Map<String, Object?>? content,
@@ -828,8 +835,8 @@ extension _MatrixSession on MatrixBackend {
   Future<void> _updatePreferences(AppPreferences preferences) async {
     if (_matrix.userID == null) return;
     final previewPolicyChanged =
-        preferences.fetchDirectLinkPreviews !=
-            _preferences.fetchDirectLinkPreviews ||
+        preferences.directLinkPreviewMode !=
+            _preferences.directLinkPreviewMode ||
         preferences.improveTwitterLinks != _preferences.improveTwitterLinks;
     if (previewPolicyChanged) {
       // A previous homeserver-only miss must not suppress a newly opted-in
@@ -899,6 +906,7 @@ extension _MatrixSession on MatrixBackend {
           'share_presence': preferences.sharePresence,
           'desktop_idle_minutes': preferences.desktopIdleMinutes,
           'fetch_direct_link_previews': preferences.fetchDirectLinkPreviews,
+          'direct_link_preview_mode': preferences.directLinkPreviewMode.name,
           'improve_twitter_links': preferences.improveTwitterLinks,
           'accent_color': preferences.accentColor,
           'font_family': preferences.fontFamily,

@@ -6,6 +6,7 @@ import 'dart:typed_data';
 
 import 'package:html/dom.dart';
 import 'package:html/parser.dart' as html_parser;
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/chat_models.dart';
 import '../version.dart';
@@ -210,10 +211,16 @@ class DirectLinkPreviewFetcher {
   final int maximumDocumentBytes;
   final int maximumImageBytes;
 
-  Future<LinkPreview?> fetch(Uri initialUrl) async {
+  Future<LinkPreview?> fetch(
+    Uri initialUrl, {
+    bool Function(Uri uri)? allowUrl,
+  }) async {
     var url = initialUrl;
     for (var redirects = 0; redirects <= _maximumRedirects; redirects++) {
       _validateScheme(url);
+      if (allowUrl != null && !allowUrl(url)) {
+        throw const HttpException('Preview host is outside the allowed set.');
+      }
       final addresses = await _resolveHost(url.host).timeout(requestTimeout);
       if (addresses.isEmpty ||
           addresses.any((item) => !isPublicInternetAddress(item))) {
@@ -264,14 +271,14 @@ class DirectLinkPreviewFetcher {
         // description when an origin's image is unavailable or exceeds the
         // bounded media policy.
         try {
-          imageBytes = await _fetchImage(imageUrl);
+          imageBytes = await _fetchImage(imageUrl, allowUrl: allowUrl);
         } on Exception {
           imageBytes = null;
         }
       }
       if (metadata.videoUrl case final candidate?) {
         try {
-          videoUrl = await _validateVideo(candidate);
+          videoUrl = await _validateVideo(candidate, allowUrl: allowUrl);
         } on Exception {
           videoUrl = null;
         }
@@ -289,15 +296,67 @@ class DirectLinkPreviewFetcher {
         width: metadata.width,
         height: metadata.height,
       );
+      if (_isYouTubeUrl(initialUrl)) {
+        final youtube = await _resolveYouTube(
+          initialUrl,
+          preview,
+          allowUrl: allowUrl,
+        );
+        if (youtube != null) return youtube;
+      }
       return hasUsefulPreview(preview) ? preview : null;
     }
     return null;
   }
 
-  Future<Uint8List?> _fetchImage(Uri url) async {
+  Future<LinkPreview?> _resolveYouTube(
+    Uri url,
+    LinkPreview fallback, {
+    bool Function(Uri uri)? allowUrl,
+  }) async {
+    final client = YoutubeExplode();
+    try {
+      final video = await client.videos
+          .get(url.toString())
+          .timeout(requestTimeout);
+      final manifest = await client.videos.streams
+          .getManifest(video.id)
+          .timeout(requestTimeout);
+      if (manifest.muxed.isEmpty) return fallback;
+      final stream = manifest.muxed.withHighestBitrate();
+      final validated = await _validateVideo(stream.url, allowUrl: allowUrl);
+      if (validated == null) return fallback;
+      return LinkPreview(
+        url: url,
+        title: video.title.length <= 512
+            ? video.title
+            : video.title.substring(0, 512),
+        description: video.author,
+        siteName: 'YouTube',
+        imageBytes: fallback.imageBytes,
+        videoUrl: validated,
+        width: stream.videoResolution.width,
+        height: stream.videoResolution.height,
+      );
+    } catch (_) {
+      return fallback;
+    } finally {
+      client.close();
+    }
+  }
+
+  Future<Uint8List?> _fetchImage(
+    Uri url, {
+    bool Function(Uri uri)? allowUrl,
+  }) async {
     var current = url;
     for (var redirects = 0; redirects <= _maximumRedirects; redirects++) {
       _validateScheme(current);
+      if (allowUrl != null && !allowUrl(current)) {
+        throw const HttpException(
+          'Preview image host is outside the allowed set.',
+        );
+      }
       final addresses = await _resolveHost(
         current.host,
       ).timeout(requestTimeout);
@@ -345,10 +404,18 @@ class DirectLinkPreviewFetcher {
     return null;
   }
 
-  Future<Uri?> _validateVideo(Uri url) async {
+  Future<Uri?> _validateVideo(
+    Uri url, {
+    bool Function(Uri uri)? allowUrl,
+  }) async {
     var current = url;
     for (var redirects = 0; redirects <= _maximumRedirects; redirects++) {
       _validateScheme(current);
+      if (allowUrl != null && !allowUrl(current)) {
+        throw const HttpException(
+          'Preview video host is outside the allowed set.',
+        );
+      }
       final addresses = await _resolveHost(
         current.host,
       ).timeout(requestTimeout);
@@ -427,6 +494,15 @@ class DirectLinkPreviewFetcher {
     final normalized = type?.toLowerCase().split(';').first.trim();
     return normalized == 'text/html' || normalized == 'application/xhtml+xml';
   }
+}
+
+bool _isYouTubeUrl(Uri uri) {
+  final host = uri.host.toLowerCase();
+  return host == 'youtu.be' ||
+      host == 'youtube.com' ||
+      host.endsWith('.youtube.com') ||
+      host == 'youtube-nocookie.com' ||
+      host.endsWith('.youtube-nocookie.com');
 }
 
 class _DocumentMetadata {

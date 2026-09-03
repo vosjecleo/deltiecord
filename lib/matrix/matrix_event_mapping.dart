@@ -114,9 +114,35 @@ extension _MatrixEventMapping on MatrixBackend {
             poll: poll,
             bookmarked: _bookmarkedEventIds.contains(event.eventId),
             pinned: event.room.pinnedEventIds.contains(event.eventId),
+            pingedCurrentUser: _eventPingsCurrentUser(
+              event,
+              displayEvent,
+              timeline,
+            ),
           );
         })
         .toList(growable: false);
+  }
+
+  bool _eventPingsCurrentUser(Event source, Event display, Timeline timeline) {
+    final userId = _matrix.userID;
+    if (userId == null || source.senderId == userId) return false;
+    final mentions = display.content.tryGetMap<String, Object?>('m.mentions');
+    final userIds = mentions?.tryGetList<String>('user_ids') ?? const [];
+    if (userIds.contains(userId) || mentions?.tryGet<bool>('room') == true) {
+      return true;
+    }
+    final relatesTo = display.content.tryGetMap<String, Object?>(
+      'm.relates_to',
+    );
+    final repliedEventId = relatesTo
+        ?.tryGetMap<String, Object?>('m.in_reply_to')
+        ?.tryGet<String>('event_id');
+    if (repliedEventId == null) return false;
+    final replied = timeline.events
+        .where((candidate) => candidate.eventId == repliedEventId)
+        .firstOrNull;
+    return replied?.senderId == userId;
   }
 
   List<ReceiptReaderSummary> _readersFor(Event event, Timeline timeline) {

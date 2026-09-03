@@ -104,13 +104,29 @@ extension _MatrixLinkPreviews on MatrixBackend {
       );
     }
 
-    if (result == null &&
-        LinkPreviewNetworkPolicy.allowsDirectFallback(
-          _preferences.fetchDirectLinkPreviews,
-        )) {
+    final directAllowed = LinkPreviewNetworkPolicy.allowsDirectFallback(
+      _preferences.directLinkPreviewMode,
+      requestUrl,
+    );
+    // A homeserver can return useful OpenGraph text while omitting a playable
+    // provider stream. In an explicitly allowed direct mode, enrich that card
+    // after the homeserver request rather than treating partial metadata as a
+    // reason to permanently skip provider resolution.
+    if (directAllowed && (result == null || result.videoUrl == null)) {
       try {
-        final fetched = await _directPreviewFetcher.fetch(requestUrl);
-        if (fetched != null) result = _previewAtOriginalUrl(fetched, original);
+        final trustedOnly =
+            _preferences.directLinkPreviewMode ==
+            DirectLinkPreviewMode.trustedProviders;
+        final fetched = await _directPreviewFetcher.fetch(
+          requestUrl,
+          allowUrl: trustedOnly
+              ? LinkPreviewNetworkPolicy.isTrustedProviderUrl
+              : null,
+        );
+        if (fetched != null) {
+          final direct = _previewAtOriginalUrl(fetched, original);
+          result = result == null ? direct : _mergePreview(result, direct);
+        }
       } catch (exception) {
         developer.log(
           'Opt-in direct URL preview failed (${exception.runtimeType}).',
@@ -138,6 +154,18 @@ extension _MatrixLinkPreviews on MatrixBackend {
         videoUrl: preview.videoUrl,
         width: preview.width,
         height: preview.height,
+      );
+
+  LinkPreview _mergePreview(LinkPreview homeserver, LinkPreview direct) =>
+      LinkPreview(
+        url: homeserver.url,
+        title: homeserver.title ?? direct.title,
+        description: homeserver.description ?? direct.description,
+        siteName: homeserver.siteName ?? direct.siteName,
+        imageBytes: homeserver.imageBytes ?? direct.imageBytes,
+        videoUrl: homeserver.videoUrl ?? direct.videoUrl,
+        width: direct.width ?? homeserver.width,
+        height: direct.height ?? homeserver.height,
       );
 
   int? _previewPropertyInt(Map<String, Object?> properties, List<String> keys) {

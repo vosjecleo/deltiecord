@@ -12,6 +12,7 @@ import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/emoji_completion.dart';
 import '../../services/emoji_repository.dart';
+import '../../services/favourite_reactions_store.dart';
 import '../../services/giphy_service.dart';
 import '../deltiecord_theme.dart';
 import '../advanced_chat_dialogs.dart';
@@ -480,7 +481,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
         leading: IconButton(
           key: const ValueKey('mobile-open-navigation'),
           onPressed: widget.onOpenNavigation,
-          icon: const Icon(Icons.menu),
+          icon: MobileAttentionBadge(
+            count: backend.totalAttentionCount,
+            child: const Icon(Icons.menu),
+          ),
         ),
         titleSpacing: 0,
         title: InkWell(
@@ -636,7 +640,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             controller: _scroll,
                             reverse: true,
                             physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 22),
+                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 29),
                             itemCount:
                                 messages.length +
                                 ((backend.canLoadMoreHistory ||
@@ -1232,8 +1236,22 @@ class _MobileMessageRow extends StatelessWidget {
       ),
       child: InkWell(
         onLongPress: () => _showActions(context),
-        child: ColoredBox(
-          color: highlighted ? context.deltiecord.hover : Colors.transparent,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: message.pingedCurrentUser
+                ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.11)
+                : highlighted
+                ? context.deltiecord.hover
+                : Colors.transparent,
+            border: message.pingedCurrentUser
+                ? Border(
+                    left: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 3,
+                    ),
+                  )
+                : null,
+          ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             child: Row(
@@ -1869,7 +1887,9 @@ class _MobileComposerState extends State<_MobileComposer> {
                             hintText: 'Message',
                             border: InputBorder.none,
                             filled: false,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 6),
+                            // 8 margin + 42 add control + 12 inset = the same
+                            // 62px text column used by timeline messages.
+                            contentPadding: EdgeInsets.only(left: 12, right: 4),
                           ),
                         ),
                       ),
@@ -2089,6 +2109,9 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
     super.initState();
     _query.addListener(_search);
     _search();
+    FavouriteReactionsStore.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _search() async {
@@ -2119,6 +2142,10 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
     for (final entry in visible) {
       (grouped[entry.category] ??= []).add(entry);
     }
+    final favourites = FavouriteReactionsStore.instance.emoji;
+    final favouriteEntries = _results
+        .where((entry) => favourites.contains(entry.emoji))
+        .toList(growable: false);
     return FractionallySizedBox(
       heightFactor: 0.72,
       child: Padding(
@@ -2158,6 +2185,20 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
             Expanded(
               child: CustomScrollView(
                 slivers: [
+                  if (_selectedCategory == null &&
+                      _query.text.trim().isEmpty &&
+                      favouriteEntries.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                        child: Text(
+                          'Favourites',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                    ),
+                    _mobileEmojiGrid(favouriteEntries),
+                  ],
                   for (final category in EmojiCategory.values)
                     if (grouped[category] case final entries?) ...[
                       SliverToBoxAdapter(
@@ -2169,26 +2210,7 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
                           ),
                         ),
                       ),
-                      SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 52,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final entry = entries[index];
-                          return IconButton(
-                            key: ValueKey('mobile-emoji-picker-${entry.emoji}'),
-                            tooltip:
-                                '${entry.name}  :${entry.aliases.firstOrNull ?? entry.name}:',
-                            onPressed: () =>
-                                Navigator.pop(context, entry.emoji),
-                            icon: Text(
-                              entry.emoji,
-                              style: const TextStyle(fontSize: 27),
-                            ),
-                          );
-                        }, childCount: entries.length),
-                      ),
+                      _mobileEmojiGrid(entries),
                     ],
                 ],
               ),
@@ -2198,6 +2220,39 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
       ),
     );
   }
+
+  SliverGrid _mobileEmojiGrid(List<EmojiEntry> entries) => SliverGrid(
+    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 52,
+    ),
+    delegate: SliverChildBuilderDelegate((context, index) {
+      final entry = entries[index];
+      final favourite = FavouriteReactionsStore.instance.isEmojiFavourite(
+        entry.emoji,
+      );
+      return InkWell(
+        key: ValueKey('mobile-emoji-picker-${entry.emoji}'),
+        onTap: () => Navigator.pop(context, entry.emoji),
+        onLongPress: () async {
+          await FavouriteReactionsStore.instance.toggleEmoji(entry.emoji);
+          if (mounted) setState(() {});
+        },
+        child: Stack(
+          children: [
+            Center(
+              child: Text(entry.emoji, style: const TextStyle(fontSize: 27)),
+            ),
+            if (favourite)
+              const Positioned(
+                right: 2,
+                top: 2,
+                child: Icon(Icons.star, size: 11),
+              ),
+          ],
+        ),
+      );
+    }, childCount: entries.length),
+  );
 }
 
 IconData _mobileEmojiCategoryIcon(EmojiCategory category) => switch (category) {
@@ -2245,11 +2300,16 @@ class _MobileGifPicker extends StatefulWidget {
 class _MobileGifPickerState extends State<_MobileGifPicker> {
   Timer? _debounce;
   Future<List<GifSearchResult>>? _results;
+  List<GifSearchResult> _favourites = const [];
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     _results = widget.service.trending();
+    widget.service.favorites().then((value) {
+      if (mounted) setState(() => _favourites = value);
+    });
   }
 
   @override
@@ -2272,13 +2332,14 @@ class _MobileGifPickerState extends State<_MobileGifPicker> {
               hintText: 'Search GIFs',
             ),
             onChanged: (query) {
+              _query = query.trim();
               _debounce?.cancel();
               _debounce = Timer(const Duration(milliseconds: 300), () {
                 if (mounted) {
                   setState(() {
-                    _results = query.trim().isEmpty
+                    _results = _query.isEmpty
                         ? widget.service.trending()
-                        : widget.service.search(query.trim());
+                        : widget.service.search(_query);
                   });
                 }
               });
@@ -2292,10 +2353,20 @@ class _MobileGifPickerState extends State<_MobileGifPicker> {
                 if (snapshot.hasError) {
                   return const Center(child: Text('GIF search unavailable'));
                 }
-                final results = snapshot.data;
-                if (results == null) {
+                final loaded = snapshot.data;
+                if (loaded == null) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                final results = _query.isEmpty
+                    ? [
+                        ..._favourites,
+                        ...loaded.where(
+                          (gif) => !_favourites.any(
+                            (favorite) => favorite.shareUrl == gif.shareUrl,
+                          ),
+                        ),
+                      ]
+                    : loaded;
                 return GridView.builder(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
@@ -2303,13 +2374,38 @@ class _MobileGifPickerState extends State<_MobileGifPicker> {
                     crossAxisSpacing: 6,
                   ),
                   itemCount: results.length,
-                  itemBuilder: (context, index) => InkWell(
-                    onTap: () => Navigator.pop(context, results[index]),
-                    child: Image.network(
-                      results[index].previewUrl.toString(),
-                      fit: BoxFit.cover,
-                    ),
-                  ),
+                  itemBuilder: (context, index) {
+                    final gif = results[index];
+                    final favourite = widget.service.isFavorite(gif);
+                    return InkWell(
+                      onTap: () => Navigator.pop(context, gif),
+                      onLongPress: () => _toggleFavourite(gif),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Image.network(
+                            gif.previewUrl.toString(),
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: IconButton.filledTonal(
+                              tooltip: favourite
+                                  ? 'Remove from favourites'
+                                  : 'Add to favourites',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _toggleFavourite(gif),
+                              icon: Icon(
+                                favourite ? Icons.star : Icons.star_border,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 );
               },
             ),
@@ -2318,4 +2414,10 @@ class _MobileGifPickerState extends State<_MobileGifPicker> {
       ),
     ),
   );
+
+  Future<void> _toggleFavourite(GifSearchResult gif) async {
+    await widget.service.toggleFavorite(gif);
+    final favourites = await widget.service.favorites();
+    if (mounted) setState(() => _favourites = favourites);
+  }
 }

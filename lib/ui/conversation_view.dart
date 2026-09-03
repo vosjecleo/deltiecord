@@ -871,7 +871,7 @@ class _ConversationState extends State<_Conversation> {
                                       0,
                                       10,
                                       0,
-                                      22,
+                                      29,
                                     ),
                                     itemCount:
                                         messages.length +

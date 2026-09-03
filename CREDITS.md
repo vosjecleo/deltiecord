@@ -42,6 +42,9 @@ dependency under its own license.
   Licensed under MIT.
 - [media_kit](https://github.com/media-kit/media-kit) provides inline and
   full-window audio/video playback. Licensed under MIT.
+- [youtube_explode_dart](https://github.com/Hexer10/youtube_explode_dart)
+  resolves playable YouTube streams only for the user's opted-in direct
+  preview modes. Licensed under MIT.
 - [super_clipboard](https://github.com/superlistapp/super_native_extensions)
   and [super_drag_and_drop](https://github.com/superlistapp/super_native_extensions)
   provide desktop clipboard image access and native file drag/drop. Licensed
@@ -66,9 +69,12 @@ dependency under its own license.
 - [Jome](https://github.com/eepp/jome) supplies the local Unicode emoji name
   and keyword dataset used for offline emoji search and colon completion.
   Deltiecord vendors only `emojis.json`; Jome is MIT licensed.
-- Liberation Sans is bundled as Deltiecord's portable interface font under the
-  SIL Open Font License. Colour emoji are supplied by the operating system;
-  release packages no longer include an unreliable duplicate emoji font.
+- Interface text and colour emoji use platform fonts; release packages no
+  longer bundle font files that behaved inconsistently across renderers.
+- Desktop notification and call cues use `#8.wav` from HaelDB's
+  [UI Sounds](https://opengameart.org/content/ui-sounds-0) collection, released
+  under CC0. Notification and call asset slots remain separate so either cue
+  can be replaced independently in a future sound pass.
 
 Additional Dart and Flutter packages are declared in `pubspec.yaml` and retain
 their upstream copyright notices and licenses.

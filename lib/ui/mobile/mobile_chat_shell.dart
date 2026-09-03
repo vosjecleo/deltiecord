@@ -25,7 +25,8 @@ class MobileChatShell extends StatefulWidget {
   State<MobileChatShell> createState() => _MobileChatShellState();
 }
 
-class _MobileChatShellState extends State<MobileChatShell> {
+class _MobileChatShellState extends State<MobileChatShell>
+    with WidgetsBindingObserver {
   bool _navigationVisible = true;
   bool _detailsVisible = false;
   final Map<String, String> _drafts = {};
@@ -43,6 +44,7 @@ class _MobileChatShellState extends State<MobileChatShell> {
   void initState() {
     super.initState();
     _lastRoomId = backend.selectedRoom?.id;
+    WidgetsBinding.instance.addObserver(this);
     backend.addListener(_backendChanged);
     unawaited(_restoreDrafts());
   }
@@ -77,10 +79,27 @@ class _MobileChatShellState extends State<MobileChatShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     backend.setConversationVisible(false);
     backend.removeListener(_backendChanged);
     unawaited(_draftStore.dispose());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    // Pointer streams can be interrupted when Android freezes the activity.
+    // Keep durable navigation state, but discard only transient gesture state
+    // so an orphaned pointer cannot leave the Space rail non-interactive.
+    _pointerStarts.clear();
+    if (_navigationDragProgress == null && _dragStartedWithNavigation == null) {
+      return;
+    }
+    setState(() {
+      _navigationDragProgress = null;
+      _dragStartedWithNavigation = null;
+    });
   }
 
   Future<void> _openRoom(RoomSummary room) async {

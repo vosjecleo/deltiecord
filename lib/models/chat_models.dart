@@ -14,6 +14,10 @@ enum DeltiecordThemeMode { light, dark, oled }
 
 enum NotificationAlertCadence { fiveMinuteCooldown, everyMessage, silent }
 
+/// Controls the privacy-sensitive fallback from Matrix URL previews to
+/// contacting the linked origin from this device.
+enum DirectLinkPreviewMode { none, trustedProviders, allPublicSites }
+
 enum RoomNotificationMode { allMessages, mentionsOnly, muted }
 
 enum PresenceMode { online, idle, doNotDisturb, invisible }
@@ -65,10 +69,10 @@ class AppPreferences {
     this.sendTypingNotifications = true,
     this.sharePresence = true,
     this.desktopIdleMinutes = 5,
-    this.fetchDirectLinkPreviews = false,
+    this.directLinkPreviewMode = DirectLinkPreviewMode.none,
     this.improveTwitterLinks = true,
     this.accentColor = 0xff6975d9,
-    this.fontFamily = 'Liberation Sans',
+    this.fontFamily = 'System',
     this.emojiFontFamily = systemEmojiFontFamily,
     this.showNativeTitleBar = true,
     this.rememberWindowState = true,
@@ -115,7 +119,11 @@ class AppPreferences {
   ///
   /// Homeserver-generated Matrix previews remain enabled regardless. New
   /// installations deliberately default this to false.
-  final bool fetchDirectLinkPreviews;
+  final DirectLinkPreviewMode directLinkPreviewMode;
+
+  /// Compatibility view for older call sites and stored settings.
+  bool get fetchDirectLinkPreviews =>
+      directLinkPreviewMode != DirectLinkPreviewMode.none;
   final bool improveTwitterLinks;
   final int accentColor;
   final String fontFamily;
@@ -160,6 +168,7 @@ class AppPreferences {
     bool? sendTypingNotifications,
     bool? sharePresence,
     int? desktopIdleMinutes,
+    DirectLinkPreviewMode? directLinkPreviewMode,
     bool? fetchDirectLinkPreviews,
     bool? improveTwitterLinks,
     int? accentColor,
@@ -206,8 +215,13 @@ class AppPreferences {
         sendTypingNotifications ?? this.sendTypingNotifications,
     sharePresence: sharePresence ?? this.sharePresence,
     desktopIdleMinutes: desktopIdleMinutes ?? this.desktopIdleMinutes,
-    fetchDirectLinkPreviews:
-        fetchDirectLinkPreviews ?? this.fetchDirectLinkPreviews,
+    directLinkPreviewMode:
+        directLinkPreviewMode ??
+        (fetchDirectLinkPreviews == null
+            ? this.directLinkPreviewMode
+            : fetchDirectLinkPreviews
+            ? DirectLinkPreviewMode.allPublicSites
+            : DirectLinkPreviewMode.none),
     improveTwitterLinks: improveTwitterLinks ?? this.improveTwitterLinks,
     accentColor: accentColor ?? this.accentColor,
     fontFamily: fontFamily ?? this.fontFamily,
@@ -476,6 +490,7 @@ class RoomSummary {
     required this.name,
     required this.lastMessage,
     required this.unreadCount,
+    this.highlightCount = 0,
     required this.usesChannelIcon,
     this.presentation = RoomPresentation.text,
     this.voiceParticipants = const [],
@@ -493,6 +508,7 @@ class RoomSummary {
   final String name;
   final String lastMessage;
   final int unreadCount;
+  final int highlightCount;
   final bool usesChannelIcon;
   final RoomPresentation presentation;
   final List<VoiceParticipantSummary> voiceParticipants;
@@ -541,6 +557,7 @@ class ChatMessage {
     this.poll,
     this.bookmarked = false,
     this.pinned = false,
+    this.pingedCurrentUser = false,
   });
 
   final String id;
@@ -574,6 +591,7 @@ class ChatMessage {
   final PollSummary? poll;
   final bool bookmarked;
   final bool pinned;
+  final bool pingedCurrentUser;
 }
 
 class PollSummary {
@@ -694,6 +712,25 @@ class StickerSummary {
   final int? width;
   final int? height;
   final Uint8List? previewBytes;
+}
+
+class StickerPackDraft {
+  const StickerPackDraft({required this.name, required this.stickers});
+
+  final String name;
+  final List<StickerDraftItem> stickers;
+}
+
+class StickerDraftItem {
+  const StickerDraftItem({
+    required this.shortcode,
+    required this.bytes,
+    required this.mimeType,
+  });
+
+  final String shortcode;
+  final Uint8List bytes;
+  final String mimeType;
 }
 
 class SpacePagesSummary {

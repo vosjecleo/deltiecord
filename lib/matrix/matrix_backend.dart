@@ -113,6 +113,7 @@ class MatrixBackend extends ChatBackend {
   final Map<String, String> _decryptedPreviews = {};
   final Map<String, ReplyPreview> _replyPreviews = {};
   final Map<String, List<LinkPreview>> _linkPreviews = {};
+  final Set<String> _hydratedPollResponseIds = {};
   final LinkPreviewCache _linkPreviewUrlCache = LinkPreviewCache();
   Timer? _profileRefreshTimer;
   bool _profileRefreshRunning = false;
@@ -229,6 +230,8 @@ class MatrixBackend extends ChatBackend {
   bool get profileLoading => _profileLoading;
   @override
   int get profileRevision => _profileRevision;
+  @override
+  bool get shouldShowFirstRunTour => true;
   @override
   AppPreferences get preferences => _preferences;
   @override
@@ -454,6 +457,23 @@ class MatrixBackend extends ChatBackend {
     return visible.map(_roomSummary).toList(growable: false);
   }
 
+  @override
+  int get directUnreadCount => _homeRooms
+      .where((room) => room.isDirectChat)
+      .fold(0, (sum, room) => sum + room.notificationCount);
+
+  @override
+  int get serverPingCount => _joinedRooms
+      .where((room) => !room.isSpace && !room.isDirectChat)
+      .fold(0, (sum, room) => sum + room.highlightCount);
+
+  @override
+  int get totalAttentionCount => directUnreadCount + serverPingCount;
+
+  @override
+  int pingCountForSpace(String spaceId) =>
+      _roomsForSpace(spaceId).fold(0, (sum, room) => sum + room.highlightCount);
+
   List<Room> get _joinedRooms =>
       _client?.rooms
           .where((room) => room.membership == Membership.join)
@@ -544,6 +564,15 @@ class MatrixBackend extends ChatBackend {
       unawaited(_restoreUnifiedPushPusher());
     }
     if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
+  }
+
+  @override
+  void refreshApplicationState() {
+    // Account-data settings are applied by the authoritative /sync listener.
+    // Re-reading the SDK cache on resume can resurrect the value from before
+    // a recent write and make theme changes appear stuck until restart.
+    if (Platform.isAndroid) unawaited(_restoreUnifiedPushPusher());
+    _notifyBackendListeners();
   }
 
   @override
@@ -1017,6 +1046,10 @@ class MatrixBackend extends ChatBackend {
   Future<void> refreshStickerPacks() => _refreshStickerPacks();
 
   @override
+  Future<void> savePersonalStickerPack(StickerPackDraft pack) =>
+      _savePersonalStickerPack(pack);
+
+  @override
   Future<void> setPresenceMode(PresenceMode mode) => _setPresenceMode(mode);
 
   @override
@@ -1087,6 +1120,7 @@ class MatrixBackend extends ChatBackend {
     _timelineServerExhausted = false;
     _replyPreviews.clear();
     _linkPreviews.clear();
+    _hydratedPollResponseIds.clear();
     _mediaPlaybackSources.clear();
     _mediaPlaybackReferences.clear();
     _mediaRangeProxy.clear();

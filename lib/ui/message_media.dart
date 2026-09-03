@@ -829,7 +829,9 @@ class _AttachmentViewState extends State<_AttachmentView> {
               child: _PreferenceAwareImage(
                 bytes: bytes,
                 animated: widget.attachment.animated,
-                autoplay: widget.backend.preferences.autoplayGifs,
+                autoplay:
+                    widget.backend.preferences.autoplayGifs &&
+                    !widget.backend.preferences.reducedMotion,
               ),
             ),
           ),

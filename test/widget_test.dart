@@ -63,11 +63,12 @@ void main() {
     expect(find.text('Settings'), findsOneWidget);
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Accessibility'), findsOneWidget);
-    expect(find.text('Advanced', skipOffstage: false), findsOneWidget);
+    expect(find.text('About', skipOffstage: false), findsOneWidget);
+    expect(find.text('Advanced', skipOffstage: false), findsNothing);
     expect(find.text('@deltie:example.org'), findsWidgets);
   });
 
-  testWidgets('appearance exposes themes, scaling, density, and exact colour', (
+  testWidgets('appearance exposes themes, scaling, and exact colour', (
     tester,
   ) async {
     final backend = FakeBackend()..currentStatus = SessionStatus.signedIn;
@@ -82,7 +83,7 @@ void main() {
     expect(find.text('Dark'), findsOneWidget);
     expect(find.text('OLED'), findsOneWidget);
     expect(find.byKey(const Key('interface-scale-slider')), findsOneWidget);
-    expect(find.byKey(const Key('compactness-slider')), findsOneWidget);
+    expect(find.byKey(const Key('compactness-slider')), findsNothing);
     final colourWheelButton = find.textContaining('Open colour wheel');
     await tester.ensureVisible(colourWheelButton);
     await tester.pumpAndSettle();
@@ -110,9 +111,15 @@ void main() {
 
     expect(backend.preferences.fetchDirectLinkPreviews, isFalse);
     expect(find.textContaining('may expose your IP address'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('direct-link-previews-toggle')));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('direct-link-preview-mode')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Known providers only').last);
+    await tester.pumpAndSettle();
     expect(backend.preferences.fetchDirectLinkPreviews, isTrue);
+    expect(
+      backend.preferences.directLinkPreviewMode,
+      DirectLinkPreviewMode.trustedProviders,
+    );
   });
 
   testWidgets('profile editor updates its preview before saving', (
@@ -1702,7 +1709,10 @@ void main() {
       composerTop,
     );
     final indicator = tester.widget<AnimatedOpacity>(
-      find.byKey(const Key('typing-indicator')),
+      find.descendant(
+        of: find.byKey(const Key('typing-indicator')),
+        matching: find.byType(AnimatedOpacity),
+      ),
     );
     expect(indicator.opacity, 1);
   });

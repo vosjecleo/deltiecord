@@ -55,29 +55,41 @@ class _TypingIndicatorState extends State<TypingIndicator>
   @override
   Widget build(BuildContext context) {
     final visible = widget.names.isNotEmpty;
+    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    if (reducedMotion && _controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 1;
+    } else if (!reducedMotion && visible && !_controller.isAnimating) {
+      _controller.repeat();
+    }
     return Semantics(
       label: visible ? typingLabel(widget.names) : null,
       child: IgnorePointer(
-        child: AnimatedOpacity(
+        child: SizedBox(
           key: const Key('typing-indicator'),
-          duration: const Duration(milliseconds: 120),
-          opacity: visible ? 1 : 0,
-          child: SizedBox(
-            height: 26,
-            child: DecoratedBox(
-              key: const Key('typing-indicator-gradient'),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0, 0.55, 1],
-                  colors: [
-                    context.deltiecord.background.withValues(alpha: 0),
-                    context.deltiecord.background.withValues(alpha: 0.2),
-                    context.deltiecord.background.withValues(alpha: 0.78),
-                  ],
-                ),
-              ),
+          height: 28,
+          child: DecoratedBox(
+            key: const Key('typing-indicator-gradient'),
+            decoration: BoxDecoration(
+              color: visible ? context.deltiecord.background : null,
+              gradient: visible
+                  ? null
+                  : LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0, 0.62, 0.92],
+                      colors: [
+                        context.deltiecord.background.withValues(alpha: 0),
+                        context.deltiecord.background.withValues(alpha: 0.72),
+                        context.deltiecord.background,
+                      ],
+                    ),
+            ),
+            child: AnimatedOpacity(
+              duration: reducedMotion
+                  ? Duration.zero
+                  : const Duration(milliseconds: 120),
+              opacity: visible ? 1 : 0,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(8, 5, 8, 1),
                 child: Row(

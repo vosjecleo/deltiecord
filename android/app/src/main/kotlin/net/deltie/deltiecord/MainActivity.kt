@@ -173,6 +173,15 @@ class MainActivity : FlutterActivity() {
                     DeltiecordNotificationPublisher.clearPrivateState(this)
                     result.success(null)
                 }
+                "clearRoom" -> {
+                    val roomId = call.argument<String>("roomId")
+                    if (roomId.isNullOrBlank()) {
+                        result.error("invalid_room", "Missing room identifier.", null)
+                    } else {
+                        DeltiecordNotificationPublisher.clearRoom(this, roomId)
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }
@@ -219,6 +228,7 @@ class MainActivity : FlutterActivity() {
         val eventId = intent?.getStringExtra("notification_event_id")
         if (roomId.isNullOrBlank() || eventId.isNullOrBlank()) return null
         if (clear) {
+            DeltiecordNotificationPublisher.clearRoom(this, roomId)
             intent.removeExtra("notification_room_id")
             intent.removeExtra("notification_event_id")
         }

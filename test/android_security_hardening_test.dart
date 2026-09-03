@@ -63,6 +63,9 @@ void main() {
       expect(replyStore, contains('context.noBackupFilesDir'));
       expect(replyStore, contains('MAX_AGE_MS'));
       expect(publisher, contains('HISTORY_DIRECTORY'));
+      expect(publisher, contains('data.unreadCount.coerceIn'));
+      expect(publisher, contains('while (history.size > retainCount)'));
+      expect(publisher, contains('manager(context).cancel(roomId, 9001)'));
       expect(publisher, isNot(contains('deltiecord_notification_history')));
       expect(dartResolver, contains('declaredSize == null'));
       expect(dartResolver, contains('width * height > 8000000'));

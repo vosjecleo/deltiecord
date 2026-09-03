@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.26 build 80, latest preview**
+> **Current release: version 0.9.26 build 81, stable and latest**
 >
-> Deltiecord is available for desktop and Android. Build 80 hardens private
-> local state and Android notifications, removes the unused bundled emoji font,
-> and unifies room search with bounded media/history discovery.
+> Deltiecord is available for desktop and Android. Build 81 adds first-run
+> guidance, preview privacy levels, notification/unread corrections, structured
+> ping badges, favourites, sticker-pack import, and poll-vote refreshes.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -130,8 +130,7 @@ Notable features include:
 - Clipboard image/file support
 - Configurable keyboard shortcuts
 - Multiple UI density and appearance settings
-- Bundled Liberation Sans text with platform-native colour emoji fallback
-  font choices
+- Platform-native text and colour emoji fonts
 - Custom profile theming
 
 Deltiecord now includes a dedicated Android phone interface. It reuses the same
@@ -261,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.26 build 80, latest preview**
+**Current release: v0.9.26 build 81, stable and latest**

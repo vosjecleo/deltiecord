@@ -332,7 +332,9 @@ extension _MatrixProfiles on MatrixBackend {
     bio: profile.bio,
     pronouns: profile.pronouns,
     timezone: profile.timezone,
-    statusMessage: statusMessage,
+    // Some homeservers omit status_msg on otherwise valid presence updates.
+    // Absence means "unchanged", not "clear the cached profile status".
+    statusMessage: statusMessage ?? profile.statusMessage,
     profileColor: profile.profileColor,
     profileColorSecondary: profile.profileColorSecondary,
     voiceColor: profile.voiceColor,

@@ -25,12 +25,21 @@ abstract class ChatBackend extends ChangeNotifier {
   /// Profile surfaces use this to replace their resolved Future without
   /// coupling widgets to Matrix streams or polling independently.
   int get profileRevision => 0;
+  bool get shouldShowFirstRunTour => false;
   AppPreferences get preferences;
   EncryptionSetupState get encryptionSetup;
   List<SpaceSummary> get spaces;
   List<ChannelCategorySummary> get selectedSpaceCategories;
   String? get selectedSpaceId;
   List<RoomSummary> get rooms;
+  int get directUnreadCount => rooms
+      .where((room) => room.isDirect)
+      .fold(0, (sum, room) => sum + room.unreadCount);
+  int get serverPingCount => rooms
+      .where((room) => !room.isDirect)
+      .fold(0, (sum, room) => sum + room.highlightCount);
+  int get totalAttentionCount => directUnreadCount + serverPingCount;
+  int pingCountForSpace(String spaceId) => 0;
   RoomSummary? get selectedRoom;
   bool get selectedRoomMuted;
   RoomNotificationMode get selectedRoomNotificationMode => selectedRoomMuted
@@ -81,6 +90,10 @@ abstract class ChatBackend extends ChangeNotifier {
   /// Matrix read markers must not advance merely because a background sync
   /// updated the selected room.
   void setApplicationForeground(bool foreground) {}
+
+  /// Reconciles authoritative settings and lightweight transient state after
+  /// an application resume without rebuilding the Matrix session/timelines.
+  void refreshApplicationState() {}
 
   /// Publishes this desktop device's best-effort active/idle lease.
   ///
@@ -292,6 +305,8 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> sendSticker(StickerSummary sticker, {String? roomId}) async =>
       throw UnsupportedError('Stickers are unavailable');
   Future<void> refreshStickerPacks() async {}
+  Future<void> savePersonalStickerPack(StickerPackDraft pack) async =>
+      throw UnsupportedError('Sticker-pack editing is unavailable');
   Future<void> setPresenceMode(PresenceMode mode) async {}
   Future<SpacePagesSummary> getSpacePages(String spaceId) async =>
       const SpacePagesSummary();

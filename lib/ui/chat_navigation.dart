@@ -499,7 +499,10 @@ class _SpaceBar extends StatelessWidget {
                   tooltip: 'Home',
                   selected: backend.selectedSpaceId == null,
                   onTap: () => backend.selectSpace(null),
-                  child: const Icon(Icons.home_filled, size: 21),
+                  child: _NavigationAttentionBadge(
+                    count: backend.directUnreadCount,
+                    child: const Icon(Icons.home_filled, size: 21),
+                  ),
                 ),
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 7, vertical: 5),
@@ -523,23 +526,26 @@ class _SpaceBar extends StatelessWidget {
                         space,
                         details.globalPosition,
                       ),
-                      child: space.avatarBytes == null
-                          ? Text(
-                              _initials(space.name),
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              style: const TextStyle(
-                                fontSize: DeltiecordTypeScale.normal,
-                                fontWeight: FontWeight.w700,
+                      child: _NavigationAttentionBadge(
+                        count: backend.pingCountForSpace(space.id),
+                        child: space.avatarBytes == null
+                            ? Text(
+                                _initials(space.name),
+                                maxLines: 1,
+                                overflow: TextOverflow.clip,
+                                style: const TextStyle(
+                                  fontSize: DeltiecordTypeScale.normal,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
+                            : Image.memory(
+                                space.avatarBytes!,
+                                width: double.infinity,
+                                height: double.infinity,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
                               ),
-                            )
-                          : Image.memory(
-                              space.avatarBytes!,
-                              width: double.infinity,
-                              height: double.infinity,
-                              fit: BoxFit.cover,
-                              gaplessPlayback: true,
-                            ),
+                      ),
                     ),
                   ),
                 Padding(
@@ -713,6 +719,22 @@ class _SpaceSearchDialogState extends State<_SpaceSearchDialog> {
         child: const Text('Close'),
       ),
     ],
+  );
+}
+
+class _NavigationAttentionBadge extends StatelessWidget {
+  const _NavigationAttentionBadge({required this.count, required this.child});
+
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Badge.count(
+    count: count.clamp(0, 999),
+    isLabelVisible: count > 0,
+    backgroundColor: Theme.of(context).colorScheme.primary,
+    textColor: Theme.of(context).colorScheme.onPrimary,
+    child: child,
   );
 }
 

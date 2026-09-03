@@ -1,12 +1,13 @@
 name: deltiecord
 description: A lightweight Matrix client with an old-school desktop focus.
 publish_to: none
-version: 0.9.26+80
+version: 0.9.26+81
 
 environment:
   sdk: ^3.12.0
 
 dependencies:
+  archive: ^4.0.9
   crypto: ^3.0.7
   file_picker: ^11.0.2
   flutter:
@@ -39,6 +40,7 @@ dependencies:
   super_clipboard: ^0.9.1
   super_drag_and_drop: ^0.9.1
   timezone: ^0.11.1
+  youtube_explode_dart: ^3.1.0
 
 dev_dependencies:
   flutter_test:
@@ -51,15 +53,3 @@ flutter:
     - assets/emoji/emojis.json
     - assets/emoji/aliases.json
     - assets/audio/
-    - assets/fonts/licenses/Liberation-LICENSE.txt
-  fonts:
-    - family: Liberation Sans
-      fonts:
-        - asset: assets/fonts/LiberationSans-Regular.ttf
-        - asset: assets/fonts/LiberationSans-Bold.ttf
-          weight: 700
-        - asset: assets/fonts/LiberationSans-Italic.ttf
-          style: italic
-        - asset: assets/fonts/LiberationSans-BoldItalic.ttf
-          weight: 700
-          style: italic

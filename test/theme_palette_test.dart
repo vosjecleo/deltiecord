@@ -25,7 +25,7 @@ void main() {
   test('new installs start at half compactness', () {
     const preferences = AppPreferences();
     expect(preferences.compactness, 0.5);
-    expect(preferences.fontFamily, 'Liberation Sans');
+    expect(preferences.fontFamily, 'System');
     expect(preferences.emojiFontFamily, systemEmojiFontFamily);
   });
 

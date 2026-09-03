@@ -60,6 +60,7 @@ object DeltiecordNotificationPublisher {
         val sound: Boolean = true,
         val vibrate: Boolean = true,
         val alertCadence: String = "fiveMinuteCooldown",
+        val unreadCount: Int = 1,
     )
 
     fun fromMap(arguments: Map<*, *>): MessageData? {
@@ -88,6 +89,8 @@ object DeltiecordNotificationPublisher {
             alertCadence = (arguments["alertCadence"] as? String)
                 ?.takeIf { it in setOf("fiveMinuteCooldown", "everyMessage", "silent") }
                 ?: "fiveMinuteCooldown",
+            unreadCount = ((arguments["unreadCount"] as? Number)?.toInt() ?: 1)
+                .coerceIn(0, MAX_MESSAGES),
         )
     }
 
@@ -131,6 +134,11 @@ object DeltiecordNotificationPublisher {
             put("imagePath", imagePath)
             put("imageMimeType", data.imageMimeType)
         }
+        // Matrix is the source of truth for unread/highlight state. Native
+        // history is only presentation cache and must never resurrect entries
+        // that Matrix already considers read.
+        val retainCount = data.unreadCount.coerceIn(1, MAX_MESSAGES)
+        while (history.size > retainCount) history.removeAt(0)
         while (history.size > MAX_MESSAGES) history.removeAt(0)
         saveHistory(context, data.roomId, history)
 
@@ -557,6 +565,7 @@ object DeltiecordNotificationPublisher {
             entry.optString("imagePath").takeIf(String::isNotBlank)?.let(::File)?.delete()
         }
         historyFile(context, roomId).delete()
+        manager(context).cancel(roomId, 9001)
     }
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")

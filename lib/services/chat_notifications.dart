@@ -4,18 +4,21 @@ import 'dart:convert';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:crypto/crypto.dart';
 
 import 'desktop_window_service.dart';
 import '../models/chat_models.dart';
 
 class InAppChatNotification {
   const InAppChatNotification({
+    required this.roomId,
     required this.title,
     required this.body,
     required this.onTap,
     this.avatar,
   });
 
+  final String roomId;
   final String title;
   final String body;
   final Uint8List? avatar;
@@ -37,6 +40,11 @@ abstract final class InAppNotificationCenter {
     _dismissTimer?.cancel();
     _dismissTimer = null;
     current.value = null;
+  }
+
+  static void dismissRoom(String roomId) {
+    final notification = current.value;
+    if (notification?.roomId == roomId) dismiss();
   }
 }
 
@@ -90,7 +98,12 @@ abstract interface class ChatNotificationSink {
     bool vibrate = true,
     NotificationAlertCadence alertCadence =
         NotificationAlertCadence.fiveMinuteCooldown,
+    int unreadCount = 1,
   });
+
+  /// Cancels the visible notification and bounded plaintext history for one
+  /// room after the conversation becomes visible/read.
+  Future<void> clearRoom(String roomId);
 
   /// Warms the native background-notification avatar cache for [roomId].
   ///
@@ -119,6 +132,14 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
   final _activations = StreamController<NotificationTarget>.broadcast();
   var _nextId = 1;
   bool _initialized = false;
+
+  int _fallbackNotificationId(String roomId) {
+    final bytes = sha256.convert(utf8.encode(roomId)).bytes;
+    return ((bytes[0] & 0x7f) << 24) |
+        (bytes[1] << 16) |
+        (bytes[2] << 8) |
+        bytes[3];
+  }
 
   void _activatePayload(String? payload) {
     final target = decodeNotificationTarget(payload);
@@ -182,6 +203,7 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
     bool vibrate = true,
     NotificationAlertCadence alertCadence =
         NotificationAlertCadence.fiveMinuteCooldown,
+    int unreadCount = 1,
   }) async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       try {
@@ -199,6 +221,7 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
           'sound': sound,
           'vibrate': vibrate,
           'alertCadence': alertCadence.name,
+          'unreadCount': unreadCount,
         });
         return;
       } on MissingPluginException {
@@ -207,8 +230,9 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
         // Native notification enrichment is optional.
       }
     }
+    final android = !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     await _plugin.show(
-      id: _nextId++,
+      id: android ? _fallbackNotificationId(roomId) : _nextId++,
       title: title,
       body: body,
       payload: encodeNotificationTarget(
@@ -257,6 +281,24 @@ class PlatformChatNotificationSink implements ChatNotificationSink {
   }
 
   @override
+  Future<void> clearRoom(String roomId) async {
+    InAppNotificationCenter.dismissRoom(roomId);
+    if (roomId.isEmpty ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    try {
+      await _nativeAssets.invokeMethod<void>('clearRoom', {'roomId': roomId});
+    } on MissingPluginException {
+      // Old runners have no room-scoped cancellation bridge.
+    } on PlatformException {
+      // Clearing notification UI is best effort and must not block room open.
+    }
+    await _plugin.cancel(id: _fallbackNotificationId(roomId));
+  }
+
+  @override
   Future<void> clearPrivateState() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     try {
@@ -296,10 +338,14 @@ class SilentChatNotificationSink implements ChatNotificationSink {
     bool vibrate = true,
     NotificationAlertCadence alertCadence =
         NotificationAlertCadence.fiveMinuteCooldown,
+    int unreadCount = 1,
   }) async {}
 
   @override
   Future<void> cacheRoomAvatar(String roomId, Uint8List avatar) async {}
+
+  @override
+  Future<void> clearRoom(String roomId) async {}
 
   @override
   Future<void> clearPrivateState() async {}

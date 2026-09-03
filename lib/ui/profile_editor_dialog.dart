@@ -425,11 +425,13 @@ class _ProfileEditorDialogState extends State<_ProfileEditorDialog> {
                 children: [
                   Expanded(
                     flex: compact ? 4 : 3,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(22),
-                      child: DeltiecordProfileCard(
-                        profile: _preview,
-                        preview: true,
+                    child: ClipRect(
+                      child: SingleChildScrollView(
+                        padding: EdgeInsets.all(compact ? 12 : 22),
+                        child: DeltiecordProfileCard(
+                          profile: _preview,
+                          preview: true,
+                        ),
                       ),
                     ),
                   ),

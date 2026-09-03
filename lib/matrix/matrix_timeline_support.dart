@@ -148,12 +148,30 @@ extension _MatrixTimelineSupport on MatrixBackend {
     await Future.wait([
       _hydrateSenderAvatars(timeline),
       _hydrateReplies(timeline),
+      _hydratePollResponses(timeline),
     ]);
     if (!identical(timeline, _timeline)) return;
     _notifyBackendListeners();
     await _hydrateLinkPreviews(timeline);
     if (!identical(timeline, _timeline)) return;
     _notifyBackendListeners();
+  }
+
+  Future<void> _hydratePollResponses(Timeline timeline) async {
+    final pending = timeline.events.where(
+      (event) =>
+          event.type == PollEventContent.startType &&
+          !_hydratedPollResponseIds.contains(event.eventId),
+    );
+    for (final event in pending) {
+      try {
+        await event.fetchPollResponses(timeline);
+        _hydratedPollResponseIds.add(event.eventId);
+      } catch (_) {
+        // Polls remain usable with responses already present in the timeline;
+        // a later hydration pass can retry a failed aggregation request.
+      }
+    }
   }
 
   Future<void> _prepareEncryptedSend(Room room) async {

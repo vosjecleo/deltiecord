@@ -7,7 +7,6 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../version.dart';
 import '../services/app_sounds.dart';
-import '../services/font_preferences.dart';
 import '../services/microphone_test.dart';
 import '../services/secret_redaction.dart';
 import '../services/unified_push.dart';
@@ -30,7 +29,6 @@ enum _SettingsPage {
   accessibility,
   storage,
   shortcuts,
-  advanced,
   about,
 }
 
@@ -59,18 +57,32 @@ Future<void> showDeltiecordSettings(
   ),
 );
 
+Future<void> showDeltiecordNotificationSettings(
+  BuildContext context,
+  ChatBackend backend,
+) => Navigator.of(context).push(
+  MaterialPageRoute<void>(
+    builder: (_) => _SettingsScreen(
+      backend: backend,
+      initialPage: _SettingsPage.notifications,
+    ),
+    fullscreenDialog: true,
+  ),
+);
+
 class _SettingsScreen extends StatefulWidget {
-  const _SettingsScreen({required this.backend});
+  const _SettingsScreen({required this.backend, this.initialPage});
 
   final ChatBackend backend;
+  final _SettingsPage? initialPage;
 
   @override
   State<_SettingsScreen> createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<_SettingsScreen> {
-  _SettingsPage _page = _SettingsPage.account;
-  bool _mobilePageOpen = false;
+  late _SettingsPage _page = widget.initialPage ?? _SettingsPage.account;
+  late bool _mobilePageOpen = widget.initialPage != null;
   Future<UserProfileSummary>? _ownProfile;
   Future<UnifiedPushState>? _unifiedPushState;
   bool _checkingForUpdates = false;
@@ -158,7 +170,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                           'mobile-settings-transition-$_mobilePageOpen-${_page.name}',
                         ),
                         tween: Tween(begin: 1, end: 0),
-                        duration: const Duration(milliseconds: 180),
+                        duration: backend.preferences.reducedMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 180),
                         curve: Curves.easeOutCubic,
                         builder: (context, progress, child) =>
                             Transform.translate(
@@ -213,11 +227,13 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             children: [
               for (final page in _SettingsPage.values)
                 if (_availableOnCurrentPlatform(page))
                   ListTile(
+                    dense: true,
+                    visualDensity: const VisualDensity(vertical: -1),
                     selected: !mobile && _page == page,
                     leading: Icon(_iconFor(page), size: 21),
                     title: Text(_labelFor(page)),
@@ -232,6 +248,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         ),
         const Divider(height: 1),
         ListTile(
+          dense: true,
           leading: const Icon(Icons.logout, size: 21),
           title: const Text('Log out'),
           onTap: backend.logout,
@@ -467,20 +484,22 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           backend.preferences.copyWith(autoGainControl: value),
         ),
       ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Call sounds'),
-        subtitle: const Text('Play a cue when connecting or disconnecting.'),
-        value: backend.preferences.callSound,
-        onChanged: (value) => backend.updatePreferences(
-          backend.preferences.copyWith(callSound: value),
+      if (defaultTargetPlatform != TargetPlatform.android) ...[
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Call sounds'),
+          subtitle: const Text('Play a cue when connecting or disconnecting.'),
+          value: backend.preferences.callSound,
+          onChanged: (value) => backend.updatePreferences(
+            backend.preferences.copyWith(callSound: value),
+          ),
         ),
-      ),
-      OutlinedButton.icon(
-        onPressed: AppSounds.callConnected,
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('Test call sound'),
-      ),
+        OutlinedButton.icon(
+          onPressed: AppSounds.callConnected,
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Test call sound'),
+        ),
+      ],
       if (defaultTargetPlatform == TargetPlatform.linux) ...[
         const SizedBox(height: 12),
         const Text(
@@ -502,11 +521,12 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           backend.preferences.copyWith(notificationsEnabled: value),
         ),
       ),
-      OutlinedButton.icon(
-        onPressed: AppSounds.notification,
-        icon: const Icon(Icons.notifications_active_outlined),
-        label: const Text('Test notification sound'),
-      ),
+      if (defaultTargetPlatform != TargetPlatform.android)
+        OutlinedButton.icon(
+          onPressed: AppSounds.notification,
+          icon: const Icon(Icons.notifications_active_outlined),
+          label: const Text('Test notification sound'),
+        ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Show message content'),
@@ -551,19 +571,18 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           );
         },
       ),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Notification sound'),
-        subtitle: Text(
-          defaultTargetPlatform == TargetPlatform.android
-              ? 'Allow Android message alerts to play sound.'
-              : 'Allow the desktop notification service to play sound.',
+      if (defaultTargetPlatform != TargetPlatform.android)
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Notification sound'),
+          subtitle: const Text(
+            'Allow the desktop notification service to play sound.',
+          ),
+          value: backend.preferences.notificationSound,
+          onChanged: (value) => backend.updatePreferences(
+            backend.preferences.copyWith(notificationSound: value),
+          ),
         ),
-        value: backend.preferences.notificationSound,
-        onChanged: (value) => backend.updatePreferences(
-          backend.preferences.copyWith(notificationSound: value),
-        ),
-      ),
       if (UnifiedPushPlatform.instance.supported) ...[
         const Divider(height: 28),
         Text('UnifiedPush', style: Theme.of(context).textTheme.titleMedium),
@@ -595,30 +614,8 @@ class _SettingsScreenState extends State<_SettingsScreen> {
                 subtitle: Text(
                   state?.error != null
                       ? 'Distributor error: ${state!.error}'
-                      : [
-                          state?.distributor ??
-                              'Install and configure a UnifiedPush distributor.',
-                          if (state?.lastMessageReceived case final received?)
-                            'Last background push: ${received.toLocal()}',
-                          if (state?.lastNotificationPosted case final posted?)
-                            'Last native alert: ${posted.toLocal()}',
-                          if (state?.lastWorkerResult case final result?)
-                            'Last background result: $result',
-                          if (state?.lastEndpointRotation case final rotated?)
-                            'Last endpoint rotation: ${rotated.toLocal()}',
-                          if (state?.lastPusherVerification case final checked?)
-                            'Last Matrix pusher check: ${checked.toLocal()}',
-                          if (state?.lastPusherResult case final result?)
-                            'Matrix pusher result: $result',
-                          if (state?.registrationStage case final stage?)
-                            'Current stage: ${stage.replaceAll('_', ' ')}',
-                          if (state?.lastTestRequest case final requested?)
-                            'Last test request: ${requested.toLocal()}',
-                          if (state?.lastTestReceived case final received?)
-                            'Last test callback: ${received.toLocal()}',
-                          if (state?.lastTestResult case final result?)
-                            'Last test result: ${result.replaceAll('_', ' ')}',
-                        ].join('\n'),
+                      : state?.distributor ??
+                            'Install and configure a UnifiedPush distributor.',
                 ),
                 trailing: snapshot.connectionState != ConnectionState.done
                     ? const SizedBox.square(
@@ -642,11 +639,6 @@ class _SettingsScreenState extends State<_SettingsScreen> {
               onPressed: _refreshUnifiedPushRegistration,
               icon: const Icon(Icons.refresh),
               label: const Text('Refresh registration'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _testUnifiedPush,
-              icon: const Icon(Icons.notification_important_outlined),
-              label: const Text('Test background path'),
             ),
             TextButton.icon(
               onPressed: _disableUnifiedPush,
@@ -695,60 +687,16 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       ),
     ]),
     _SettingsPage.shortcuts => _shortcuts(),
-    _SettingsPage.advanced => _section('Advanced diagnostics', [
-      DropdownButtonFormField<String>(
-        initialValue: normalizeEmojiFontFamily(
-          backend.preferences.emojiFontFamily,
-        ),
-        decoration: const InputDecoration(
-          labelText: 'Fallback emoji font',
-          helperText:
-              'System fallback is recommended and avoids changing text spacing.',
-          border: InputBorder.none,
-        ),
-        items: const [
-          DropdownMenuItem(value: 'System', child: Text('System emoji font')),
-        ],
-        onChanged: (font) {
-          if (font != null) {
-            backend.updatePreferences(
-              backend.preferences.copyWith(emojiFontFamily: font),
-            );
-          }
-        },
+    _SettingsPage.about => _section('About Deltiecord', [
+      Text(
+        'Deltiecord v$deltiecordVersion+$deltiecordBuildNumber\n'
+        'A compact, old-school ${defaultTargetPlatform == TargetPlatform.android ? 'mobile' : 'desktop'} Matrix client built with Flutter.',
       ),
-      const SizedBox(height: 18),
-      _value('Deltiecord', 'v$deltiecordVersion ($deltiecordBuildNumber)'),
+      const SizedBox(height: 12),
+      Text('Diagnostics', style: Theme.of(context).textTheme.titleMedium),
       _value('Session', backend.status.name),
       _value('Connection', backend.connectionStatus.name),
       _value('Voice', backend.voiceConnectionStatus.name),
-      _value('Selected room', backend.selectedRoom?.id ?? 'None'),
-      const SizedBox(height: 18),
-      Text(
-        'Timeline message chunk size — ${backend.preferences.timelineChunkSize}',
-      ),
-      Slider(
-        value: backend.preferences.timelineChunkSize.toDouble(),
-        min: 10,
-        max: 100,
-        divisions: 9,
-        onChanged: (value) => backend.updatePreferences(
-          backend.preferences.copyWith(timelineChunkSize: value.round()),
-        ),
-      ),
-      Text(
-        'Timeline message chunk cap — ${backend.preferences.timelineChunkCap}',
-      ),
-      Slider(
-        value: backend.preferences.timelineChunkCap.toDouble(),
-        min: 1,
-        max: 10,
-        divisions: 9,
-        onChanged: (value) => backend.updatePreferences(
-          backend.preferences.copyWith(timelineChunkCap: value.round()),
-        ),
-      ),
-      const SizedBox(height: 12),
       OutlinedButton.icon(
         onPressed: () {
           final report = [
@@ -770,12 +718,6 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       const Text(
         'Diagnostics deliberately exclude access tokens, recovery material, '
         'decrypted messages, and media encryption keys.',
-      ),
-    ]),
-    _SettingsPage.about => _section('About Deltiecord', [
-      Text(
-        'Deltiecord v$deltiecordVersion\n'
-        'A compact, old-school ${defaultTargetPlatform == TargetPlatform.android ? 'mobile' : 'desktop'} Matrix client built with Flutter.',
       ),
       const SizedBox(height: 12),
       Wrap(
@@ -974,22 +916,6 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         'scaling is under Accessibility.',
       ),
       const SizedBox(height: 20),
-      Text('Compactness — ${(preferences.compactness * 100).round()}%'),
-      Slider(
-        key: const Key('compactness-slider'),
-        value: preferences.compactness,
-        min: 0,
-        max: 1,
-        divisions: 20,
-        label: '${(preferences.compactness * 100).round()}%',
-        onChanged: (value) =>
-            backend.updatePreferences(preferences.copyWith(compactness: value)),
-      ),
-      const Text(
-        'Lower values give text and controls more breathing room; higher '
-        'values fit more information on screen.',
-      ),
-      const SizedBox(height: 20),
       if (defaultTargetPlatform != TargetPlatform.android) ...[
         Text('Room panel — ${preferences.roomPanelWidth.round()} px'),
         Slider(
@@ -1042,16 +968,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           labelText: 'Interface font',
           border: InputBorder.none,
         ),
-        items:
-            const [
-                  'System',
-                  'Noto Sans',
-                  'DejaVu Sans',
-                  'Liberation Sans',
-                  'monospace',
-                ]
-                .map((font) => DropdownMenuItem(value: font, child: Text(font)))
-                .toList(growable: false),
+        items: const ['System', 'Noto Sans', 'DejaVu Sans', 'monospace']
+            .map((font) => DropdownMenuItem(value: font, child: Text(font)))
+            .toList(growable: false),
         onChanged: (font) {
           if (font != null) {
             backend.updatePreferences(preferences.copyWith(fontFamily: font));
@@ -1095,20 +1014,37 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   Widget _privacy() {
     final preferences = backend.preferences;
     return _section('Privacy & presence', [
-      SwitchListTile(
-        key: const ValueKey('direct-link-previews-toggle'),
-        contentPadding: EdgeInsets.zero,
-        title: const Text('Fetch link previews directly on this device'),
-        subtitle: const Text(
-          'Direct previews contact websites from your device and may expose '
-          'your IP address and browsing metadata to those sites. This is used '
-          'only when the Matrix homeserver cannot provide a preview. Playing '
-          'an embedded video also contacts its public media host.',
+      DropdownButtonFormField<DirectLinkPreviewMode>(
+        key: const ValueKey('direct-link-preview-mode'),
+        initialValue: preferences.directLinkPreviewMode,
+        decoration: const InputDecoration(
+          labelText: 'Direct link-preview fallback',
+          helperMaxLines: 4,
+          helperText:
+              'Direct previews contact websites from your device and may '
+              'expose your IP address and browsing metadata. Matrix '
+              'homeserver previews are always attempted first.',
         ),
-        value: preferences.fetchDirectLinkPreviews,
-        onChanged: (value) => backend.updatePreferences(
-          preferences.copyWith(fetchDirectLinkPreviews: value),
-        ),
+        items: const [
+          DropdownMenuItem(
+            value: DirectLinkPreviewMode.none,
+            child: Text('Never'),
+          ),
+          DropdownMenuItem(
+            value: DirectLinkPreviewMode.trustedProviders,
+            child: Text('Known providers only'),
+          ),
+          DropdownMenuItem(
+            value: DirectLinkPreviewMode.allPublicSites,
+            child: Text('All public websites'),
+          ),
+        ],
+        onChanged: (mode) {
+          if (mode == null) return;
+          backend.updatePreferences(
+            preferences.copyWith(directLinkPreviewMode: mode),
+          );
+        },
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
@@ -1292,28 +1228,6 @@ class _SettingsScreenState extends State<_SettingsScreen> {
     }
   }
 
-  Future<void> _testUnifiedPush() async {
-    final userId = backend.userId;
-    if (userId == null) return;
-    try {
-      _showSettingMessage(
-        'Sending a private round-trip test through the Matrix gateway…',
-      );
-      final state = await UnifiedPushPlatform.instance.testPush(userId);
-      if (!mounted) return;
-      _reloadUnifiedPush();
-      _showSettingMessage(
-        state.lastTestResult == 'receiver_verified'
-            ? 'UnifiedPush gateway and Android receiver verified.'
-            : 'Push test completed: ${state.lastTestResult ?? 'unknown result'}.',
-      );
-    } catch (exception) {
-      if (!mounted) return;
-      _reloadUnifiedPush();
-      _showSettingMessage('UnifiedPush test failed: $exception');
-    }
-  }
-
   void _showSettingMessage(String message) {
     ScaffoldMessenger.of(
       context,
@@ -1346,9 +1260,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       for (final device in backend.deviceSessions)
         Card(
           child: ListTile(
-            leading: Icon(
-              device.current ? Icons.computer : Icons.devices_other,
-            ),
+            leading: Icon(_deviceIcon(device)),
             title: Text(
               '${device.displayName}${device.current ? ' (this device)' : ''}',
             ),
@@ -1419,7 +1331,9 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Reduce motion'),
-        subtitle: const Text('Avoid non-essential interface animation.'),
+        subtitle: const Text(
+          'Snap UI transitions instantly and pause automatic GIF playback.',
+        ),
         value: preferences.reducedMotion,
         onChanged: (value) => backend.updatePreferences(
           preferences.copyWith(reducedMotion: value),
@@ -1607,7 +1521,6 @@ IconData _iconFor(_SettingsPage page) => switch (page) {
   _SettingsPage.accessibility => Icons.accessibility_new,
   _SettingsPage.storage => Icons.storage_outlined,
   _SettingsPage.shortcuts => Icons.keyboard_outlined,
-  _SettingsPage.advanced => Icons.terminal,
   _SettingsPage.about => Icons.info_outline,
 };
 
@@ -1622,9 +1535,34 @@ String _labelFor(_SettingsPage page) => switch (page) {
   _SettingsPage.accessibility => 'Accessibility',
   _SettingsPage.storage => 'Storage',
   _SettingsPage.shortcuts => 'Shortcuts',
-  _SettingsPage.advanced => 'Advanced',
   _SettingsPage.about => 'About',
 };
+
+IconData _deviceIcon(DeviceSessionSummary device) {
+  final name = device.displayName.toLowerCase();
+  if (name.contains('android') ||
+      name.contains('phone') ||
+      name.contains('iphone')) {
+    return Icons.smartphone_outlined;
+  }
+  if (name.contains('tablet') || name.contains('ipad')) {
+    return Icons.tablet_outlined;
+  }
+  if (name.contains('laptop') ||
+      name.contains('notebook') ||
+      name.contains('macbook')) {
+    return Icons.laptop_outlined;
+  }
+  if (name.contains('desktop') ||
+      name.contains('linux') ||
+      name.contains('windows') ||
+      name.contains('macos')) {
+    return Icons.desktop_windows_outlined;
+  }
+  return device.current && defaultTargetPlatform == TargetPlatform.android
+      ? Icons.smartphone_outlined
+      : Icons.devices_other_outlined;
+}
 
 String _encryptionLabel(EncryptionSetupStatus status) => switch (status) {
   EncryptionSetupStatus.ready => 'Protected',

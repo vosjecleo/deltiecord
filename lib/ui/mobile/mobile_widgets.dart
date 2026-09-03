@@ -4,6 +4,26 @@ import 'package:flutter/material.dart';
 
 import '../../models/chat_models.dart';
 
+class MobileAttentionBadge extends StatelessWidget {
+  const MobileAttentionBadge({
+    required this.count,
+    required this.child,
+    super.key,
+  });
+
+  final int count;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Badge.count(
+    count: count.clamp(0, 999),
+    isLabelVisible: count > 0,
+    backgroundColor: Theme.of(context).colorScheme.primary,
+    textColor: Theme.of(context).colorScheme.onPrimary,
+    child: child,
+  );
+}
+
 class MobileAvatar extends StatelessWidget {
   const MobileAvatar({
     required this.bytes,

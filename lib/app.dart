@@ -14,6 +14,7 @@ import 'services/font_preferences.dart';
 import 'services/chat_notifications.dart';
 import 'ui/chat_shell.dart';
 import 'ui/deltiecord_theme.dart';
+import 'ui/first_run_tour.dart';
 import 'ui/login_screen.dart';
 import 'ui/mobile/mobile_chat_shell.dart';
 import 'ui/security_center.dart';
@@ -305,7 +306,10 @@ class DeltiecordApp extends StatelessWidget {
                         backend: backend,
                         child: _EncryptionRecoveryPrompt(
                           backend: backend,
-                          child: MobileChatShell(backend: backend),
+                          child: FirstRunTourGate(
+                            backend: backend,
+                            child: MobileChatShell(backend: backend),
+                          ),
                         ),
                       ),
                     )
@@ -314,9 +318,12 @@ class DeltiecordApp extends StatelessWidget {
                         backend: backend,
                         child: _EncryptionRecoveryPrompt(
                           backend: backend,
-                          child: _DesktopActivityReporter(
+                          child: FirstRunTourGate(
                             backend: backend,
-                            child: ChatShell(backend: backend),
+                            child: _DesktopActivityReporter(
+                              backend: backend,
+                              child: ChatShell(backend: backend),
+                            ),
                           ),
                         ),
                       ),
@@ -516,6 +523,16 @@ class _ReadReceiptLifecycleState extends State<_ReadReceiptLifecycle>
   void didChangeAppLifecycleState(AppLifecycleState state) => _publish(state);
 
   @override
+  void didChangeMetrics() {
+    // Android can recreate its window while Deltiecord is backgrounded. A
+    // post-frame rebuild makes MediaQuery consume the new inset instead of
+    // retaining the keyboard height from the old surface.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void didChangeViewFocus(ViewFocusEvent event) {
     _viewFocused = event.state == ViewFocusState.focused;
     _syncBackend();
@@ -525,6 +542,17 @@ class _ReadReceiptLifecycleState extends State<_ReadReceiptLifecycle>
     // A null lifecycle is used by some Flutter test bindings before their
     // first frame; the active widget tree is considered foregrounded there.
     _lifecycleForeground = state == null || state == AppLifecycleState.resumed;
+    if (!_lifecycleForeground) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      unawaited(SystemChannels.textInput.invokeMethod<void>('TextInput.hide'));
+      InAppNotificationCenter.dismiss();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        widget.backend.refreshApplicationState();
+        setState(() {});
+      });
+    }
     _syncBackend();
   }
 

@@ -235,9 +235,23 @@ class _MessageRowState extends State<_MessageRow> {
             duration: widget.backend.preferences.reducedMotion
                 ? Duration.zero
                 : const Duration(milliseconds: 110),
-            color: _hovered || widget.highlighted
-                ? context.deltiecord.hover
-                : Colors.transparent,
+            decoration: BoxDecoration(
+              color: message.pingedCurrentUser
+                  ? Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.11)
+                  : _hovered || widget.highlighted
+                  ? context.deltiecord.hover
+                  : Colors.transparent,
+              border: message.pingedCurrentUser
+                  ? Border(
+                      left: BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 3,
+                      ),
+                    )
+                  : null,
+            ),
             child: Opacity(
               opacity: message.pending ? 0.55 : 1,
               child: Stack(
@@ -489,17 +503,17 @@ class _MessageRowState extends State<_MessageRow> {
                   ),
                   if (widget.startsGroup)
                     Positioned(
-                      // The 40px avatar remains centred in the 60px author
+                      // The 38px avatar remains centred in the 60px author
                       // gutter while the text column stays close to the edge.
-                      left: 10,
-                      top: groupTop + (message.reply == null ? 0 : 22),
+                      left: 11,
+                      top: groupTop + 1 + (message.reply == null ? 0 : 22),
                       child: GestureDetector(
                         key: ValueKey('message-avatar-${message.id}'),
                         onTap: _showSenderProfile,
                         onTapDown: (details) =>
                             _profileAnchorPosition = details.globalPosition,
                         child: CircleAvatar(
-                          radius: 20,
+                          radius: 19,
                           backgroundColor: context.deltiecord.elevated,
                           backgroundImage: message.avatarBytes == null
                               ? null

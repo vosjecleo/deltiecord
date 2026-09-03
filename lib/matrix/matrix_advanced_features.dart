@@ -272,6 +272,18 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     }
     await _prepareEncryptedSend(event.room);
     await event.answerPoll(answerIds);
+    final timeline = _timeline;
+    if (timeline != null && event.room.id == timeline.room.id) {
+      _hydratedPollResponseIds.remove(messageId);
+      try {
+        await event.fetchPollResponses(timeline);
+        _hydratedPollResponseIds.add(messageId);
+      } catch (_) {
+        // The vote itself already reached Matrix. Sync will supply the
+        // aggregation if the optional relation endpoint is unavailable.
+      }
+      _notifyBackendListeners();
+    }
   }
 
   Future<void> _endPoll(String messageId) async {
@@ -378,6 +390,53 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     _stickerPacks = List.unmodifiable(hydrated);
     _notifyBackendListeners();
   }
+
+  Future<void> _savePersonalStickerPack(StickerPackDraft draft) async {
+    final userId = _matrix.userID;
+    if (userId == null) return;
+    final name = draft.name.trim();
+    if (name.isEmpty || draft.stickers.isEmpty || draft.stickers.length > 50) {
+      throw StateError('A sticker pack needs a name and 1–50 images.');
+    }
+    final images = <String, Object?>{};
+    for (final item in draft.stickers) {
+      if (item.bytes.isEmpty || item.bytes.length > 5 * 1024 * 1024) {
+        throw StateError('Each sticker must be at most 5 MiB.');
+      }
+      final shortcode = item.shortcode
+          .trim()
+          .replaceAll(RegExp(r'[^a-zA-Z0-9_-]+'), '_')
+          .replaceAll(RegExp(r'^_+|_+$'), '');
+      if (shortcode.isEmpty || shortcode.length > 100) continue;
+      final uri = await _matrix.uploadContent(
+        item.bytes,
+        filename: '$shortcode.${_stickerExtension(item.mimeType)}',
+        contentType: item.mimeType,
+      );
+      images[shortcode] = {
+        'body': shortcode,
+        'url': uri.toString(),
+        'usage': ['sticker', 'emoticon'],
+        'info': {'mimetype': item.mimeType, 'size': item.bytes.length},
+      };
+    }
+    if (images.isEmpty) throw StateError('No valid sticker images were found.');
+    await _matrix.setAccountData(userId, 'im.ponies.user_emotes', {
+      'pack': {
+        'display_name': name,
+        'usage': ['sticker', 'emoticon'],
+      },
+      'images': images,
+    });
+    await _refreshStickerPacks();
+  }
+
+  String _stickerExtension(String mimeType) => switch (mimeType) {
+    'image/gif' => 'gif',
+    'image/webp' => 'webp',
+    'image/jpeg' => 'jpg',
+    _ => 'png',
+  };
 
   Future<void> _setPresenceMode(PresenceMode mode) async {
     final userId = _matrix.userID;
@@ -797,7 +856,6 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
 
   List<InboxItemSummary> _buildUnifiedInbox() {
     final userId = _client?.userID;
-    final displayName = _profileDisplayName;
     if (userId == null) return const [];
     final items = <InboxItemSummary>[];
     for (final room in _client?.rooms ?? const <Room>[]) {
@@ -819,39 +877,15 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     for (final entry in _roomMessageCache.entries) {
       final room = _matrix.getRoomById(entry.key);
       if (room == null) continue;
-      for (final message in entry.value) {
-        if (message.own) {
-          for (final reaction in message.reactions) {
-            final senderId = reaction.latestSenderId;
-            final sender = reaction.latestSender;
-            final timestamp = reaction.latestTimestamp;
-            if (senderId == null || sender == null || timestamp == null) {
-              continue;
-            }
-            items.add(
-              InboxItemSummary(
-                id: 'reaction:${message.id}:${reaction.key}',
-                roomId: room.id,
-                roomName: room.getLocalizedDisplayname(),
-                kind: InboxItemKind.reaction,
-                timestamp: timestamp,
-                preview: '$sender reacted ${reaction.key} to your message',
-                eventId: message.id,
-                avatarBytes:
-                    _senderAvatarBytes['${room.id}|$senderId'] ??
-                    _senderAvatarBytes[senderId],
-              ),
-            );
-          }
+      // The inbox is a ping surface, not a duplicate unread-message list.
+      // Restrict it to the room's unread window and use structured Matrix
+      // mention/reply data calculated by the event mapper.
+      final unread = room.notificationCount.clamp(0, entry.value.length);
+      for (final message in entry.value.take(unread)) {
+        if (message.own || message.system || !message.pingedCurrentUser) {
           continue;
         }
-        if (message.system) continue;
-        final mention =
-            message.body.contains(userId) ||
-            (displayName?.isNotEmpty == true &&
-                message.body.contains('@$displayName'));
-        final reply = message.reply?.sender == _profileDisplayName;
-        if (!mention && !reply) continue;
+        final reply = message.reply != null;
         items.add(
           InboxItemSummary(
             id: message.id,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/emoji_repository.dart';
+import '../services/favourite_reactions_store.dart';
 import 'deltiecord_theme.dart';
 
 class EmojiPickerDialog extends StatefulWidget {
@@ -21,6 +22,9 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     super.initState();
     _search();
     _query.addListener(_search);
+    FavouriteReactionsStore.instance.load().then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _search() async {
@@ -64,6 +68,10 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     for (final entry in visibleResults) {
       (grouped[entry.category] ??= []).add(entry);
     }
+    final favourites = FavouriteReactionsStore.instance.emoji;
+    final favouriteEntries = _results
+        .where((entry) => favourites.contains(entry.emoji))
+        .toList(growable: false);
     return AlertDialog(
       title: const Text('Emoji'),
       content: SizedBox(
@@ -106,6 +114,20 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
             Expanded(
               child: CustomScrollView(
                 slivers: [
+                  if (_selectedCategory == null &&
+                      _query.text.trim().isEmpty &&
+                      favouriteEntries.isNotEmpty) ...[
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 8, 4, 5),
+                        child: Text(
+                          'Favourites',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
+                    ),
+                    _emojiGrid(favouriteEntries),
+                  ],
                   for (final category in EmojiCategory.values)
                     if (grouped[category] case final entries?) ...[
                       SliverToBoxAdapter(
@@ -117,37 +139,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                           ),
                         ),
                       ),
-                      SliverGrid(
-                        gridDelegate:
-                            const SliverGridDelegateWithMaxCrossAxisExtent(
-                              maxCrossAxisExtent: 54,
-                              mainAxisSpacing: 2,
-                              crossAxisSpacing: 2,
-                            ),
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final entry = entries[index];
-                          return Tooltip(
-                            message:
-                                '${entry.name}  :${entry.aliases.firstOrNull ?? entry.name}:',
-                            child: InkWell(
-                              key: ValueKey(
-                                'emoji-picker-result-${entry.emoji}',
-                              ),
-                              onTap: () =>
-                                  Navigator.of(context).pop(entry.emoji),
-                              child: Center(
-                                child: Text(
-                                  entry.emoji,
-                                  style: TextStyle(
-                                    fontSize: 25,
-                                    fontFamily: context.deltiecordEmojiFont,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        }, childCount: entries.length),
-                      ),
+                      _emojiGrid(entries),
                     ],
                 ],
               ),
@@ -157,6 +149,52 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
       ),
     );
   }
+
+  SliverGrid _emojiGrid(List<EmojiEntry> entries) => SliverGrid(
+    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 54,
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+    ),
+    delegate: SliverChildBuilderDelegate((context, index) {
+      final entry = entries[index];
+      final favourite = FavouriteReactionsStore.instance.isEmojiFavourite(
+        entry.emoji,
+      );
+      return Tooltip(
+        message:
+            '${entry.name}  :${entry.aliases.firstOrNull ?? entry.name}:\n'
+            'Long-press to ${favourite ? 'unfavourite' : 'favourite'}',
+        child: InkWell(
+          key: ValueKey('emoji-picker-result-${entry.emoji}'),
+          onTap: () => Navigator.of(context).pop(entry.emoji),
+          onLongPress: () async {
+            await FavouriteReactionsStore.instance.toggleEmoji(entry.emoji);
+            if (mounted) setState(() {});
+          },
+          child: Stack(
+            children: [
+              Center(
+                child: Text(
+                  entry.emoji,
+                  style: TextStyle(
+                    fontSize: 25,
+                    fontFamily: context.deltiecordEmojiFont,
+                  ),
+                ),
+              ),
+              if (favourite)
+                const Positioned(
+                  right: 1,
+                  top: 1,
+                  child: Icon(Icons.star, size: 10),
+                ),
+            ],
+          ),
+        ),
+      );
+    }, childCount: entries.length),
+  );
 
   IconData _categoryIcon(EmojiCategory category) => switch (category) {
     EmojiCategory.smileysAndPeople => Icons.mood,

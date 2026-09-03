@@ -380,6 +380,8 @@ extension _MatrixRoomOperations on MatrixBackend {
   }
 
   Future<void> _selectRoom(String roomId) async {
+    InAppNotificationCenter.dismissRoom(roomId);
+    unawaited(_notifications.clearRoom(roomId));
     if (_selectedRoomId == roomId && _timeline != null) return;
     final totalTimer = Stopwatch()..start();
     final stageTimer = Stopwatch()..start();

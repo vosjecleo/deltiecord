@@ -69,6 +69,11 @@ class _MobileNavigationPanelState extends State<MobileNavigationPanel> {
                 child: Row(
                   children: [
                     _SpaceRail(backend: backend),
+                    Container(
+                      key: const ValueKey('mobile-rail-separator'),
+                      width: 1,
+                      color: context.deltiecord.divider.withValues(alpha: 0.65),
+                    ),
                     Expanded(
                       child: ClipRRect(
                         key: const ValueKey('mobile-navigation-card'),
@@ -317,7 +322,10 @@ class _SpaceRail extends StatelessWidget {
           selected: backend.selectedSpaceId == null,
           tooltip: 'Home',
           onTap: () => backend.selectSpace(null),
-          child: const Icon(Icons.home_rounded),
+          child: MobileAttentionBadge(
+            count: backend.directUnreadCount,
+            child: const Icon(Icons.home_rounded),
+          ),
         ),
         const Divider(indent: 14, endIndent: 14),
         Expanded(
@@ -330,11 +338,14 @@ class _SpaceRail extends StatelessWidget {
                   tooltip: space.name,
                   onTap: () => backend.selectSpace(space.id),
                   onLongPress: () => _showSpaceActions(context, space),
-                  child: MobileAvatar(
-                    bytes: space.avatarBytes,
-                    fallback: space.name,
-                    size: 46,
-                    square: true,
+                  child: MobileAttentionBadge(
+                    count: backend.pingCountForSpace(space.id),
+                    child: MobileAvatar(
+                      bytes: space.avatarBytes,
+                      fallback: space.name,
+                      size: 54,
+                      square: true,
+                    ),
                   ),
                 ),
               _RailButton(

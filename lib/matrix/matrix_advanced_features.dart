@@ -391,12 +391,16 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     final personal =
         _matrix.accountData[matrixPersonalImagePackAccountDataType]?.content;
     if (personal != null) {
-      parsePack(
-        'personal',
-        personal,
-        false,
-        accountDataType: matrixPersonalImagePackAccountDataType,
-      );
+      for (final personalPack in splitPersonalImagePacks(personal)) {
+        parsePack(
+          personalPack.id == 'legacy'
+              ? 'personal'
+              : 'personal:${personalPack.id}',
+          personalPack.content,
+          false,
+          accountDataType: matrixPersonalImagePackAccountDataType,
+        );
+      }
     }
     final additionalPersonalPacks = _matrix.accountData.entries
         .where(
@@ -581,10 +585,24 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     final content = await _uploadStickerPack(draft);
     final legacy =
         _matrix.accountData[matrixPersonalImagePackAccountDataType]?.content;
-    late final String accountDataType;
-    if (!accountDataContainsImagePack(legacy)) {
-      accountDataType = matrixPersonalImagePackAccountDataType;
+    final secureRandom = Random.secure();
+    final packId = opaquePersonalPackId(
+      Uint8List.fromList(
+        List<int>.generate(12, (_) => secureRandom.nextInt(256)),
+      ),
+    );
+    final merged = mergePersonalImagePack(legacy, content, packId: packId);
+    if (utf8.encode(jsonEncode(merged)).length <= 60 * 1024) {
+      await _setImagePackAccountDataAndAwaitSync(
+        userId,
+        matrixPersonalImagePackAccountDataType,
+        merged,
+      );
     } else {
+      // Very large collections cannot share Matrix's bounded account-data
+      // event. Retain the sharded format as an overflow path, while ordinary
+      // imports use the standard interoperable event and cannot overwrite it.
+      late final String accountDataType;
       final reusable = _matrix.accountData.entries
           .where(
             (entry) =>
@@ -612,7 +630,6 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
             '$maximumPersonalImagePacks packs.',
           );
         }
-        final secureRandom = Random.secure();
         do {
           accountDataType = additionalPersonalImagePackAccountDataType(
             Uint8List.fromList(
@@ -621,12 +638,12 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           );
         } while (_matrix.accountData.containsKey(accountDataType));
       }
+      await _setImagePackAccountDataAndAwaitSync(
+        userId,
+        accountDataType,
+        content,
+      );
     }
-    await _setImagePackAccountDataAndAwaitSync(
-      userId,
-      accountDataType,
-      content,
-    );
     await _refreshStickerPacks();
   }
 
@@ -652,11 +669,19 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         synced.complete();
       }
       try {
-        await synced.future.timeout(const Duration(seconds: 12));
+        await synced.future.timeout(const Duration(seconds: 15));
       } on TimeoutException {
-        // The PUT succeeded. A delayed /sync will still trigger the persistent
-        // account-data listener and publish the pack when connectivity catches
-        // up, so do not misreport a successful import as failed.
+        // A stopped/paused sync must not turn a successful PUT into an invisible
+        // pack. Verify the authoritative record and safely seed the SDK cache;
+        // the next sync will write the same value again through its normal path.
+        final remote = await _matrix.getAccountData(userId, type);
+        if (!_sameJsonValue(remote, content)) {
+          throw StateError(
+            'The homeserver did not retain the imported image pack.',
+          );
+        }
+        await _matrix.database.storeAccountData(type, remote);
+        _matrix.accountData[type] = BasicEvent(type: type, content: remote);
       }
     } finally {
       await subscription.cancel();
@@ -720,10 +745,25 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           !isPersonalImagePackAccountDataType(accountDataType)) {
         return;
       }
-      await _setImagePackAccountDataAndAwaitSync(userId, accountDataType, {
-        'pack': {'display_name': 'Stickers', 'usage': <String>[]},
-        'images': <String, Object?>{},
-      });
+      final existing = _matrix.accountData[accountDataType]?.content;
+      final content =
+          accountDataType == matrixPersonalImagePackAccountDataType &&
+              existing != null
+          ? removePersonalImagePack(
+              existing,
+              packId: pack.id == 'personal'
+                  ? 'legacy'
+                  : pack.id.substring('personal:'.length),
+            )
+          : <String, Object?>{
+              'pack': {'display_name': 'Stickers', 'usage': <String>[]},
+              'images': <String, Object?>{},
+            };
+      await _setImagePackAccountDataAndAwaitSync(
+        userId,
+        accountDataType,
+        content,
+      );
     } else {
       final stateKey = pack.stateKey;
       if (stateKey == null ||

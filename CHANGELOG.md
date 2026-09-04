@@ -1,5 +1,17 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 90 — 2026-09-04
+
+- Fixed custom-emoji imports silently completing without becoming available
+  in the emoji picker or `:alias:` autocomplete.
+- Stored ordinary personal packs together in Matrix's interoperable personal
+  image-pack event, with opaque per-pack identities and collision-safe item
+  keys so importing emoji preserves existing sticker and emoji packs.
+- Added authoritative post-write verification and SDK-cache reconciliation so
+  a paused `/sync` cannot leave a successfully uploaded pack invisible.
+- Preserved legacy personal packs during migration and made deletion remove
+  only the selected pack from a merged personal collection.
+
 ## Deltiecord 0.9.27 build 89 — 2026-09-04
 
 - Fixed personal sticker and custom-emoji imports replacing the previously

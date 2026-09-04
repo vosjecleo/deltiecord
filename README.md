@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 89**
+> **Current release candidate: version 0.9.27 build 90**
 >
 > Deltiecord is available for desktop and Android. Build 89 preserves multiple
 > personal sticker and emoji packs, repairs post-import synchronization, and
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 89**
+**Current release candidate: v0.9.27 build 90**

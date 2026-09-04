@@ -8,6 +8,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import org.unifiedpush.android.connector.UnifiedPush
+import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -16,10 +17,13 @@ class MainActivity : FlutterActivity() {
             "net.deltie.deltiecord/notification_assets"
         private const val BACKGROUND_PUSH_CHANNEL =
             "net.deltie.deltiecord/background_push"
+        private const val MEDIA_SAVER_CHANNEL =
+            "net.deltie.deltiecord/media_saver"
         private const val REGISTRATION_TIMEOUT_MS = 30_000L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val mediaSaveExecutor = Executors.newSingleThreadExecutor()
     private val pendingRegistrations = mutableMapOf<String, MethodChannel.Result>()
     private var unifiedPushChannel: MethodChannel? = null
     private var backgroundPushChannel: MethodChannel? = null
@@ -185,6 +189,36 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            MEDIA_SAVER_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "saveMedia") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val bytes = call.argument<ByteArray>("bytes")
+            val suggestedName = call.argument<String>("suggestedName").orEmpty()
+            val mimeType = call.argument<String>("mimeType").orEmpty()
+            if (bytes == null || bytes.isEmpty()) {
+                result.error("invalid_media", "Missing downloaded media data.", null)
+                return@setMethodCallHandler
+            }
+            mediaSaveExecutor.execute {
+                runCatching {
+                    AndroidMediaSaver.save(this, bytes, suggestedName, mimeType)
+                }.fold(
+                    onSuccess = { savedName ->
+                        mainHandler.post { result.success(savedName) }
+                    },
+                    onFailure = { exception ->
+                        mainHandler.post {
+                            result.error("save_failed", exception.message, null)
+                        }
+                    },
+                )
+            }
+        }
         backgroundPushChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             BACKGROUND_PUSH_CHANNEL,
@@ -319,6 +353,7 @@ class MainActivity : FlutterActivity() {
             DeltiecordEngineRegistry.pushBridgeReady = false
         }
         configuredEngine = null
+        mediaSaveExecutor.shutdown()
         super.onDestroy()
     }
 }

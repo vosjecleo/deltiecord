@@ -15,6 +15,48 @@ final _emojiPresentationPattern = RegExp(
   unicode: true,
 );
 
+const _inlineCustomEmojiSize = 20.0;
+const _standaloneEmojiSize = 64.0;
+
+/// Whether [text] consists only of Unicode emoji and whitespace.
+///
+/// This deliberately works on grapheme clusters so joined emoji, skin tones,
+/// flags and keycaps remain one visual item. It is used only for presentation;
+/// the original message text and Matrix event remain untouched.
+bool isUnicodeEmojiOnly(String text) {
+  var foundEmoji = false;
+  for (final cluster in text.characters) {
+    if (cluster.trim().isEmpty) continue;
+    if (!_isEmojiCluster(cluster)) return false;
+    foundEmoji = true;
+  }
+  return foundEmoji;
+}
+
+bool _isEmojiCluster(String cluster) {
+  var hasEmojiBase = false;
+  var hasKeycap = false;
+  for (final rune in cluster.runes) {
+    final character = String.fromCharCode(rune);
+    if (_emojiPresentationPattern.hasMatch(character)) {
+      hasEmojiBase = true;
+      continue;
+    }
+    if (rune == 0x200d ||
+        rune == 0xfe0e ||
+        rune == 0xfe0f ||
+        rune == 0x20e3 ||
+        (rune >= 0x1f3fb && rune <= 0x1f3ff) ||
+        (rune >= 0xe0020 && rune <= 0xe007f)) {
+      hasKeycap |= rune == 0x20e3;
+      continue;
+    }
+    if ('#*0123456789'.contains(character)) continue;
+    return false;
+  }
+  return hasEmojiBase || hasKeycap;
+}
+
 List<InlineSpan> _emojiAwareTextSpans(
   BuildContext context,
   String text,
@@ -78,6 +120,12 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
 
   @override
   Widget build(BuildContext context) {
+    final style = isUnicodeEmojiOnly(widget.text)
+        ? (widget.style ?? const TextStyle()).copyWith(
+            fontSize: _standaloneEmojiSize,
+            height: 1,
+          )
+        : widget.style ?? const TextStyle();
     final spans = <InlineSpan>[];
     var offset = 0;
     for (final match in _urlPattern.allMatches(widget.text)) {
@@ -86,7 +134,7 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
           _emojiAwareTextSpans(
             context,
             widget.text.substring(offset, match.start),
-            widget.style ?? const TextStyle(),
+            style,
           ),
         );
       }
@@ -113,26 +161,16 @@ class _MatrixPlainTextState extends State<MatrixPlainText> {
         ),
       );
       if (trailing.isNotEmpty) {
-        spans.addAll(
-          _emojiAwareTextSpans(
-            context,
-            trailing,
-            widget.style ?? const TextStyle(),
-          ),
-        );
+        spans.addAll(_emojiAwareTextSpans(context, trailing, style));
       }
       offset = match.end;
     }
     if (offset < widget.text.length) {
       spans.addAll(
-        _emojiAwareTextSpans(
-          context,
-          widget.text.substring(offset),
-          widget.style ?? const TextStyle(),
-        ),
+        _emojiAwareTextSpans(context, widget.text.substring(offset), style),
       );
     }
-    final span = TextSpan(style: widget.style, children: spans);
+    final span = TextSpan(style: style, children: spans);
     return widget.selectable
         ? SelectableText.rich(span, contextMenuBuilder: _noContextMenu)
         : Text.rich(span);
@@ -180,8 +218,20 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
   @override
   Widget build(BuildContext context) {
     final document = html_parser.parseFragment(widget.html);
+    final emojiOnly = _emojiOnlyNodes(document.nodes);
+    final standaloneEmoji = emojiOnly.valid && emojiOnly.found;
+    final style = TextStyle(
+      height: standaloneEmoji ? 1 : 1.28,
+      fontSize: standaloneEmoji ? _standaloneEmojiSize : null,
+    );
     final spans = List<InlineSpan>.of(
-      _nodes(document.nodes, const TextStyle(height: 1.28)),
+      _nodes(
+        document.nodes,
+        style,
+        customEmojiSize: standaloneEmoji
+            ? _standaloneEmojiSize
+            : _inlineCustomEmojiSize,
+      ),
     );
     // Block elements need separators between one another, but the final block
     // newline is layout metadata rather than visible message content. Keeping
@@ -191,12 +241,11 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       if (lastSpan is TextSpan && lastSpan.text == '\n') spans.removeLast();
     }
     if (spans.isEmpty) {
+      final fallbackStyle = isUnicodeEmojiOnly(widget.fallback)
+          ? const TextStyle(fontSize: _standaloneEmojiSize, height: 1)
+          : const TextStyle();
       final span = TextSpan(
-        children: _emojiAwareTextSpans(
-          context,
-          widget.fallback,
-          const TextStyle(),
-        ),
+        children: _emojiAwareTextSpans(context, widget.fallback, fallbackStyle),
       );
       return widget.selectable
           ? SelectableText.rich(span, contextMenuBuilder: _noContextMenu)
@@ -208,10 +257,19 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
         : Text.rich(span);
   }
 
-  List<InlineSpan> _nodes(Iterable<dom.Node> nodes, TextStyle style) =>
-      nodes.expand((node) => _node(node, style)).toList(growable: false);
+  List<InlineSpan> _nodes(
+    Iterable<dom.Node> nodes,
+    TextStyle style, {
+    required double customEmojiSize,
+  }) => nodes
+      .expand((node) => _node(node, style, customEmojiSize: customEmojiSize))
+      .toList(growable: false);
 
-  List<InlineSpan> _node(dom.Node node, TextStyle style) {
+  List<InlineSpan> _node(
+    dom.Node node,
+    TextStyle style, {
+    required double customEmojiSize,
+  }) {
     if (node is dom.Text) {
       return _emojiAwareTextSpans(context, node.data, style);
     }
@@ -239,7 +297,7 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       final image = CustomEmojiImage(
         backend: backend,
         emoji: reference,
-        size: 26,
+        size: customEmojiSize,
       );
       return [
         WidgetSpan(
@@ -303,7 +361,11 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
         );
     }
 
-    final children = _nodes(node.nodes, childStyle);
+    final children = _nodes(
+      node.nodes,
+      childStyle,
+      customEmojiSize: customEmojiSize,
+    );
     if (tag == 'a') {
       final href = node.attributes['href'];
       final isMention =
@@ -352,6 +414,33 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       return [...children, const TextSpan(text: '\n')];
     }
     return children;
+  }
+
+  ({bool valid, bool found}) _emojiOnlyNodes(Iterable<dom.Node> nodes) {
+    var found = false;
+    for (final node in nodes) {
+      if (node is dom.Text) {
+        if (node.data.trim().isEmpty) continue;
+        if (!isUnicodeEmojiOnly(node.data)) return (valid: false, found: false);
+        found = true;
+        continue;
+      }
+      if (node is! dom.Element) continue;
+      final tag = node.localName;
+      if (tag == 'mx-reply') continue;
+      if (tag == 'br') continue;
+      if (tag == 'img') {
+        if (!node.attributes.containsKey('data-mx-emoticon')) {
+          return (valid: false, found: false);
+        }
+        found = true;
+        continue;
+      }
+      final childResult = _emojiOnlyNodes(node.nodes);
+      if (!childResult.valid) return childResult;
+      found |= childResult.found;
+    }
+    return (valid: true, found: found);
   }
 }
 

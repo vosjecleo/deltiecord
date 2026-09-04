@@ -674,6 +674,13 @@ Future<void> _manageStickerPacks(
             subtitle: const Text('Up to 120 images, 128×128 and 256 KiB each'),
             onTap: () => Navigator.pop(context, 'create-emoji'),
           ),
+          if (backend.stickerPacks.any(_isEditableEmojiPack))
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Edit custom emoji pack'),
+              subtitle: const Text('Rename, crop, rescale or change aliases'),
+              onTap: () => Navigator.pop(context, 'edit-emoji'),
+            ),
           ListTile(
             leading: const Icon(Icons.folder_zip_outlined),
             title: const Text('Import emoji ZIP'),
@@ -699,6 +706,10 @@ Future<void> _manageStickerPacks(
   if (action == null || !context.mounted) return;
   if (action == 'delete') {
     await _deleteStickerPack(context, backend);
+    return;
+  }
+  if (action == 'edit-emoji') {
+    await _editExistingEmojiPack(context, backend);
     return;
   }
   final assetType = action.endsWith('-emoji')
@@ -838,6 +849,108 @@ Future<String?> _askStickerPackName(
 }
 
 const _cancelledPackDestination = '__cancelled__';
+
+bool _isEditableEmojiPack(StickerPackSummary pack) =>
+    pack.canManage &&
+    pack.stickers.isNotEmpty &&
+    pack.stickers.every((item) => item.assetType == StickerAssetType.emoji);
+
+Future<void> _editExistingEmojiPack(
+  BuildContext context,
+  ChatBackend backend,
+) async {
+  final packs = backend.stickerPacks
+      .where(_isEditableEmojiPack)
+      .toList(growable: false);
+  final selected = await showModalBottomSheet<StickerPackSummary>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const ListTile(
+            title: Text('Edit custom emoji pack'),
+            subtitle: Text('Choose a pack to rename or prepare again.'),
+          ),
+          for (final pack in packs)
+            ListTile(
+              leading: const Icon(Icons.add_reaction_outlined),
+              title: Text(pack.name),
+              subtitle: Text(
+                '${pack.stickers.length} emoji · '
+                '${pack.roomScoped ? 'Server pack' : 'Personal pack'}',
+              ),
+              onTap: () => Navigator.pop(context, pack),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (selected == null || !context.mounted) return;
+
+  final progress = ValueNotifier<(int, int)>((0, selected.stickers.length));
+  try {
+    final items = await _withStickerProgress(
+      context,
+      label: 'Loading emoji pack…',
+      progress: progress,
+      operation: () async {
+        var completed = 0;
+        return Future.wait([
+          for (final sticker in selected.stickers)
+            backend.loadStickerPreview(sticker).then((bytes) {
+              progress.value = (++completed, selected.stickers.length);
+              if (bytes == null || bytes.isEmpty) {
+                throw StateError(
+                  'Could not load :${sticker.name}: for editing.',
+                );
+              }
+              return StickerDraftItem(
+                shortcode: sticker.name,
+                bytes: bytes,
+                mimeType: sticker.mimeType,
+                width: sticker.width,
+                height: sticker.height,
+                assetType: StickerAssetType.emoji,
+              );
+            }),
+        ]);
+      },
+    );
+    if (!context.mounted) return;
+    var prepared = await _prepareEmojiItems(context, items);
+    if (prepared == null || !context.mounted) return;
+    prepared = await _editEmojiAliases(context, prepared);
+    if (prepared == null || !context.mounted) return;
+    final name = await _askStickerPackName(
+      context,
+      initialValue: selected.name,
+    );
+    if (name == null || !context.mounted) return;
+    await _withStickerProgress(
+      context,
+      label: 'Saving edited emoji pack…',
+      operation: () => backend.replaceStickerPack(
+        selected,
+        StickerPackDraft(name: name, stickers: prepared!),
+      ),
+    );
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$name updated.')));
+    }
+  } catch (exception) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Emoji pack edit failed: $exception')),
+      );
+    }
+  } finally {
+    progress.dispose();
+  }
+}
 
 List<StickerDraftItem> _asAssetType(
   List<StickerDraftItem> items,
@@ -1069,14 +1182,29 @@ class _EmojiResizeDialog extends StatefulWidget {
 
 class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
   var _filter = CustomEmojiResizeFilter.bicubic;
-  var _trimTransparentPadding = false;
+  var _trimTransparentPadding = true;
+  late Future<PreparedCustomEmoji> _previewFuture;
 
-  Future<PreparedCustomEmoji> _preview() => compute(_prepareEmojiInIsolate, (
-    widget.example.bytes,
-    widget.example.mimeType,
-    _filter.index,
-    _trimTransparentPadding,
-  ));
+  @override
+  void initState() {
+    super.initState();
+    _previewFuture = _createPreview();
+  }
+
+  Future<PreparedCustomEmoji> _createPreview() =>
+      compute(_prepareEmojiInIsolate, (
+        widget.example.bytes,
+        widget.example.mimeType,
+        _filter.index,
+        _trimTransparentPadding,
+      ));
+
+  void _refreshPreview(VoidCallback update) {
+    setState(() {
+      update();
+      _previewFuture = _createPreview();
+    });
+  }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -1098,7 +1226,7 @@ class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
           SizedBox.square(
             dimension: 128,
             child: FutureBuilder<PreparedCustomEmoji>(
-              future: _preview(),
+              future: _previewFuture,
               builder: (context, snapshot) {
                 final result = snapshot.data;
                 return result == null
@@ -1127,7 +1255,7 @@ class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
             ],
             selected: {_filter},
             onSelectionChanged: (value) =>
-                setState(() => _filter = value.single),
+                _refreshPreview(() => _filter = value.single),
           ),
           const SizedBox(height: 6),
           Text(
@@ -1145,7 +1273,7 @@ class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
             ),
             value: _trimTransparentPadding,
             onChanged: (value) =>
-                setState(() => _trimTransparentPadding = value),
+                _refreshPreview(() => _trimTransparentPadding = value),
           ),
           if (const {
             'image/gif',

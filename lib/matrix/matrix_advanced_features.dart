@@ -783,6 +783,53 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     await _refreshStickerPacks();
   }
 
+  Future<void> _replaceStickerPack(
+    StickerPackSummary existing,
+    StickerPackDraft replacement,
+  ) async {
+    if (!existing.canManage) {
+      throw StateError('You cannot edit this emoji pack.');
+    }
+    final content = await _uploadStickerPack(replacement);
+    final userId = _matrix.userID;
+    if (existing.sourceRoomId == null) {
+      final type = existing.accountDataType;
+      if (userId == null ||
+          type == null ||
+          !isPersonalImagePackAccountDataType(type)) {
+        throw StateError('This personal emoji pack cannot be edited.');
+      }
+      var updated = content;
+      if (type == matrixPersonalImagePackAccountDataType) {
+        final current = _matrix.accountData[type]?.content;
+        if (current == null) {
+          throw StateError('The emoji pack is no longer available.');
+        }
+        final packId = existing.id == 'personal'
+            ? 'legacy'
+            : existing.id.substring('personal:'.length);
+        updated = replacePersonalImagePack(current, content, packId: packId);
+        if (utf8.encode(jsonEncode(updated)).length > 60 * 1024) {
+          throw StateError('The edited personal pack metadata is too large.');
+        }
+      }
+      await _setImagePackAccountDataAndAwaitSync(userId, type, updated);
+    } else {
+      final roomId = existing.sourceRoomId!;
+      final stateKey = existing.stateKey;
+      if (stateKey == null || !_canManageStickerPacksInRoom(roomId)) {
+        throw StateError('You cannot edit this server emoji pack.');
+      }
+      await _matrix.setRoomStateWithKey(
+        roomId,
+        'im.ponies.room_emotes',
+        stateKey,
+        content,
+      );
+    }
+    await _refreshStickerPacks();
+  }
+
   Future<void> _setStickerPackGloballyEnabled(
     StickerPackSummary pack,
     bool enabled,

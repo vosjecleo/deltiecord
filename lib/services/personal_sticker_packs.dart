@@ -106,7 +106,7 @@ Map<String, Object?> mergePersonalImagePack(
   Map<String, Object?> newPack, {
   required String packId,
 }) {
-  if (packId.isEmpty || packId == 'legacy') {
+  if (packId.isEmpty) {
     throw ArgumentError.value(packId, 'packId', 'must be opaque and non-empty');
   }
   final existingContent = Map<String, Object?>.from(existing ?? const {});
@@ -143,7 +143,11 @@ Map<String, Object?> mergePersonalImagePack(
     item[deltiecordPersonalPackIdKey] = packId;
     // The map key is storage identity, not the user-facing shortcode. Prefix
     // it so equal aliases in separate packs cannot overwrite one another.
-    images['$packId:${entry.key}'] = item;
+    var localKey = entry.key;
+    while (localKey.startsWith('$packId:')) {
+      localKey = localKey.substring(packId.length + 1);
+    }
+    images['$packId:$localKey'] = item;
   }
   registry[packId] = Map<String, Object?>.from(
     _objectMap(newPack['pack']) ?? const {},
@@ -184,8 +188,27 @@ Map<String, Object?> removePersonalImagePack(
 
   Map<String, Object?>? merged;
   for (final pack in retained) {
-    final id = pack.id == 'legacy' ? 'migrated_legacy' : pack.id;
-    merged = mergePersonalImagePack(merged, pack.content, packId: id);
+    merged = mergePersonalImagePack(merged, pack.content, packId: pack.id);
+  }
+  return merged!;
+}
+
+Map<String, Object?> replacePersonalImagePack(
+  Map<String, Object?> existing,
+  Map<String, Object?> replacement, {
+  required String packId,
+}) {
+  final packs = splitPersonalImagePacks(existing);
+  if (!packs.any((pack) => pack.id == packId)) {
+    throw StateError('The emoji pack is no longer available.');
+  }
+  Map<String, Object?>? merged;
+  for (final pack in packs) {
+    merged = mergePersonalImagePack(
+      merged,
+      pack.id == packId ? replacement : pack.content,
+      packId: pack.id,
+    );
   }
   return merged!;
 }

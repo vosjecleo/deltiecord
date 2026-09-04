@@ -7,6 +7,30 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test(
+    'recognizes standalone Unicode emoji without treating text as emoji',
+    () {
+      expect(isUnicodeEmojiOnly('😁 🐈'), isTrue);
+      expect(isUnicodeEmojiOnly('👩🏽‍💻'), isTrue);
+      expect(isUnicodeEmojiOnly('1️⃣'), isTrue);
+      expect(isUnicodeEmojiOnly('hug! 🐈'), isFalse);
+      expect(isUnicodeEmojiOnly('123'), isFalse);
+    },
+  );
+
+  testWidgets('standalone Unicode emoji use jumbo message sizing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(body: MatrixPlainText(text: '🐈', selectable: false)),
+      ),
+    );
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.textSpan?.style?.fontSize, 64);
+  });
+
   test('serializes rich text and Matrix spoilers with a plain fallback', () {
     final document = Document()..insert(0, 'bold secret');
     document.format(0, 4, Attribute.bold);

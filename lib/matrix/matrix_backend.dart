@@ -43,6 +43,23 @@ part 'matrix_media.dart';
 part 'matrix_profiles.dart';
 part 'matrix_advanced_features.dart';
 
+bool get _isMobilePlatform => Platform.isAndroid || Platform.isIOS;
+
+double get _platformDefaultFontScale => _isMobilePlatform ? 1.1 : 1;
+
+String get _platformFontScaleKey =>
+    _isMobilePlatform ? 'mobile_font_scale' : 'desktop_font_scale';
+
+double _readPlatformFontScale(Map<String, dynamic>? content) {
+  final platformValue = (content?[_platformFontScaleKey] as num?)?.toDouble();
+  if (platformValue != null) return platformValue.clamp(0.8, 1.4);
+  final legacyValue = (content?['font_scale'] as num?)?.toDouble();
+  // Older releases wrote one cross-platform value. Treat their untouched 100%
+  // mobile value as the old default, while preserving deliberate custom sizes.
+  if (_isMobilePlatform && legacyValue == 1) return 1.1;
+  return legacyValue?.clamp(0.8, 1.4) ?? _platformDefaultFontScale;
+}
+
 /// Matrix integration built on matrix-dart-sdk. Element and FluffyChat were
 /// consulted as behavioral references; no source from either client is copied.
 /// See CREDITS.md for project links and license information.
@@ -164,7 +181,9 @@ class MatrixBackend extends ChatBackend {
   bool _retryingOfflineSends = false;
   bool _notificationsPrimed = false;
   bool _notificationPreviewsEnabled = true;
-  AppPreferences _preferences = const AppPreferences();
+  AppPreferences _preferences = AppPreferences(
+    fontScale: _platformDefaultFontScale,
+  );
   int? _maximumUploadBytes;
   List<DeviceSessionSummary> _deviceSessions = const [];
   bool _devicesLoading = false;
@@ -1082,6 +1101,12 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> deleteStickerPack(StickerPackSummary pack) =>
       _deleteStickerPack(pack);
+
+  @override
+  Future<void> replaceStickerPack(
+    StickerPackSummary existing,
+    StickerPackDraft replacement,
+  ) => _replaceStickerPack(existing, replacement);
 
   @override
   Future<void> setStickerPackGloballyEnabled(

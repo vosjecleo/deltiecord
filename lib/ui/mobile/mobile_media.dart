@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
+import '../../services/android_media_saver.dart';
 import '../../services/temporary_attachment_store.dart';
 import '../deltiecord_theme.dart';
 import '../advanced_chat_dialogs.dart';
@@ -149,7 +150,7 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
             ),
             ListTile(
               leading: const Icon(Icons.save_alt),
-              title: Text(image ? 'Save image as…' : 'Save media as…'),
+              title: Text(image ? 'Save image' : 'Save media'),
               onTap: () => Navigator.pop(context, 'save'),
             ),
             ListTile(
@@ -196,16 +197,7 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
           await clipboard.write([item]);
         }
       case 'save':
-        final target = await FilePicker.saveFile(
-          dialogTitle: 'Save attachment',
-          fileName: attachment.name,
-        );
-        if (target != null) {
-          final bytes = await widget.backend.downloadAttachment(
-            widget.message.id,
-          );
-          await File(target).writeAsBytes(bytes, flush: true);
-        }
+        await _saveAttachment(attachment);
       case 'open':
         final bytes = await widget.backend.downloadAttachment(
           widget.message.id,
@@ -232,6 +224,38 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
             onActions: _showMediaActions,
           );
         }
+    }
+  }
+
+  Future<void> _saveAttachment(ChatAttachment attachment) async {
+    try {
+      final bytes = await widget.backend.downloadAttachment(widget.message.id);
+      if (Platform.isAndroid) {
+        final savedName = await AndroidMediaSaver.save(
+          bytes: bytes,
+          suggestedName: attachment.name,
+          mimeType: attachment.mimeType,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Saved to Downloads/Deltiecord/$savedName')),
+          );
+        }
+        return;
+      }
+      final target = await FilePicker.saveFile(
+        dialogTitle: 'Save attachment',
+        fileName: attachment.name,
+      );
+      if (target != null) {
+        await File(target).writeAsBytes(bytes, flush: true);
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not save that attachment.')),
+        );
+      }
     }
   }
 }

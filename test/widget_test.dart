@@ -167,8 +167,8 @@ void main() {
         home: Scaffold(
           body: Builder(
             builder: (context) => MatrixHtmlText(
-              html: customEmojiHtml(emoji),
-              fallback: emoji.fallback,
+              html: 'hello ${customEmojiHtml(emoji)}',
+              fallback: 'hello ${emoji.fallback}',
               selectable: false,
               backend: backend,
               onCustomEmojiTap: (selected) =>
@@ -180,14 +180,38 @@ void main() {
     );
 
     expect(
-      tester.getSize(find.byType(CustomEmojiImage)),
-      const Size.square(26),
+      tester.widget<CustomEmojiImage>(find.byType(CustomEmojiImage)).size,
+      20,
     );
-    await tester.tap(find.bySemanticsLabel('View :party_cat: emoji pack'));
+    await tester.tap(
+      find.ancestor(
+        of: find.byType(CustomEmojiImage),
+        matching: find.byType(GestureDetector),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Cat reactions'), findsOneWidget);
     expect(find.text('Add to my account'), findsOneWidget);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [palette]),
+        home: Scaffold(
+          body: MatrixHtmlText(
+            html: customEmojiHtml(emoji),
+            fallback: emoji.fallback,
+            selectable: false,
+            backend: backend,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      tester.widget<CustomEmojiImage>(find.byType(CustomEmojiImage)).size,
+      64,
+    );
   });
 
   testWidgets('shows joined rooms and opens a timeline', (tester) async {

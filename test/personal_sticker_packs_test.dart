@@ -127,6 +127,61 @@ void main() {
     expect((remaining.single.content['pack'] as Map)['display_name'], 'Second');
   });
 
+  test('replacing one pack preserves the others and their storage keys', () {
+    var merged = mergePersonalImagePack(null, {
+      'pack': {
+        'display_name': 'First',
+        'usage': ['emoticon'],
+      },
+      'images': {
+        'one': {
+          'body': 'one',
+          'url': 'mxc://example.org/one',
+          'usage': ['emoticon'],
+        },
+      },
+    }, packId: 'first');
+    merged = mergePersonalImagePack(merged, {
+      'pack': {
+        'display_name': 'Second',
+        'usage': ['emoticon'],
+      },
+      'images': {
+        'two': {
+          'body': 'two',
+          'url': 'mxc://example.org/two',
+          'usage': ['emoticon'],
+        },
+      },
+    }, packId: 'second');
+
+    final replaced = replacePersonalImagePack(merged, {
+      'pack': {
+        'display_name': 'Renamed first',
+        'usage': ['emoticon'],
+      },
+      'images': {
+        'renamed': {
+          'body': 'renamed',
+          'url': 'mxc://example.org/replacement',
+          'usage': ['emoticon'],
+        },
+      },
+    }, packId: 'first');
+    final packs = splitPersonalImagePacks(replaced);
+    final images = replaced['images'] as Map;
+
+    expect(packs, hasLength(2));
+    expect(images, contains('first:renamed'));
+    expect(images, contains('second:two'));
+    expect(images, isNot(contains('second:second:two')));
+    expect(
+      (packs.singleWhere((pack) => pack.id == 'first').content['pack']
+          as Map)['display_name'],
+      'Renamed first',
+    );
+  });
+
   test('partially malformed registry never hides standard images', () {
     final packs = splitPersonalImagePacks({
       'pack': {'display_name': 'Fallback'},

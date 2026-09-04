@@ -1,5 +1,19 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 91 — 2026-09-04
+
+- Made transparent-canvas trimming the default for imported and reprocessed
+  static custom emoji while keeping it optional, with a stable live preview.
+- Added editing for manageable personal and server emoji packs: reopen a pack,
+  reprocess its artwork, rename aliases, and rename the pack without replacing
+  unrelated personal packs.
+- Rendered emoji-only messages at 64 logical pixels for both Unicode and custom
+  emoji, while returning inline custom emoji to a compact 20-pixel size.
+- Raised the stock mobile text scale to 110% without changing the desktop
+  default or overwriting deliberate existing accessibility sizes.
+- Replaced Android's unreliable save-as image flow with a single Save image
+  action that writes through scoped storage to Downloads/Deltiecord.
+
 ## Deltiecord 0.9.27 build 90 — 2026-09-04
 
 - Fixed custom-emoji imports silently completing without becoming available

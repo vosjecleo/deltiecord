@@ -42,6 +42,7 @@ extension _MatrixMedia on MatrixBackend {
     _attachmentCacheGeneration++;
     _linkPreviews.clear();
     _avatarBytes.clear();
+    _notificationAvatarBytes.clear();
     _senderAvatarBytes.clear();
     await _avatarMediaPool.clear();
     _notifyBackendListeners();

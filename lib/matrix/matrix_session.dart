@@ -18,6 +18,7 @@ extension _MatrixSession on MatrixBackend {
       await _disposeVoice();
       _client?.dispose();
       _client = await createMatrixClient();
+      _roomHeroUsersLoaded.clear();
       _profileFieldsCapability = null;
       _profileFieldsCapabilityLoaded = false;
       _syncSubscription = _matrix.onSync.stream.listen((_) {
@@ -145,8 +146,10 @@ extension _MatrixSession on MatrixBackend {
       _selectedRoomId = null;
       _selectedSpaceId = null;
       _loadedBackupRoomIds.clear();
+      _roomHeroUsersLoaded.clear();
       _avatarBytes.clear();
       _avatarUris.clear();
+      _notificationAvatarBytes.clear();
       _senderAvatarBytes.clear();
       _spaceProfileAvatarBytes.clear();
       _spaceProfileBannerBytes.clear();
@@ -555,7 +558,7 @@ extension _MatrixSession on MatrixBackend {
       final notificationAvatar = await _notificationAvatarFor(room, event);
       final notificationImage = await _notificationImageFor(displayEvent);
       if (notificationAvatar != null) {
-        unawaited(_notifications.cacheRoomAvatar(room.id, notificationAvatar));
+        _cacheNotificationAvatar(room.id, notificationAvatar);
       }
       if (_applicationForeground && Platform.isAndroid) {
         InAppNotificationCenter.show(

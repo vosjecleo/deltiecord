@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:deltiecord/app.dart';
 import 'package:deltiecord/backend/chat_backend.dart';
 import 'package:deltiecord/models/chat_models.dart';
+import 'package:deltiecord/services/favourite_reactions_store.dart';
 import 'package:deltiecord/ui/deltiecord_theme.dart';
+import 'package:deltiecord/ui/advanced_chat_dialogs.dart';
 import 'package:deltiecord/ui/matrix_html_text.dart';
 import 'package:deltiecord/ui/typing_indicator.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
@@ -2723,6 +2726,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('mobile-rail-button-Friends')));
     await tester.pumpAndSettle();
     expect(backend.selectedSpaceId, '!space:test');
+    final refreshesBeforeBackground = backend.applicationRefreshCount;
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -2732,6 +2736,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
+    expect(backend.applicationRefreshCount, refreshesBeforeBackground + 1);
 
     await tester.tap(find.byKey(const ValueKey('mobile-rail-button-Home')));
     await tester.pumpAndSettle();
@@ -2742,6 +2747,78 @@ void main() {
     await tester.pumpAndSettle();
     expect(backend.selectedSpaceId, '!space:test');
     expect(find.text('Friends'), findsWidgets);
+  });
+
+  testWidgets('desktop sticker picker uses a bounded dialog', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = FakeBackend();
+    await tester.runAsync(FavouriteReactionsStore.instance.load);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showStickerPicker(context, backend),
+              child: const Text('Open stickers'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open stickers'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('sticker-picker-surface')),
+      findsOneWidget,
+    );
+    expect(find.byType(Dialog), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
+  testWidgets('Android sticker manager exposes its final import action', (
+    tester,
+  ) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = FakeBackend();
+    await tester.runAsync(FavouriteReactionsStore.instance.load);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showStickerPicker(context, backend),
+              child: const Text('Open stickers'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open stickers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create or import a pack'));
+    await tester.pumpAndSettle();
+
+    final finalAction = find.text('Import Telegram pack as emoji');
+    await tester.scrollUntilVisible(
+      finalAction,
+      160,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('sticker-pack-manager-list')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(finalAction, findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('sticker-pack-manager-surface')),
+      findsOneWidget,
+    );
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('Android categories keep casing and place chevrons after text', (
@@ -3562,6 +3639,7 @@ class FakeBackend extends ChatBackend {
   String? lastFutureAnchor;
   int jumpPresentRequests = 0;
   int profileRefreshRequests = 0;
+  int applicationRefreshCount = 0;
   Future<void> Function()? historyLoader;
   final List<String> sentMessages = [];
   final List<String?> sentFormattedBodies = [];
@@ -3597,6 +3675,9 @@ class FakeBackend extends ChatBackend {
   @override
   void setApplicationForeground(bool foreground) =>
       applicationForegroundStates.add(foreground);
+
+  @override
+  void refreshApplicationState() => applicationRefreshCount++;
 
   @override
   void setConversationVisible(bool visible) =>

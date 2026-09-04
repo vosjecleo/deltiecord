@@ -110,10 +110,29 @@ extension _MatrixRoomMetadata on MatrixBackend {
     try {
       do {
         _roomMetadataRefreshRequested = false;
-        for (final room in _joinedRooms) {
+        final joinedRooms = _joinedRooms;
+        _roomHeroUsersLoaded.removeWhere(
+          (roomId) => joinedRooms.every((room) => room.id != roomId),
+        );
+        // Prioritise the visible room so metadata work for a large account
+        // cannot hold its timeline/avatar behind dozens of inactive rooms.
+        final selectedRoomId = _selectedRoomId;
+        final orderedRooms = selectedRoomId == null
+            ? joinedRooms
+            : [
+                ...joinedRooms.where((room) => room.id == selectedRoomId),
+                ...joinedRooms.where((room) => room.id != selectedRoomId),
+              ];
+        for (final room in orderedRooms) {
           try {
             await room.postLoad();
-            if (!room.isSpace) await room.loadHeroUsers();
+            // Matrix keeps room member state current through /sync. Loading
+            // the same hero profiles from SQLite on every sync made metadata
+            // refresh cost grow linearly with every room the user had opened.
+            if (!room.isSpace && !_roomHeroUsersLoaded.contains(room.id)) {
+              await room.loadHeroUsers();
+              _roomHeroUsersLoaded.add(room.id);
+            }
             changed = await _refreshAvatar(room) || changed;
             if (!room.isSpace) {
               changed = await _refreshPreview(room) || changed;
@@ -127,27 +146,35 @@ extension _MatrixRoomMetadata on MatrixBackend {
       // Warm their private room-keyed avatar cache while Matrix media is
       // already available here; Space children deliberately inherit the
       // parent Space avatar for server-style notification grouping.
-      for (final room in _joinedRooms.where((room) => !room.isSpace)) {
-        Uint8List? notificationAvatar;
-        for (final space in _joinedRooms.where(
-          (candidate) => candidate.isSpace,
-        )) {
-          if (space.spaceChildren.any((child) => child.roomId == room.id)) {
-            notificationAvatar = _avatarBytes[space.id];
-            break;
+      final joinedRooms = _joinedRooms;
+      final spaceAvatarByChildRoom = <String, Uint8List>{};
+      for (final space in joinedRooms.where((room) => room.isSpace)) {
+        final avatar = _avatarBytes[space.id];
+        if (avatar == null) continue;
+        for (final child in space.spaceChildren) {
+          final roomId = child.roomId;
+          if (roomId != null) {
+            spaceAvatarByChildRoom.putIfAbsent(roomId, () => avatar);
           }
         }
-        notificationAvatar ??= _avatarBytes[room.id];
+      }
+      for (final room in joinedRooms.where((room) => !room.isSpace)) {
+        final notificationAvatar =
+            spaceAvatarByChildRoom[room.id] ?? _avatarBytes[room.id];
         if (notificationAvatar != null) {
-          unawaited(
-            _notifications.cacheRoomAvatar(room.id, notificationAvatar),
-          );
+          _cacheNotificationAvatar(room.id, notificationAvatar);
         }
       }
     } finally {
       _refreshingRoomMetadata = false;
       if (changed) _notifyBackendListeners();
     }
+  }
+
+  void _cacheNotificationAvatar(String roomId, Uint8List avatar) {
+    if (identical(_notificationAvatarBytes[roomId], avatar)) return;
+    _notificationAvatarBytes[roomId] = avatar;
+    unawaited(_notifications.cacheRoomAvatar(roomId, avatar));
   }
 
   Future<bool> _refreshAvatar(Room room) async {
@@ -165,7 +192,23 @@ extension _MatrixRoomMetadata on MatrixBackend {
         pooled ??
         await _avatarMedia(avatar, AvatarMediaPool.rowDimension) ??
         Uint8List(0);
-    if (bytes.isNotEmpty) _avatarBytes[room.id] = bytes;
+    if (bytes.isNotEmpty) {
+      _avatarBytes[room.id] = bytes;
+      final directUserId = room.directChatMatrixID;
+      if (directUserId != null) {
+        final directAvatar = room
+            .unsafeGetUserFromMemoryOrFallback(directUserId)
+            .avatarUrl;
+        if (directAvatar == avatar) {
+          // The DM row and timeline use the same Matrix avatar. Seed the
+          // sender cache immediately instead of decoding/downloading it again
+          // when the conversation is opened.
+          _senderAvatarUris[directUserId] = avatar;
+          _senderAvatarBytes[directUserId] = bytes;
+          _senderAvatarBytes['${room.id}|$directUserId'] = bytes;
+        }
+      }
+    }
     return true;
   }
 
@@ -181,6 +224,10 @@ extension _MatrixRoomMetadata on MatrixBackend {
     if (event.type != EventTypes.Encrypted || _matrix.encryption == null) {
       return false;
     }
+    // Decryption is the expensive path and can touch the crypto database.
+    // Event IDs are immutable, so a cached preview is authoritative even if
+    // another sync caused a room-wide metadata pass.
+    if (_decryptedPreviews.containsKey(event.eventId)) return false;
     final encrypted = event.parsedRoomEncryptedContent;
     final sessionId = encrypted.sessionId;
     final keyManager = _matrix.encryption!.keyManager;

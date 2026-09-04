@@ -27,6 +27,17 @@ extension _MatrixTimelineSupport on MatrixBackend {
       _senderAvatarBytes.remove(event.senderId);
       if (avatar == null || !avatar.isScheme('mxc')) continue;
 
+      final room = timeline.room;
+      if (room.directChatMatrixID == event.senderId &&
+          _avatarUris[room.id] == avatar) {
+        final roomAvatar = _avatarBytes[room.id];
+        if (roomAvatar != null) {
+          _senderAvatarBytes[event.senderId] = roomAvatar;
+          _senderAvatarBytes['${room.id}|${event.senderId}'] = roomAvatar;
+          continue;
+        }
+      }
+
       final profile = _profileCache[event.senderId];
       if (profile?.avatarUri == avatar &&
           profile?.profile.avatarBytes != null) {
@@ -201,6 +212,41 @@ extension _MatrixTimelineSupport on MatrixBackend {
       _notifyBackendListeners();
       unawaited(_hydrateCurrentTimeline(timeline, generation));
       unawaited(_markSelectedRoomRead());
+    }
+  }
+
+  Future<void> _refreshTimelineAfterResume() async {
+    _resumeTimelineRefreshRequested = true;
+    if (_resumeTimelineRefreshRunning || !_matrix.isLogged()) return;
+    _resumeTimelineRefreshRunning = true;
+    try {
+      while (_resumeTimelineRefreshRequested && _matrix.isLogged()) {
+        _resumeTimelineRefreshRequested = false;
+        final timeline = _timeline;
+        final generation = _timelineGeneration;
+        if (timeline == null || !_isCurrentTimeline(timeline, generation)) {
+          continue;
+        }
+        try {
+          // Android can suspend the Dart isolate between a Matrix sync and the
+          // timeline listener's frame notification. An immediate SDK sync
+          // catches up the persisted token and feeds new events through the
+          // existing Timeline subscriptions without rebuilding the timeline
+          // or disturbing its scroll anchor.
+          await _matrix.oneShotSync(timeout: Duration.zero);
+        } catch (_) {
+          // The normal sync loop owns reconnect/backoff. A resume refresh is a
+          // best-effort nudge and must never replace its connection state.
+        }
+        if (_isCurrentTimeline(timeline, generation)) {
+          _onTimelineUpdate(generation);
+        }
+      }
+    } finally {
+      _resumeTimelineRefreshRunning = false;
+      if (_resumeTimelineRefreshRequested && _matrix.isLogged()) {
+        unawaited(_refreshTimelineAfterResume());
+      }
     }
   }
 

@@ -102,9 +102,12 @@ class MatrixBackend extends ChatBackend {
   bool _timelineServerExhausted = false;
   bool _timelineHydrationRunning = false;
   bool _timelineHydrationRequested = false;
+  bool _resumeTimelineRefreshRunning = false;
+  bool _resumeTimelineRefreshRequested = false;
   final Set<String> _loadedBackupRoomIds = {};
   final Map<String, Uint8List> _avatarBytes = {};
   final Map<String, Uri?> _avatarUris = {};
+  final Map<String, Uint8List> _notificationAvatarBytes = {};
   final Map<String, Uint8List> _senderAvatarBytes = {};
   final Map<String, Uint8List> _spaceProfileAvatarBytes = {};
   final Map<String, Uint8List> _spaceProfileBannerBytes = {};
@@ -125,6 +128,7 @@ class MatrixBackend extends ChatBackend {
       LinkedHashMap();
   final Map<String, Future<UserProfileSummary>> _profileRequests = {};
   final Set<String> _outboundSessionsReset = {};
+  final Set<String> _roomHeroUsersLoaded = {};
   bool _refreshingRoomMetadata = false;
   bool _roomMetadataRefreshRequested = false;
   final Set<String> _roomsMarkingRead = {};
@@ -575,7 +579,10 @@ class MatrixBackend extends ChatBackend {
     // Account-data settings are applied by the authoritative /sync listener.
     // Re-reading the SDK cache on resume can resurrect the value from before
     // a recent write and make theme changes appear stuck until restart.
-    if (Platform.isAndroid) unawaited(_restoreUnifiedPushPusher());
+    if (Platform.isAndroid) {
+      unawaited(_restoreUnifiedPushPusher());
+      unawaited(_refreshTimelineAfterResume());
+    }
     _notifyBackendListeners();
   }
 

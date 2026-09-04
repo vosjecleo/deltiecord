@@ -109,20 +109,20 @@ jobs:
           (cd release-assets && sha256sum -- * >SHA256SUMS)
           test "$(find release-assets -maxdepth 1 -type f | wc -l)" -eq 10
 
-      - name: Publish GitHub stable release
+      - name: Publish GitHub release
         shell: bash
         run: |
           set -euo pipefail
           version="${{ steps.release.outputs.version }}"
           build="${{ steps.release.outputs.build }}"
           cat >release-notes.md <<EOF
-          Deltiecord ${version} build ${build} is the current stable and latest desktop and Android release for Matrix.
+          Deltiecord ${version} build ${build} is the latest desktop and Android release for Matrix.
 
-          Build 83 adds custom and server emoji by extending Matrix image packs instead of introducing a separate asset system. Emoji use stable MXC identities with readable fallbacks, work inline in messages and reactions, appear in autocomplete and the emoji picker, and remain compatible with personal/server pack permissions and Telegram import.
-
-          Emoji uploads are bounded to 128×128 and 256 KiB each, packs support up to 120 items, and unavailable historical emoji degrade to their fallback shortcode. Legacy Deltiecord image packs continue to be interpreted as stickers.
-
-          Android navigation now reconstructs transient input state after a long background/freeze cycle, preventing Home and Space selections from becoming unresponsive. Build 83 also includes denser Space channels/categories, a compact timeline/composer gutter, and bounded static Telegram sticker-pack import. Animated Telegram TGS and WebM files remain intentionally skipped pending an interoperable renderer.
+          $(awk -v version="$version" -v build="$build" '
+            $0 ~ "^## Deltiecord " version " build " build { active=1; next }
+            active && /^## / { exit }
+            active { print }
+          ' CHANGELOG.md)
 
           Please read the [installation guide](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/INSTALL.md) before installing, and check the [known issues](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/KNOWN_ISSUES.md) before reporting a bug.
 

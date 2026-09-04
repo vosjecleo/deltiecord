@@ -1,5 +1,20 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 84 — 2026-09-04
+
+- Restyled sticker selection and pack management as bounded desktop dialogs
+  while retaining draggable mobile sheets, and made every pack/import action
+  reachable through a properly scrollable viewport.
+- Nudged the active Android Matrix timeline through its existing SDK
+  subscription whenever the app resumes, so messages received during a long
+  suspension appear without switching rooms or sending a message.
+- Removed repeated room-hero database loads and repeated last-event decryption
+  from every sync, prioritised the selected room, and reused already-decoded DM
+  avatars directly in the timeline sender cache.
+- Added a strict, channel-selectable release command that drives the existing
+  platform CI, verifies the exact artifact set, and atomically publishes
+  `latest`, `stable`, or both on deltie.net.
+
 ## Deltiecord 0.9.27 build 83 — 2026-09-04
 
 - Added custom/server emoji on top of Matrix image packs, including 120-item

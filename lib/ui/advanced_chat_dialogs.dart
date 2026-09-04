@@ -145,10 +145,12 @@ Future<StickerSummary?> showStickerPicker(
   await backend.refreshStickerPacks();
   await FavouriteReactionsStore.instance.load();
   if (!context.mounted) return null;
-  return showModalBottomSheet<StickerSummary>(
-    context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
+  return _showStickerSurface<StickerSummary>(
+    context,
+    desktopWidth: 680,
+    desktopHeight: 560,
+    mobileHeightFactor: 0.76,
+    surfaceKey: const ValueKey('sticker-picker-surface'),
     builder: (context) => ListenableBuilder(
       listenable: FavouriteReactionsStore.instance,
       builder: (context, _) {
@@ -188,125 +190,160 @@ Future<StickerSummary?> showStickerPicker(
               )
               .where((pack) => pack.stickers.isNotEmpty),
         ];
-        return FractionallySizedBox(
-          heightFactor: 0.72,
-          child: packs.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text(
-                          'No compatible sticker packs found.',
-                          textAlign: TextAlign.center,
-                        ),
+        return packs.isEmpty
+            ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'No compatible sticker packs found.',
+                        textAlign: TextAlign.center,
                       ),
-                      FilledButton.icon(
+                    ),
+                    FilledButton.icon(
+                      onPressed: () => _manageStickerPacks(context, backend),
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('Create or import a pack'),
+                    ),
+                  ],
+                ),
+              )
+            : DefaultTabController(
+                length: packs.length,
+                child: Column(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        tooltip: 'Create or import sticker pack',
                         onPressed: () => _manageStickerPacks(context, backend),
                         icon: const Icon(Icons.add_photo_alternate_outlined),
-                        label: const Text('Create or import a pack'),
                       ),
-                    ],
-                  ),
-                )
-              : DefaultTabController(
-                  length: packs.length,
-                  child: Column(
-                    children: [
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: IconButton(
-                          tooltip: 'Create or import sticker pack',
-                          onPressed: () =>
-                              _manageStickerPacks(context, backend),
-                          icon: const Icon(Icons.add_photo_alternate_outlined),
-                        ),
-                      ),
-                      TabBar(
-                        isScrollable: true,
-                        tabs: [for (final pack in packs) Tab(text: pack.name)],
-                      ),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            for (final pack in packs)
-                              GridView.builder(
-                                padding: const EdgeInsets.all(12),
-                                gridDelegate:
-                                    const SliverGridDelegateWithMaxCrossAxisExtent(
-                                      maxCrossAxisExtent: 112,
-                                      mainAxisSpacing: 8,
-                                      crossAxisSpacing: 8,
-                                    ),
-                                itemCount: pack.stickers.length,
-                                itemBuilder: (context, index) {
-                                  final sticker = pack.stickers[index];
-                                  final favourite = FavouriteReactionsStore
+                    ),
+                    TabBar(
+                      isScrollable: true,
+                      tabs: [for (final pack in packs) Tab(text: pack.name)],
+                    ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          for (final pack in packs)
+                            GridView.builder(
+                              padding: const EdgeInsets.all(12),
+                              gridDelegate:
+                                  const SliverGridDelegateWithMaxCrossAxisExtent(
+                                    maxCrossAxisExtent: 112,
+                                    mainAxisSpacing: 8,
+                                    crossAxisSpacing: 8,
+                                  ),
+                              itemCount: pack.stickers.length,
+                              itemBuilder: (context, index) {
+                                final sticker = pack.stickers[index];
+                                final favourite = FavouriteReactionsStore
+                                    .instance
+                                    .isStickerFavourite(sticker.mxcUri);
+                                return InkWell(
+                                  key: ValueKey(
+                                    'sticker-${pack.id}-${sticker.id}',
+                                  ),
+                                  onTap: () => Navigator.pop(context, sticker),
+                                  onLongPress: () => FavouriteReactionsStore
                                       .instance
-                                      .isStickerFavourite(sticker.mxcUri);
-                                  return InkWell(
-                                    key: ValueKey(
-                                      'sticker-${pack.id}-${sticker.id}',
-                                    ),
-                                    onTap: () =>
-                                        Navigator.pop(context, sticker),
-                                    onLongPress: () => FavouriteReactionsStore
-                                        .instance
-                                        .toggleSticker(sticker.mxcUri),
-                                    borderRadius:
-                                        DeltiecordCorners.borderRadius,
-                                    child: Tooltip(
-                                      message: sticker.name,
-                                      child: Padding(
-                                        padding: const EdgeInsets.all(6),
-                                        child: Stack(
-                                          children: [
-                                            Positioned.fill(
-                                              child: _StickerPreviewImage(
-                                                backend: backend,
-                                                sticker: sticker,
+                                      .toggleSticker(sticker.mxcUri),
+                                  borderRadius: DeltiecordCorners.borderRadius,
+                                  child: Tooltip(
+                                    message: sticker.name,
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(6),
+                                      child: Stack(
+                                        children: [
+                                          Positioned.fill(
+                                            child: _StickerPreviewImage(
+                                              backend: backend,
+                                              sticker: sticker,
+                                            ),
+                                          ),
+                                          Positioned(
+                                            right: 0,
+                                            top: 0,
+                                            child: IconButton(
+                                              tooltip: favourite
+                                                  ? 'Remove from favourites'
+                                                  : 'Add to favourites',
+                                              visualDensity:
+                                                  VisualDensity.compact,
+                                              onPressed: () =>
+                                                  FavouriteReactionsStore
+                                                      .instance
+                                                      .toggleSticker(
+                                                        sticker.mxcUri,
+                                                      ),
+                                              icon: Icon(
+                                                favourite
+                                                    ? Icons.star
+                                                    : Icons.star_border,
+                                                size: 18,
                                               ),
                                             ),
-                                            Positioned(
-                                              right: 0,
-                                              top: 0,
-                                              child: IconButton(
-                                                tooltip: favourite
-                                                    ? 'Remove from favourites'
-                                                    : 'Add to favourites',
-                                                visualDensity:
-                                                    VisualDensity.compact,
-                                                onPressed: () =>
-                                                    FavouriteReactionsStore
-                                                        .instance
-                                                        .toggleSticker(
-                                                          sticker.mxcUri,
-                                                        ),
-                                                icon: Icon(
-                                                  favourite
-                                                      ? Icons.star
-                                                      : Icons.star_border,
-                                                  size: 18,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
-                          ],
-                        ),
+                                  ),
+                                );
+                              },
+                            ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-        );
+              );
       },
     ),
+  );
+}
+
+/// Sticker management is a compact dialog on desktop and a draggable sheet on
+/// Android. Keeping presentation here prevents mobile sheet geometry from
+/// leaking into wide desktop windows while giving long action lists one
+/// bounded, scrollable viewport on phones.
+Future<T?> _showStickerSurface<T>(
+  BuildContext context, {
+  required WidgetBuilder builder,
+  required double desktopWidth,
+  required double desktopHeight,
+  required double mobileHeightFactor,
+  required Key surfaceKey,
+}) {
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => FractionallySizedBox(
+        key: surfaceKey,
+        heightFactor: mobileHeightFactor,
+        child: builder(sheetContext),
+      ),
+    );
+  }
+  return showDialog<T>(
+    context: context,
+    builder: (dialogContext) {
+      final viewport = MediaQuery.sizeOf(dialogContext);
+      return Dialog(
+        key: surfaceKey,
+        child: SizedBox(
+          width: min(desktopWidth, max(280, viewport.width - 64)),
+          height: min(desktopHeight, max(280, viewport.height - 64)),
+          child: builder(dialogContext),
+        ),
+      );
+    },
   );
 }
 
@@ -368,11 +405,16 @@ Future<void> _manageStickerPacks(
   BuildContext context,
   ChatBackend backend,
 ) async {
-  final action = await showModalBottomSheet<String>(
-    context: context,
-    showDragHandle: true,
+  final action = await _showStickerSurface<String>(
+    context,
+    desktopWidth: 560,
+    desktopHeight: 610,
+    mobileHeightFactor: 0.88,
+    surfaceKey: const ValueKey('sticker-pack-manager-surface'),
     builder: (context) => SafeArea(
-      child: Wrap(
+      child: ListView(
+        key: const ValueKey('sticker-pack-manager-list'),
+        padding: const EdgeInsets.only(bottom: 16),
         children: [
           const ListTile(
             title: Text('Sticker packs'),

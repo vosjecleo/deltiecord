@@ -149,6 +149,64 @@ class GiphyProxySecurityTests(unittest.TestCase):
         self.assertFalse(PROXY._is_animated_webp(static_webp))
         self.assertTrue(PROXY._is_animated_webp(animated_webp))
 
+    def test_static_telegram_media_is_served_from_bounded_cache(self):
+        pack = {
+            "name": "Animals",
+            "title": "Animals",
+            "unsupported_count": 0,
+            "stickers": [
+                {
+                    "index": 0,
+                    "emoji": "cat",
+                    "mime_type": "image/webp",
+                    "width": 128,
+                    "height": 128,
+                    "size": 16,
+                    "file_id": "private-file-id",
+                    "file_unique_id": "stable-static-id",
+                    "source_kind": "static",
+                }
+            ],
+        }
+        media = b"RIFF\x04\x00\x00\x00WEBP"
+        PROXY._conversion_cache_put(("stable-static-id", 0), media)
+        with mock.patch.object(PROXY, "_telegram_pack", return_value=pack), mock.patch.object(
+            PROXY, "_telegram_request"
+        ) as telegram_request:
+            body, content_type = PROXY._telegram_sticker("Animals", 0, 256)
+        self.assertEqual(body, media)
+        self.assertEqual(content_type, "image/webp")
+        telegram_request.assert_not_called()
+
+    def test_converted_telegram_media_cache_skips_source_download(self):
+        pack = {
+            "name": "Animals",
+            "title": "Animals",
+            "unsupported_count": 0,
+            "stickers": [
+                {
+                    "index": 1,
+                    "emoji": "cat",
+                    "mime_type": "image/webp",
+                    "width": 128,
+                    "height": 128,
+                    "size": 16,
+                    "file_id": "private-file-id",
+                    "file_unique_id": "stable-animated-id",
+                    "source_kind": "tgs",
+                }
+            ],
+        }
+        media = b"RIFF\x20\x00\x00\x00WEBPVP8XANIMdataANMFframe"
+        PROXY._conversion_cache_put(("stable-animated-id", 128), media)
+        with mock.patch.object(PROXY, "_telegram_pack", return_value=pack), mock.patch.object(
+            PROXY, "_telegram_request"
+        ) as telegram_request:
+            body, content_type = PROXY._telegram_sticker("Animals", 1, 128)
+        self.assertEqual(body, media)
+        self.assertEqual(content_type, "image/webp")
+        telegram_request.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

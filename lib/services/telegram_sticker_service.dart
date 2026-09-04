@@ -297,13 +297,13 @@ final class TelegramStickerService {
     TelegramStickerReference sticker,
   ) async {
     Object? lastError;
-    for (var attempt = 0; attempt < 3; attempt++) {
+    for (var attempt = 0; attempt < 4; attempt++) {
       try {
         return await _downloadOnce(pack, sticker);
       } catch (error) {
         lastError = error;
-        if (attempt == 2) rethrow;
-        await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
+        if (attempt == 3) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 250 * (attempt + 1)));
       }
     }
     throw lastError!;

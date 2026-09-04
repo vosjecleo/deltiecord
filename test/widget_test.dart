@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:deltiecord/app.dart';
 import 'package:deltiecord/backend/chat_backend.dart';
 import 'package:deltiecord/models/chat_models.dart';
+import 'package:deltiecord/services/emoji_repository.dart';
 import 'package:deltiecord/services/favourite_reactions_store.dart';
 import 'package:deltiecord/ui/deltiecord_theme.dart';
 import 'package:deltiecord/ui/advanced_chat_dialogs.dart';
+import 'package:deltiecord/ui/emoji_picker_dialog.dart';
 import 'package:deltiecord/ui/matrix_html_text.dart';
 import 'package:deltiecord/ui/typing_indicator.dart';
 import 'package:flutter/gestures.dart';
@@ -33,6 +36,96 @@ void main() {
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
     expect(app.theme!.textTheme.bodyMedium!.fontFamilyFallback, isNull);
+  });
+
+  for (final mode in DeltiecordThemeMode.values) {
+    testWidgets('modal surfaces use the $mode Deltiecord theme palette', (
+      tester,
+    ) async {
+      final backend = FakeBackend()
+        ..currentStatus = SessionStatus.signedOut
+        ..currentPreferences = AppPreferences(themeMode: mode);
+      await tester.pumpWidget(DeltiecordApp(backend: backend));
+
+      final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+      final palette = DeltiecordPalette.forMode(mode);
+      expect(app.theme!.bottomSheetTheme.modalBackgroundColor, palette.surface);
+      expect(app.theme!.dialogTheme.backgroundColor, palette.surface);
+      expect(app.theme!.colorScheme.surfaceContainer, palette.surface);
+    });
+  }
+
+  testWidgets('custom emoji picker groups entries by pack', (tester) async {
+    final imageBytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/'
+      'hK0P7wAAAABJRU5ErkJggg==',
+    );
+    StickerPackSummary pack(String id, String name, String emojiName) =>
+        StickerPackSummary(
+          id: id,
+          name: name,
+          stickers: [
+            StickerSummary(
+              id: emojiName,
+              name: emojiName,
+              mxcUri: Uri.parse('mxc://example.org/$id'),
+              previewBytes: imageBytes,
+              assetType: StickerAssetType.emoji,
+              packId: id,
+            ),
+          ],
+        );
+    final backend = FakeBackend()
+      ..stickerPackList = [
+        pack('cats', 'Cat pack', 'party_cat'),
+        pack('birds', 'Bird pack', 'party_bird'),
+      ];
+    expect(customEmojiEntries(backend.stickerPacks), hasLength(2));
+    const palette = DeltiecordPalette(
+      background: Color(0xff26272c),
+      rail: Color(0xff1e1f22),
+      panel: Color(0xff202125),
+      surface: Color(0xff26272c),
+      elevated: Color(0xff303137),
+      input: Color(0xff303137),
+      island: Color(0xff303137),
+      hover: Color(0xff34353b),
+      divider: Color(0xff36373d),
+      text: Color(0xfff2f3f5),
+      muted: Color(0xffb5bac1),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: const [palette]),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () => showDialog<EmojiEntry>(
+                context: context,
+                builder: (context) => EmojiPickerDialog(backend: backend),
+              ),
+              child: const Text('Open emoji'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open emoji'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Custom'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cat pack'), findsOneWidget);
+    expect(find.text('Bird pack'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('emoji-picker-result-mxc://example.org/cats')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('emoji-picker-result-mxc://example.org/birds')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('shows joined rooms and opens a timeline', (tester) async {

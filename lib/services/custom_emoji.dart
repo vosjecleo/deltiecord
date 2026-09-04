@@ -27,6 +27,36 @@ final class PreparedCustomEmoji {
   final bool resized;
 }
 
+List<StickerDraftItem> applyCustomEmojiAliases(
+  List<StickerDraftItem> items,
+  List<String> aliases,
+) {
+  if (items.length != aliases.length) {
+    throw StateError('Every custom emoji needs an alias.');
+  }
+  final trimmed = aliases.map((alias) => alias.trim()).toList(growable: false);
+  if (trimmed.any(
+    (alias) => !RegExp(r'^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$').hasMatch(alias),
+  )) {
+    throw StateError('Use 1–100 letters, numbers, underscores or hyphens.');
+  }
+  if (trimmed.map((alias) => alias.toLowerCase()).toSet().length !=
+      trimmed.length) {
+    throw StateError('Every emoji alias in a pack must be unique.');
+  }
+  return [
+    for (var index = 0; index < items.length; index++)
+      StickerDraftItem(
+        shortcode: trimmed[index],
+        bytes: items[index].bytes,
+        mimeType: items[index].mimeType,
+        width: items[index].width,
+        height: items[index].height,
+        assetType: StickerAssetType.emoji,
+      ),
+  ];
+}
+
 /// Converts an oversized static emoji into a centred 128×128 PNG.
 ///
 /// The longest edge is reduced to 128 without changing the aspect ratio; the

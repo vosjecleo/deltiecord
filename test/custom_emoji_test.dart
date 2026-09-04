@@ -6,6 +6,45 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as image;
 
 void main() {
+  test(
+    'custom emoji aliases are trimmed, unique and retain media identity',
+    () {
+      final bytes = Uint8List.fromList([1, 2, 3]);
+      final items = [
+        StickerDraftItem(
+          shortcode: 'old',
+          bytes: bytes,
+          mimeType: 'image/png',
+          width: 32,
+          height: 24,
+        ),
+      ];
+
+      final renamed = applyCustomEmojiAliases(items, const ['  party_cat  ']);
+
+      expect(renamed.single.shortcode, 'party_cat');
+      expect(renamed.single.bytes, same(bytes));
+      expect(renamed.single.assetType, StickerAssetType.emoji);
+    },
+  );
+
+  test('custom emoji aliases reject invalid and duplicate names', () {
+    final item = StickerDraftItem(
+      shortcode: 'old',
+      bytes: Uint8List.fromList([1]),
+      mimeType: 'image/png',
+    );
+
+    expect(
+      () => applyCustomEmojiAliases([item], const ['not valid']),
+      throwsStateError,
+    );
+    expect(
+      () => applyCustomEmojiAliases([item, item], const ['Cat', 'cat']),
+      throwsStateError,
+    );
+  });
+
   final first = CustomEmojiReference(
     id: Uri(scheme: 'mxc', host: 'one.test', path: '/same-id'),
     name: 'party',

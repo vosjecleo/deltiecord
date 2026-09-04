@@ -63,11 +63,21 @@ class DeltiecordApp extends StatelessWidget {
         final brightness = preferences.themeMode == DeltiecordThemeMode.light
             ? Brightness.light
             : Brightness.dark;
-        final colorScheme = ColorScheme.fromSeed(
-          seedColor: accent,
-          brightness: brightness,
-          contrastLevel: contrast ? 1 : 0,
-        ).copyWith(surface: palette.surface, onSurface: palette.text);
+        final colorScheme =
+            ColorScheme.fromSeed(
+              seedColor: accent,
+              brightness: brightness,
+              contrastLevel: contrast ? 1 : 0,
+            ).copyWith(
+              surface: palette.surface,
+              surfaceContainerLowest: palette.background,
+              surfaceContainerLow: palette.surface,
+              surfaceContainer: palette.surface,
+              surfaceContainerHigh: palette.elevated,
+              surfaceContainerHighest: palette.hover,
+              surfaceTint: Colors.transparent,
+              onSurface: palette.text,
+            );
         final baseText = ThemeData(brightness: brightness).textTheme;
         final textTheme = baseText
             .copyWith(
@@ -210,6 +220,16 @@ class DeltiecordApp extends StatelessWidget {
               backgroundColor: palette.surface,
               shape: RoundedRectangleBorder(
                 borderRadius: DeltiecordCorners.borderRadius,
+              ),
+            ),
+            bottomSheetTheme: BottomSheetThemeData(
+              backgroundColor: palette.surface,
+              modalBackgroundColor: palette.surface,
+              surfaceTintColor: Colors.transparent,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(
+                  top: DeltiecordCorners.corner,
+                ),
               ),
             ),
             appBarTheme: AppBarTheme(

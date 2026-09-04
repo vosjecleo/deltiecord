@@ -445,13 +445,22 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
   Future<Uint8List?> _loadStickerPreview(StickerSummary sticker) {
     if (sticker.previewBytes case final bytes?) return Future.value(bytes);
     final key = sticker.mxcUri.toString();
+    final cacheKey = 'sticker:$key';
+    final cached = _attachmentBytesCache.remove(cacheKey);
+    if (cached != null) {
+      _attachmentBytesCache[cacheKey] = cached;
+      return Future.value(cached);
+    }
     return _stickerPreviewLoads.putIfAbsent(key, () {
       final completer = Completer<Uint8List?>();
       _stickerPreviewQueue.add(_StickerPreviewLoad(sticker, completer));
       _pumpStickerPreviewQueue();
-      return completer.future.whenComplete(
-        () => _stickerPreviewLoads.remove(key),
-      );
+      return completer.future.whenComplete(() {
+        // Do not return Map.remove's Future here. whenComplete would await
+        // that same in-flight Future, leaving every sticker/emoji preview in
+        // a permanent self-referential loading state.
+        _stickerPreviewLoads.remove(key);
+      });
     });
   }
 
@@ -466,16 +475,20 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         // Homeserver thumbnail endpoints commonly reject imported WebP files
         // and intentionally flatten animation.
         _profileOriginalMedia(load.sticker.mxcUri)
-            .then(
-              (bytes) =>
-                  bytes != null &&
-                      bytes.length <=
-                          (load.sticker.assetType == StickerAssetType.emoji
-                              ? StickerPackDraft.maximumEmojiBytes
-                              : 5 * 1024 * 1024)
-                  ? bytes
-                  : null,
-            )
+            .timeout(const Duration(seconds: 12), onTimeout: () => null)
+            .then((bytes) {
+              final maximumBytes =
+                  load.sticker.assetType == StickerAssetType.emoji
+                  ? StickerPackDraft.maximumEmojiBytes
+                  : 5 * 1024 * 1024;
+              if (bytes == null ||
+                  bytes.isEmpty ||
+                  bytes.length > maximumBytes) {
+                return null;
+              }
+              _rememberStickerPreview(load.sticker.mxcUri, bytes);
+              return bytes;
+            })
             .then(
               load.completer.complete,
               onError: (_) {
@@ -488,6 +501,22 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
               _pumpStickerPreviewQueue();
             }),
       );
+    }
+  }
+
+  void _rememberStickerPreview(Uri uri, Uint8List bytes) {
+    final key = 'sticker:$uri';
+    final previous = _attachmentBytesCache.remove(key);
+    _attachmentBytesCacheSize -= previous?.length ?? 0;
+    _attachmentBytesCache[key] = bytes;
+    _attachmentBytesCacheSize += bytes.length;
+    while (_attachmentBytesCache.length >
+            MatrixBackend._maximumCachedAttachments ||
+        _attachmentBytesCacheSize >
+            MatrixBackend._maximumCachedAttachmentBytes) {
+      final oldestKey = _attachmentBytesCache.keys.first;
+      final removed = _attachmentBytesCache.remove(oldestKey);
+      _attachmentBytesCacheSize -= removed?.length ?? 0;
     }
   }
 
@@ -641,6 +670,10 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         filename: '$shortcode.${_stickerExtension(item.mimeType)}',
         contentType: item.mimeType,
       );
+      // Newly uploaded pack media is already in memory. Seed the bounded
+      // shared media cache so opening the picker does not immediately fetch
+      // every item back from the homeserver.
+      _rememberStickerPreview(uri, item.bytes);
       images[shortcode] = {
         'body': shortcode,
         'url': uri.toString(),

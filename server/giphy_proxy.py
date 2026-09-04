@@ -155,7 +155,11 @@ def _telegram_request(method, parameters):
         f"https://api.telegram.org/bot{token}/{method}?" + urlencode(parameters),
         headers={"User-Agent": f"Deltiecord-Telegram-Proxy/{VERSION}"},
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    # Telegram occasionally leaves individual Bot API connections idle for
+    # close to ten seconds. Fail that attempt early enough for the client's
+    # bounded retry loop to recover without one tile occupying a queue slot
+    # for most of a minute.
+    with urllib.request.urlopen(request, timeout=6) as response:
         if response.status != 200 or response.headers.get_content_type() != "application/json":
             raise RuntimeError("unexpected Telegram status")
         body = response.read(MAX_UPSTREAM_BYTES + 1)
@@ -515,6 +519,21 @@ def _telegram_sticker(set_name, index, converted_size=256):
     )
     if sticker is None:
         raise LookupError("sticker not found")
+    source_kind = sticker["source_kind"]
+    cache_key = (
+        sticker["file_unique_id"],
+        converted_size if source_kind != "static" else 0,
+    )
+    cached = _conversion_cache_get(cache_key)
+    if cached is not None:
+        if source_kind != "static" or (
+            cached.startswith(b"RIFF") and cached[8:12] == b"WEBP"
+        ):
+            return cached, "image/webp"
+        if cached.startswith(b"\x89PNG\r\n\x1a\n"):
+            return cached, "image/png"
+        # The bounded process cache is not persistent, but still treat a
+        # malformed entry as a miss instead of serving unchecked bytes.
     file_info = _telegram_request("getFile", {"file_id": sticker["file_id"]})
     file_path = file_info.get("file_path")
     if not isinstance(file_path, str) or not file_path:
@@ -524,13 +543,12 @@ def _telegram_sticker(set_name, index, converted_size=256):
         f"https://api.telegram.org/file/bot{token}/{quote(file_path, safe='/')}",
         headers={"User-Agent": f"Deltiecord-Telegram-Proxy/{VERSION}"},
     )
-    with urllib.request.urlopen(request, timeout=12) as response:
+    with urllib.request.urlopen(request, timeout=8) as response:
         if response.status != 200:
             raise RuntimeError("unexpected Telegram file status")
         body = response.read(MAX_TELEGRAM_STICKER_BYTES + 1)
         if len(body) > MAX_TELEGRAM_STICKER_BYTES:
             raise RuntimeError("Telegram sticker too large")
-    source_kind = sticker["source_kind"]
     if source_kind == "tgs":
         if not body.startswith(b"\x1f\x8b"):
             raise RuntimeError("unexpected Telegram animated sticker format")
@@ -541,8 +559,10 @@ def _telegram_sticker(set_name, index, converted_size=256):
             raise RuntimeError("unexpected Telegram video sticker format")
         return _convert_telegram_sticker(body, sticker, converted_size), "image/webp"
     if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        _conversion_cache_put(cache_key, body)
         return body, "image/png"
     if body.startswith(b"RIFF") and body[8:12] == b"WEBP":
+        _conversion_cache_put(cache_key, body)
         return body, "image/webp"
     raise RuntimeError("unexpected Telegram sticker format")
 

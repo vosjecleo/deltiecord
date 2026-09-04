@@ -503,12 +503,16 @@ Future<T?> _showStickerSurface<T>(
   required double mobileHeightFactor,
   required Key surfaceKey,
 }) {
+  final surface =
+      Theme.of(context).extension<DeltiecordPalette>()?.surface ??
+      Theme.of(context).colorScheme.surface;
   if (defaultTargetPlatform == TargetPlatform.android) {
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,
+      backgroundColor: surface,
       builder: (sheetContext) => FractionallySizedBox(
         key: surfaceKey,
         heightFactor: mobileHeightFactor,
@@ -522,6 +526,10 @@ Future<T?> _showStickerSurface<T>(
       final viewport = MediaQuery.sizeOf(dialogContext);
       return Dialog(
         key: surfaceKey,
+        backgroundColor:
+            Theme.of(dialogContext).extension<DeltiecordPalette>()?.surface ??
+            Theme.of(dialogContext).colorScheme.surface,
+        surfaceTintColor: Colors.transparent,
         child: SizedBox(
           width: min(desktopWidth, max(280, viewport.width - 64)),
           height: min(desktopHeight, max(280, viewport.height - 64)),
@@ -623,7 +631,7 @@ Future<void> _manageStickerPacks(
           ListTile(
             leading: const Icon(Icons.send_outlined),
             title: const Text('Import from Telegram'),
-            subtitle: const Text('Paste a public static sticker-pack link'),
+            subtitle: const Text('Paste a public sticker-pack link'),
             onTap: () => Navigator.pop(context, 'telegram-sticker'),
           ),
           ListTile(
@@ -641,6 +649,7 @@ Future<void> _manageStickerPacks(
           ListTile(
             leading: const Icon(Icons.send_outlined),
             title: const Text('Import Telegram pack as emoji'),
+            subtitle: const Text('Choose aliases before saving'),
             onTap: () => Navigator.pop(context, 'telegram-emoji'),
           ),
           if (backend.stickerPacks.any((pack) => pack.canManage))
@@ -672,10 +681,14 @@ Future<void> _manageStickerPacks(
     if (selectedItems == null || selectedItems.isEmpty || !context.mounted) {
       return;
     }
-    final items = assetType == StickerAssetType.emoji
+    var items = assetType == StickerAssetType.emoji
         ? await _prepareEmojiItems(context, selectedItems)
         : _asAssetType(selectedItems, assetType);
     if (items == null || !context.mounted) return;
+    if (assetType == StickerAssetType.emoji) {
+      items = await _editEmojiAliases(context, items);
+      if (items == null || !context.mounted) return;
+    }
     final name = await _askStickerPackName(context);
     if (name == null || !context.mounted) return;
     final draft = StickerPackDraft(name: name, stickers: items);
@@ -848,6 +861,141 @@ Future<List<StickerDraftItem>?> _prepareEmojiItems(
     );
   }
   return prepared;
+}
+
+Future<List<StickerDraftItem>?> _editEmojiAliases(
+  BuildContext context,
+  List<StickerDraftItem> items,
+) => _showStickerSurface<List<StickerDraftItem>>(
+  context,
+  desktopWidth: 560,
+  desktopHeight: 610,
+  mobileHeightFactor: 0.88,
+  surfaceKey: const ValueKey('emoji-alias-editor-surface'),
+  builder: (context) => _EmojiAliasEditor(items: items),
+);
+
+class _EmojiAliasEditor extends StatefulWidget {
+  const _EmojiAliasEditor({required this.items});
+
+  final List<StickerDraftItem> items;
+
+  @override
+  State<_EmojiAliasEditor> createState() => _EmojiAliasEditorState();
+}
+
+class _EmojiAliasEditorState extends State<_EmojiAliasEditor> {
+  late final List<TextEditingController> _controllers = [
+    for (final item in widget.items)
+      TextEditingController(text: item.shortcode),
+  ];
+  String? _error;
+
+  @override
+  void dispose() {
+    for (final controller in _controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  void _save() {
+    final aliases = _controllers
+        .map((controller) => controller.text.trim())
+        .toList(growable: false);
+    try {
+      Navigator.pop(context, applyCustomEmojiAliases(widget.items, aliases));
+    } on StateError catch (error) {
+      setState(() => _error = error.message.toString());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: context.deltiecord.surface,
+    child: Column(
+      children: [
+        ListTile(
+          title: const Text('Name custom emoji'),
+          subtitle: const Text(
+            'Set the :alias: used in messages, search and autocomplete.',
+          ),
+          trailing: IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close),
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: widget.items.length,
+            itemBuilder: (context, index) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  SizedBox.square(
+                    dimension: 42,
+                    child: Image.memory(
+                      widget.items[index].bytes,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      key: ValueKey('emoji-alias-$index'),
+                      controller: _controllers[index],
+                      maxLength: 100,
+                      decoration: const InputDecoration(
+                        prefixText: ':',
+                        suffixText: ':',
+                        counterText: '',
+                        hintText: 'emoji_name',
+                      ),
+                      onChanged: (_) {
+                        if (_error != null) setState(() => _error = null);
+                      },
+                      onSubmitted: (_) {
+                        if (index == widget.items.length - 1) _save();
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                onPressed: _save,
+                icon: const Icon(Icons.check),
+                label: const Text('Continue'),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 PreparedCustomEmoji _prepareEmojiInIsolate((Uint8List, String, int) request) =>
@@ -1130,10 +1278,14 @@ Future<void> _importTelegramStickerPack(
         ),
       );
       if (!context.mounted) return;
-      final preparedItems = assetType == StickerAssetType.emoji
+      var preparedItems = assetType == StickerAssetType.emoji
           ? await _prepareEmojiItems(context, items)
           : _asAssetType(items, assetType);
       if (preparedItems == null || !context.mounted) return;
+      if (assetType == StickerAssetType.emoji) {
+        preparedItems = await _editEmojiAliases(context, preparedItems);
+        if (preparedItems == null || !context.mounted) return;
+      }
       final draft = StickerPackDraft(name: name, stickers: preparedItems);
       if (!context.mounted) return;
       final destination = await _chooseStickerPackDestination(context, backend);
@@ -1150,7 +1302,9 @@ Future<void> _importTelegramStickerPack(
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Imported ${selected.length} stickers from ${pack.title}.',
+            'Imported ${selected.length} '
+            '${assetType == StickerAssetType.emoji ? 'emoji' : 'stickers'} '
+            'from ${pack.title}.',
           ),
         ),
       );
@@ -1218,6 +1372,8 @@ Future<Set<int>?> _selectTelegramStickers(
     context: context,
     builder: (context) => StatefulBuilder(
       builder: (context, setState) => AlertDialog(
+        backgroundColor: context.deltiecord.surface,
+        surfaceTintColor: Colors.transparent,
         title: Text(pack.title),
         content: SizedBox(
           width: 620,

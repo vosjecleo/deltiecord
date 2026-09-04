@@ -25,6 +25,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
   @override
   void initState() {
     super.initState();
+    _custom = customEmojiEntries(widget.backend.stickerPacks);
     _search();
     widget.backend.refreshStickerPacks().then((_) {
       if (!mounted) return;
@@ -41,18 +42,20 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
 
   Future<void> _search() async {
     final generation = ++_generation;
+    final custom = _custom
+        .where((entry) => entry.matches(_query.text))
+        .toList(growable: false);
     final familiar = EmojiRepository.instance.familiarMatches(
       _query.text,
       limit: 160,
     );
-    if (mounted && generation == _generation && familiar.isNotEmpty) {
-      setState(() => _results = familiar);
+    if (mounted && generation == _generation) {
+      setState(() => _results = [...custom, ...familiar]);
     }
     final catalog = await EmojiRepository.instance.search(
       _query.text,
       limit: _query.text.trim().isEmpty ? null : 160,
     );
-    final custom = _custom.where((entry) => entry.matches(_query.text));
     final results = [
       ...custom,
       ...familiar,
@@ -82,11 +85,28 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     for (final entry in visibleResults) {
       (grouped[entry.category] ??= []).add(entry);
     }
+    final customByPack = <({String id, String name}), List<EmojiEntry>>{};
+    for (final pack in widget.backend.stickerPacks) {
+      final entries = visibleResults
+          .where(
+            (entry) =>
+                entry.isCustom &&
+                pack.stickers.any(
+                  (sticker) => sticker.mxcUri == entry.customEmoji?.mxcUri,
+                ),
+          )
+          .toList(growable: false);
+      if (entries.isNotEmpty) {
+        customByPack[(id: pack.id, name: pack.name)] = entries;
+      }
+    }
     final favourites = FavouriteReactionsStore.instance.emoji;
     final favouriteEntries = _results
         .where((entry) => favourites.contains(entry.favouriteKey))
         .toList(growable: false);
     return AlertDialog(
+      backgroundColor: context.deltiecord.surface,
+      surfaceTintColor: Colors.transparent,
       title: const Text('Emoji'),
       content: SizedBox(
         width: 540,
@@ -142,19 +162,34 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
                     ),
                     _emojiGrid(favouriteEntries),
                   ],
-                  for (final category in EmojiCategory.values)
-                    if (grouped[category] case final entries?) ...[
+                  if (_selectedCategory == null ||
+                      _selectedCategory == EmojiCategory.custom)
+                    for (final pack in customByPack.entries) ...[
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(4, 8, 4, 5),
                           child: Text(
-                            category.label,
+                            pack.key.name,
                             style: Theme.of(context).textTheme.labelLarge,
                           ),
                         ),
                       ),
-                      _emojiGrid(entries),
+                      _emojiGrid(pack.value),
                     ],
+                  for (final category in EmojiCategory.values)
+                    if (category != EmojiCategory.custom)
+                      if (grouped[category] case final entries?) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 5),
+                            child: Text(
+                              category.label,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ),
+                        ),
+                        _emojiGrid(entries),
+                      ],
                 ],
               ),
             ),

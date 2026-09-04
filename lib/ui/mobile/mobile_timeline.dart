@@ -1069,6 +1069,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     final choice = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      backgroundColor: context.deltiecord.surface,
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
@@ -1183,6 +1184,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      backgroundColor: context.deltiecord.surface,
       builder: (context) => _MobileEmojiPicker(backend: backend),
     );
     if (emoji == null) return;
@@ -2258,13 +2260,16 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
 
   Future<void> _search() async {
     final generation = ++_generation;
+    final custom = customEmojiEntries(
+      widget.backend.stickerPacks,
+    ).where((entry) => entry.matches(_query.text)).toList(growable: false);
+    if (mounted && generation == _generation) {
+      setState(() => _results = custom);
+    }
     final unicode = await EmojiRepository.instance.search(
       _query.text,
       limit: _query.text.trim().isEmpty ? null : 160,
     );
-    final custom = customEmojiEntries(
-      widget.backend.stickerPacks,
-    ).where((entry) => entry.matches(_query.text));
     final results = [...custom, ...unicode];
     if (mounted && generation == _generation) {
       setState(() => _results = results);
@@ -2287,6 +2292,21 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
     final grouped = <EmojiCategory, List<EmojiEntry>>{};
     for (final entry in visible) {
       (grouped[entry.category] ??= []).add(entry);
+    }
+    final customByPack = <({String id, String name}), List<EmojiEntry>>{};
+    for (final pack in widget.backend.stickerPacks) {
+      final entries = visible
+          .where(
+            (entry) =>
+                entry.isCustom &&
+                pack.stickers.any(
+                  (sticker) => sticker.mxcUri == entry.customEmoji?.mxcUri,
+                ),
+          )
+          .toList(growable: false);
+      if (entries.isNotEmpty) {
+        customByPack[(id: pack.id, name: pack.name)] = entries;
+      }
     }
     final favourites = FavouriteReactionsStore.instance.emoji;
     final favouriteEntries = _results
@@ -2345,19 +2365,34 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
                     ),
                     _mobileEmojiGrid(favouriteEntries),
                   ],
-                  for (final category in EmojiCategory.values)
-                    if (grouped[category] case final entries?) ...[
+                  if (_selectedCategory == null ||
+                      _selectedCategory == EmojiCategory.custom)
+                    for (final pack in customByPack.entries) ...[
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
                           child: Text(
-                            category.label,
+                            pack.key.name,
                             style: Theme.of(context).textTheme.labelLarge,
                           ),
                         ),
                       ),
-                      _mobileEmojiGrid(entries),
+                      _mobileEmojiGrid(pack.value),
                     ],
+                  for (final category in EmojiCategory.values)
+                    if (category != EmojiCategory.custom)
+                      if (grouped[category] case final entries?) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                            child: Text(
+                              category.label,
+                              style: Theme.of(context).textTheme.labelLarge,
+                            ),
+                          ),
+                        ),
+                        _mobileEmojiGrid(entries),
+                      ],
                 ],
               ),
             ),

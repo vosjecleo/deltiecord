@@ -1,5 +1,19 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 87 — 2026-09-04
+
+- Fixed sticker and custom-emoji previews permanently waiting on a
+  self-referential completion future, including inline historical emoji.
+- Added bounded in-memory reuse for Matrix sticker media and newly uploaded
+  pack assets, while retaining timeouts and graceful name fallbacks.
+- Made custom emoji available immediately in the picker, grouped them by pack,
+  and added validated per-item aliases for Telegram and local imports.
+- Applied the selected Dark, OLED, or Light palette to attachment, sticker,
+  emoji, and pack-management surfaces.
+- Made Telegram imports more resilient to intermittent upstream stalls with
+  bounded retries, earlier upstream timeouts, and cached static and converted
+  media that avoids redundant Telegram downloads.
+
 ## Deltiecord 0.9.27 build 86 — 2026-09-04
 
 - Added bounded server-side conversion of Telegram TGS and WebM animations to

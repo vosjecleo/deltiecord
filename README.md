@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 85**
+> **Current release candidate: version 0.9.27 build 87**
 >
-> Deltiecord is available for desktop and Android. Build 85 fixes Telegram pack
-> links copied from rich message text, on top of build 84's sticker UI, Android
-> resume, and desktop metadata/avatar performance corrections.
+> Deltiecord is available for desktop and Android. Build 87 repairs sticker and
+> custom-emoji loading, groups and names imported emoji, and makes Telegram
+> imports more resilient to intermittent upstream stalls.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 85**
+**Current release candidate: v0.9.27 build 87**

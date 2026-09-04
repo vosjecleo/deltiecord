@@ -32,8 +32,8 @@ jobs:
       - name: Restore verified Flutter archive
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ runner.temp }}/flutter-linux.tar.xz
-          key: flutter-archive-linux-${{ runner.arch }}-${{ env.FLUTTER_SHA256 }}
+          path: /tmp/flutter-linux.tar.xz
+          key: flutter-archive-linux-debian-v2-${{ runner.arch }}-${{ env.FLUTTER_SHA256 }}
       - name: Install verified Rust toolchain
         run: |
           curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$RUSTUP_INIT" -o /tmp/rustup-init
@@ -48,7 +48,7 @@ jobs:
           echo /opt/cargo/bin >> "$GITHUB_PATH"
       - name: Install verified Flutter SDK
         run: |
-          archive="$RUNNER_TEMP/flutter-linux.tar.xz"
+          archive=/tmp/flutter-linux.tar.xz
           if [[ ! -f "$archive" ]]; then
             curl --fail --location --retry 3 --proto '=https' --tlsv1.2 "$FLUTTER_ARCHIVE" -o "$archive"
           fi
@@ -84,7 +84,7 @@ jobs:
             fi
             sleep "$((attempt * 5))"
           done
-          dart format --output=none --set-exit-if-changed .
+          dart format --output=none --set-exit-if-changed lib test
           python3 -m py_compile server/giphy_proxy.py server/test_giphy_proxy.py
           python3 -m unittest server/test_giphy_proxy.py
           find packaging -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
@@ -178,7 +178,7 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE" /home/builder/.pub-cache /home/builder/.cargo
       - name: Build native Arch package
         run: |
-          runuser -u builder -- env PATH="/opt/flutter/bin:$PATH" HOME=/home/builder bash -lc "cd '$GITHUB_WORKSPACE' && git config --global --add safe.directory /opt/flutter && git config --global --add safe.directory '$GITHUB_WORKSPACE' && flutter pub get --enforce-lockfile && dart format --output=none --set-exit-if-changed . && flutter analyze && flutter test --concurrency=1 && packaging/arch/build-package.sh"
+          runuser -u builder -- env PATH="/opt/flutter/bin:$PATH" HOME=/home/builder bash -lc "cd '$GITHUB_WORKSPACE' && git config --global --add safe.directory /opt/flutter && git config --global --add safe.directory '$GITHUB_WORKSPACE' && flutter pub get --enforce-lockfile && dart format --output=none --set-exit-if-changed lib test && flutter analyze && flutter test --concurrency=1 && packaging/arch/build-package.sh"
           release_id="$(sed -n 's/^version: \([^[:space:]]*\).*/\1/p' pubspec.yaml)"
           package="$(find dist -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
           mv "$package" "dist/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"

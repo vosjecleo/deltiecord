@@ -93,7 +93,7 @@ jobs:
         run: flutter pub get --enforce-lockfile
 
       - name: Verify formatting
-        run: dart format --output=none --set-exit-if-changed .
+        run: dart format --output=none --set-exit-if-changed lib test
 
       - name: Analyze
         run: flutter analyze

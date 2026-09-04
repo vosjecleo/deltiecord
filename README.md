@@ -1,8 +1,8 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 91**
+> **Current release candidate: version 0.9.27 build 92**
 >
-> Deltiecord is available for desktop and Android. Build 91 adds editable emoji
+> Deltiecord is available for desktop and Android. Build 92 adds editable emoji
 > packs, fixes transparent-canvas sizing, adds emoji-only message sizing, and
 > repairs Android image saving.
 
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 91**
+**Current release candidate: v0.9.27 build 92**

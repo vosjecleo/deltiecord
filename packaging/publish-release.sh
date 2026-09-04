@@ -271,7 +271,16 @@ if $install_host; then
     printf '%s\n' 'pkexec is required for --install-host.' >&2
     exit 1
   }
-  pkexec apt install -y "$temporary/deltiecord-${release_id}-linux-debian-amd64.deb"
+  if command -v apt >/dev/null; then
+    pkexec apt install -y \
+      "$temporary/deltiecord-${release_id}-linux-debian-amd64.deb"
+  elif command -v pacman >/dev/null; then
+    pkexec pacman -U --noconfirm \
+      "$temporary/deltiecord-${release_id}-linux-arch-x86_64.pkg.tar.zst"
+  else
+    printf '%s\n' 'Host installation supports apt and pacman systems.' >&2
+    exit 1
+  fi
 fi
 
 printf 'Published Deltiecord %s to %s.\n' "$release_id" "$channel"

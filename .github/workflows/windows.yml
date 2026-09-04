@@ -25,6 +25,12 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      - name: Restore verified Flutter archive
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ${{ runner.temp }}\flutter-windows.zip
+          key: flutter-archive-windows-${{ runner.arch }}-${{ env.FLUTTER_SHA256 }}
+
       - name: Install verified Rust toolchain
         shell: pwsh
         run: |
@@ -56,15 +62,32 @@ jobs:
       - name: Install verified Flutter SDK
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'flutter.zip'
+          $archive = Join-Path $env:RUNNER_TEMP 'flutter-windows.zip'
           $destination = Join-Path $env:RUNNER_TEMP 'flutter-sdk'
-          Invoke-WebRequest -Uri $env:FLUTTER_ARCHIVE -OutFile $archive
+          if (-not (Test-Path $archive)) {
+            Invoke-WebRequest -Uri $env:FLUTTER_ARCHIVE -OutFile $archive
+          }
           $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $env:FLUTTER_SHA256) {
             throw "Flutter SDK checksum mismatch: $actual"
           }
           Expand-Archive -Path $archive -DestinationPath $destination
           (Join-Path $destination 'flutter\bin') | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Restore Windows Dart and Cargo dependencies
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/AppData/Local/Pub/Cache
+            ${{ runner.temp }}\cargo\registry
+            ${{ runner.temp }}\cargo\git
+          key: windows-deps-${{ runner.arch }}-${{ env.FLUTTER_SHA256 }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('pubspec.lock') }}
+
+      - name: Restore Windows Matrix crypto build
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/windows/x64/plugins/flutter_vodozemac/cargokit_build
+          key: windows-vodozemac-${{ runner.arch }}-${{ env.FLUTTER_SHA256 }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('pubspec.lock') }}
 
       - name: Resolve dependencies
         run: flutter pub get --enforce-lockfile

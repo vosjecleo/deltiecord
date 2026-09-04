@@ -84,6 +84,7 @@ void main() {
       expect(message.html, contains('data-mx-emoticon'));
       expect(message.html, contains('mxc://one.test/same-id'));
       expect(message.html, contains('alt=":party:"'));
+      expect(message.html, contains('data-deltiecord-emoji-pack="pack-one"'));
     },
   );
 
@@ -201,5 +202,56 @@ void main() {
     expect(prepared.resized, isFalse);
     expect(identical(prepared.bytes, bytes), isTrue);
     expect((prepared.width, prepared.height), (64, 48));
+  });
+
+  test('transparent padding is trimmed only when explicitly requested', () {
+    final source = image.Image(width: 64, height: 64, numChannels: 4);
+    image.fillRect(
+      source,
+      x1: 20,
+      y1: 20,
+      x2: 43,
+      y2: 43,
+      color: image.ColorRgba8(255, 0, 0, 255),
+    );
+    final bytes = Uint8List.fromList(image.encodePng(source));
+
+    final untouched = prepareCustomEmojiAsset(
+      bytes,
+      'image/png',
+      filter: CustomEmojiResizeFilter.bicubic,
+    );
+    final trimmed = prepareCustomEmojiAsset(
+      bytes,
+      'image/png',
+      filter: CustomEmojiResizeFilter.bicubic,
+      trimTransparentPadding: true,
+    );
+
+    expect(identical(untouched.bytes, bytes), isTrue);
+    expect(untouched.resized, isFalse);
+    expect(trimmed.resized, isTrue);
+    expect((trimmed.width, trimmed.height), (128, 128));
+    final decoded = image.decodePng(trimmed.bytes)!;
+    expect(decoded.getPixel(64, 0).a, greaterThan(0));
+    expect(decoded.getPixel(64, 127).a, greaterThan(0));
+    expect(decoded.getPixel(0, 64).a, greaterThan(0));
+    expect(decoded.getPixel(127, 64).a, greaterThan(0));
+  });
+
+  test('trimming rejects a wholly transparent custom emoji', () {
+    final bytes = Uint8List.fromList(
+      image.encodePng(image.Image(width: 32, height: 32, numChannels: 4)),
+    );
+
+    expect(
+      () => prepareCustomEmojiAsset(
+        bytes,
+        'image/png',
+        filter: CustomEmojiResizeFilter.bilinear,
+        trimTransparentPadding: true,
+      ),
+      throwsStateError,
+    );
   });
 }

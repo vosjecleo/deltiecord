@@ -394,6 +394,39 @@ Future<void> showStickerPackForMessage(
           (sticker) => sticker.mxcUri.toString() == reference,
         );
   }).firstOrNull;
+  await _showStickerPackDetails(
+    context,
+    backend,
+    pack: pack,
+    unavailableName: attachment.stickerPackName ?? 'Sticker',
+  );
+}
+
+Future<void> showStickerPackForEmoji(
+  BuildContext context,
+  ChatBackend backend,
+  CustomEmojiReference emoji,
+) async {
+  await backend.refreshStickerPacks();
+  if (!context.mounted) return;
+  final pack = backend.stickerPacks.where((candidate) {
+    if (emoji.packId != null && candidate.id == emoji.packId) return true;
+    return candidate.stickers.any((sticker) => sticker.mxcUri == emoji.id);
+  }).firstOrNull;
+  await _showStickerPackDetails(
+    context,
+    backend,
+    pack: pack,
+    unavailableName: emoji.fallback,
+  );
+}
+
+Future<void> _showStickerPackDetails(
+  BuildContext context,
+  ChatBackend backend, {
+  required StickerPackSummary? pack,
+  required String unavailableName,
+}) async {
   if (pack == null) {
     await showModalBottomSheet<void>(
       context: context,
@@ -405,13 +438,13 @@ Future<void> showStickerPackForMessage(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                attachment.stickerPackName ?? 'Sticker',
+                unavailableName,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
               const Text(
                 'This message does not expose an accessible Matrix image '
-                'pack. The sticker can still be viewed in the timeline.',
+                'pack. The media can still be viewed in the timeline.',
                 textAlign: TextAlign.center,
               ),
             ],
@@ -827,6 +860,7 @@ Future<List<StickerDraftItem>?> _prepareEmojiItems(
   BuildContext context,
   List<StickerDraftItem> items,
 ) async {
+  if (items.isEmpty) return const [];
   final needsResize = <StickerDraftItem>[];
   for (final item in items) {
     try {
@@ -835,19 +869,20 @@ Future<List<StickerDraftItem>?> _prepareEmojiItems(
       needsResize.add(item);
     }
   }
-  var filter = CustomEmojiResizeFilter.bicubic;
-  if (needsResize.isNotEmpty) {
-    final selected = await _chooseEmojiResizeFilter(context, needsResize.first);
-    if (selected == null) return null;
-    filter = selected;
-  }
+  final choice = await _chooseEmojiPreparation(
+    context,
+    needsResize.firstOrNull ?? items.first,
+    resizingRequired: needsResize.isNotEmpty,
+  );
+  if (choice == null) return null;
 
   final prepared = <StickerDraftItem>[];
   for (final item in items) {
     final result = await compute(_prepareEmojiInIsolate, (
       item.bytes,
       item.mimeType,
-      filter.index,
+      choice.filter.index,
+      choice.trimTransparentPadding,
     ));
     prepared.add(
       StickerDraftItem(
@@ -998,25 +1033,37 @@ class _EmojiAliasEditorState extends State<_EmojiAliasEditor> {
   );
 }
 
-PreparedCustomEmoji _prepareEmojiInIsolate((Uint8List, String, int) request) =>
-    prepareCustomEmojiAsset(
-      request.$1,
-      request.$2,
-      filter: CustomEmojiResizeFilter.values[request.$3],
-    );
-
-Future<CustomEmojiResizeFilter?> _chooseEmojiResizeFilter(
-  BuildContext context,
-  StickerDraftItem example,
-) => showDialog<CustomEmojiResizeFilter>(
-  context: context,
-  builder: (context) => _EmojiResizeDialog(example: example),
+PreparedCustomEmoji _prepareEmojiInIsolate(
+  (Uint8List, String, int, bool) request,
+) => prepareCustomEmojiAsset(
+  request.$1,
+  request.$2,
+  filter: CustomEmojiResizeFilter.values[request.$3],
+  trimTransparentPadding: request.$4,
 );
 
+Future<({CustomEmojiResizeFilter filter, bool trimTransparentPadding})?>
+_chooseEmojiPreparation(
+  BuildContext context,
+  StickerDraftItem example, {
+  required bool resizingRequired,
+}) =>
+    showDialog<({CustomEmojiResizeFilter filter, bool trimTransparentPadding})>(
+      context: context,
+      builder: (context) => _EmojiResizeDialog(
+        example: example,
+        resizingRequired: resizingRequired,
+      ),
+    );
+
 class _EmojiResizeDialog extends StatefulWidget {
-  const _EmojiResizeDialog({required this.example});
+  const _EmojiResizeDialog({
+    required this.example,
+    required this.resizingRequired,
+  });
 
   final StickerDraftItem example;
+  final bool resizingRequired;
 
   @override
   State<_EmojiResizeDialog> createState() => _EmojiResizeDialogState();
@@ -1024,24 +1071,30 @@ class _EmojiResizeDialog extends StatefulWidget {
 
 class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
   var _filter = CustomEmojiResizeFilter.bicubic;
+  var _trimTransparentPadding = false;
 
   Future<PreparedCustomEmoji> _preview() => compute(_prepareEmojiInIsolate, (
     widget.example.bytes,
     widget.example.mimeType,
     _filter.index,
+    _trimTransparentPadding,
   ));
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Resize custom emoji'),
+    title: const Text('Prepare custom emoji'),
     content: SizedBox(
       width: 360,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Images larger than 128×128 will keep their aspect ratio, fit '
-            'inside a centred 128×128 canvas, and never be stretched.',
+          Text(
+            widget.resizingRequired
+                ? 'Images larger than 128×128 will keep their aspect ratio, '
+                      'fit inside a centred 128×128 canvas, and never be '
+                      'stretched.'
+                : 'These images already meet the 128×128 limit. You can keep '
+                      'their original canvas or trim transparent padding.',
           ),
           const SizedBox(height: 12),
           SizedBox.square(
@@ -1084,6 +1137,18 @@ class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
                 ? 'Smoother; recommended for artwork'
                 : 'Slightly sharper and faster',
           ),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Trim transparent padding'),
+            subtitle: const Text(
+              'Optional. Enlarges visible static artwork while preserving '
+              'its aspect ratio. Animated emoji keep their original canvas.',
+            ),
+            value: _trimTransparentPadding,
+            onChanged: (value) =>
+                setState(() => _trimTransparentPadding = value),
+          ),
           if (const {
             'image/gif',
             'image/webp',
@@ -1101,8 +1166,11 @@ class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
         child: const Text('Cancel'),
       ),
       FilledButton(
-        onPressed: () => Navigator.pop(context, _filter),
-        child: const Text('Resize and continue'),
+        onPressed: () => Navigator.pop(context, (
+          filter: _filter,
+          trimTransparentPadding: _trimTransparentPadding,
+        )),
+        child: const Text('Continue'),
       ),
     ],
   );

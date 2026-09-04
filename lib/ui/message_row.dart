@@ -388,6 +388,12 @@ class _MessageRowState extends State<_MessageRow> {
                                           html: message.formattedBody!,
                                           fallback: message.body,
                                           backend: widget.backend,
+                                          onCustomEmojiTap: (emoji) =>
+                                              showStickerPackForEmoji(
+                                                context,
+                                                widget.backend,
+                                                emoji,
+                                              ),
                                         )
                                       : MatrixPlainText(
                                           text: message.body,

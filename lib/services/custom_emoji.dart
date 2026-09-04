@@ -66,6 +66,7 @@ PreparedCustomEmoji prepareCustomEmojiAsset(
   Uint8List bytes,
   String mimeType, {
   required CustomEmojiResizeFilter filter,
+  bool trimTransparentPadding = false,
 }) {
   if (!const {
     'image/png',
@@ -88,9 +89,11 @@ PreparedCustomEmoji prepareCustomEmojiAsset(
       header.width * header.height > 16 * 1024 * 1024) {
     throw StateError('Custom emoji has unsafe or unsupported dimensions.');
   }
-  if (header.width <= StickerPackDraft.maximumEmojiDimension &&
+  final withinLimits =
+      header.width <= StickerPackDraft.maximumEmojiDimension &&
       header.height <= StickerPackDraft.maximumEmojiDimension &&
-      bytes.length <= StickerPackDraft.maximumEmojiBytes) {
+      bytes.length <= StickerPackDraft.maximumEmojiBytes;
+  if (withinLimits && !trimTransparentPadding) {
     return PreparedCustomEmoji(
       bytes: bytes,
       mimeType: mimeType,
@@ -102,7 +105,40 @@ PreparedCustomEmoji prepareCustomEmojiAsset(
 
   final decoded = image.decodeImage(bytes);
   if (decoded == null) throw StateError('Could not decode custom emoji.');
-  final oriented = image.bakeOrientation(decoded);
+  var oriented = image.bakeOrientation(decoded);
+  var trimmed = false;
+  // Re-encoding animated WebP would silently discard its animation because
+  // package:image currently has only a static WebP encoder. Optional trimming
+  // therefore applies to static assets; valid animations retain their exact
+  // source bytes and canvas.
+  if (trimTransparentPadding && header.numFrames == 1) {
+    final bounds = _visibleAlphaBounds(oriented);
+    if (bounds == null) {
+      throw StateError('Custom emoji contains no visible pixels.');
+    }
+    if (bounds.left != 0 ||
+        bounds.top != 0 ||
+        bounds.right != oriented.width - 1 ||
+        bounds.bottom != oriented.height - 1) {
+      oriented = image.copyCrop(
+        oriented,
+        x: bounds.left,
+        y: bounds.top,
+        width: bounds.right - bounds.left + 1,
+        height: bounds.bottom - bounds.top + 1,
+      );
+      trimmed = true;
+    }
+  }
+  if (withinLimits && !trimmed) {
+    return PreparedCustomEmoji(
+      bytes: bytes,
+      mimeType: mimeType,
+      width: header.width,
+      height: header.height,
+      resized: false,
+    );
+  }
   const target = StickerPackDraft.maximumEmojiDimension;
   final scale = target / max(oriented.width, oriented.height);
   final resizedWidth = max(1, (oriented.width * scale).round());
@@ -134,6 +170,25 @@ PreparedCustomEmoji prepareCustomEmojiAsset(
     height: target,
     resized: true,
   );
+}
+
+({int left, int top, int right, int bottom})? _visibleAlphaBounds(
+  image.Image source,
+) {
+  var left = source.width;
+  var top = source.height;
+  var right = -1;
+  var bottom = -1;
+  for (final pixel in source) {
+    if (pixel.a <= 0) continue;
+    left = min(left, pixel.x);
+    top = min(top, pixel.y);
+    right = max(right, pixel.x);
+    bottom = max(bottom, pixel.y);
+  }
+  return right < 0
+      ? null
+      : (left: left, top: top, right: right, bottom: bottom);
 }
 
 StickerAssetType stickerAssetTypeFromImagePackItem(Map<String, Object?> item) {
@@ -223,6 +278,7 @@ String customEmojiHtml(CustomEmojiReference emoji) =>
     'src="${_escapeAttribute(emoji.id.toString())}" '
     'alt="${_escapeAttribute(emoji.fallback)}" '
     'title="${_escapeAttribute(emoji.fallback)}" '
+    '${emoji.packId == null ? '' : 'data-deltiecord-emoji-pack="${_escapeAttribute(emoji.packId!)}" '}'
     'data-deltiecord-emoji-id="${_escapeAttribute(emoji.id.toString())}">';
 
 String _escapeAttribute(String value) =>

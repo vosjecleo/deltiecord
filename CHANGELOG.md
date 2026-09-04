@@ -1,5 +1,16 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 88 — 2026-09-04
+
+- Added optional transparent-padding trimming when importing static custom
+  emoji, fitting visible artwork into a centred 128×128 canvas without
+  stretching it; animated emoji retain their original animation and canvas.
+- Made inline custom emoji tappable/clickable in message timelines so their
+  accessible source pack can be inspected and added on mobile or desktop.
+- Preserved a stable source-pack hint in newly sent custom emoji while still
+  resolving older emoji by their immutable Matrix media ID and degrading
+  gracefully when a pack is unavailable.
+
 ## Deltiecord 0.9.27 build 87 — 2026-09-04
 
 - Fixed sticker and custom-emoji previews permanently waiting on a

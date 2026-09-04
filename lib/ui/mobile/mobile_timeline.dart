@@ -1496,6 +1496,12 @@ class _MobileMessageRow extends StatelessWidget {
                                   fallback: message.body,
                                   selectable: false,
                                   backend: backend,
+                                  onCustomEmojiTap: (emoji) =>
+                                      showStickerPackForEmoji(
+                                        context,
+                                        backend,
+                                        emoji,
+                                      ),
                                 )
                               : MatrixPlainText(
                                   text: message.body,

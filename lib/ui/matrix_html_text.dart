@@ -148,6 +148,7 @@ class MatrixHtmlText extends StatefulWidget {
     required this.fallback,
     this.selectable = true,
     this.backend,
+    this.onCustomEmojiTap,
     super.key,
   });
 
@@ -155,6 +156,7 @@ class MatrixHtmlText extends StatefulWidget {
   final String fallback;
   final bool selectable;
   final ChatBackend? backend;
+  final ValueChanged<CustomEmojiReference>? onCustomEmojiTap;
 
   @override
   State<MatrixHtmlText> createState() => _MatrixHtmlTextState();
@@ -225,15 +227,37 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
         return _emojiAwareTextSpans(context, fallback, style);
       }
       final name = fallback.replaceAll(RegExp(r'^:|:$'), '');
-      final reference = CustomEmojiReference(id: source, name: name);
+      final reference = CustomEmojiReference(
+        id: source,
+        name: name,
+        packId: node.attributes['data-deltiecord-emoji-pack'],
+      );
       final backend = widget.backend;
       if (backend == null) {
         return _emojiAwareTextSpans(context, fallback, style);
       }
+      final image = CustomEmojiImage(
+        backend: backend,
+        emoji: reference,
+        size: 20,
+      );
       return [
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: CustomEmojiImage(backend: backend, emoji: reference, size: 20),
+          child: widget.onCustomEmojiTap == null
+              ? image
+              : Semantics(
+                  button: true,
+                  label: 'View ${reference.fallback} emoji pack',
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => widget.onCustomEmojiTap!(reference),
+                      child: image,
+                    ),
+                  ),
+                ),
         ),
       ];
     }

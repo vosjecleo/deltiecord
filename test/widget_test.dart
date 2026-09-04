@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:deltiecord/app.dart';
 import 'package:deltiecord/backend/chat_backend.dart';
 import 'package:deltiecord/models/chat_models.dart';
+import 'package:deltiecord/services/custom_emoji.dart';
 import 'package:deltiecord/services/emoji_repository.dart';
 import 'package:deltiecord/services/favourite_reactions_store.dart';
 import 'package:deltiecord/ui/deltiecord_theme.dart';
@@ -126,6 +127,63 @@ void main() {
       find.byKey(const ValueKey('emoji-picker-result-mxc://example.org/birds')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('inline custom emoji opens its accessible source pack', (
+    tester,
+  ) async {
+    final imageBytes = base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/'
+      'hK0P7wAAAABJRU5ErkJggg==',
+    );
+    final emoji = CustomEmojiReference(
+      id: Uri.parse('mxc://example.org/party-cat'),
+      name: 'party_cat',
+      packId: 'room:!cats:example.org:pack',
+    );
+    final backend = FakeBackend()
+      ..stickerPackList = [
+        StickerPackSummary(
+          id: emoji.packId!,
+          name: 'Cat reactions',
+          sourceRoomId: '!cats:example.org',
+          stateKey: 'pack',
+          stickers: [
+            StickerSummary(
+              id: 'party_cat',
+              name: 'party_cat',
+              mxcUri: emoji.id,
+              previewBytes: imageBytes,
+              assetType: StickerAssetType.emoji,
+              packId: emoji.packId,
+            ),
+          ],
+        ),
+      ];
+    final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.dark);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(extensions: [palette]),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => MatrixHtmlText(
+              html: customEmojiHtml(emoji),
+              fallback: emoji.fallback,
+              selectable: false,
+              backend: backend,
+              onCustomEmojiTap: (selected) =>
+                  showStickerPackForEmoji(context, backend, selected),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.bySemanticsLabel('View :party_cat: emoji pack'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cat reactions'), findsOneWidget);
+    expect(find.text('Add to my account'), findsOneWidget);
   });
 
   testWidgets('shows joined rooms and opens a timeline', (tester) async {

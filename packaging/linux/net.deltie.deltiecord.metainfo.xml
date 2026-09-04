@@ -22,7 +22,7 @@
   <releases>
     <release version="0.9.27" date="2026-09-04" type="stable">
       <description>
-        <p>Adds Matrix image-pack based custom and server emoji, then fixes adaptive sticker management, Android timeline catch-up after suspension, and scalable desktop metadata/avatar hydration.</p>
+        <p>Adds Matrix image-pack based custom and server emoji, then fixes adaptive sticker management, Telegram rich-text link imports, Android timeline catch-up, and scalable desktop metadata/avatar hydration.</p>
       </description>
     </release>
     <release version="0.9.25" date="2026-09-02" type="stable">

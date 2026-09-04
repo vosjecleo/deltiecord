@@ -1,5 +1,13 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 85 — 2026-09-04
+
+- Fixed Telegram pack links copied from rich message text being rejected when
+  they contain invisible direction/format characters, wrappers, harmless
+  query strings, trailing slashes, or current `addemoji` link forms.
+- Added an explicit release-publisher option for clearing an invalidated
+  stable channel while preserving historical artifacts.
+
 ## Deltiecord 0.9.27 build 84 — 2026-09-04
 
 - Restyled sticker selection and pack management as bounded desktop dialogs

@@ -13,6 +13,18 @@ void main() {
         telegramStickerSetName('https://telegram.me/addstickers/Cats_2'),
         'Cats_2',
       );
+      expect(
+        telegramStickerSetName(
+          '\u2068https://t.me/addstickers/CatPusheen/\u2069',
+        ),
+        'CatPusheen',
+      );
+      expect(
+        telegramStickerSetName(
+          'Copied pack: <https://www.t.me/addemoji/Cats_2?ref=share>',
+        ),
+        'Cats_2',
+      );
     });
 
     test('rejects arbitrary origins and malformed names', () {

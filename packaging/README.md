@@ -8,8 +8,10 @@ After committing a clean, versioned release on `main`, run:
 packaging/publish-release.sh --channel latest
 ```
 
-Use `stable` or `both` to select the deltie.net channel, and optionally add
-`--install-host`. The script runs the full preflight, pushes `main` and the
+Use `stable` or `both` to select the deltie.net channel. `--clear-stable`
+removes all stable-channel entries without deleting historical artifacts;
+`--install-host` installs the verified Debian package locally. The script runs
+the full preflight, pushes `main` and the
 version tag to GitHub and the Deltie mirror, waits for the existing GitHub
 Actions platform builds, verifies the exact nine-artifact checksum set, then
 stages and atomically publishes it to deltie.net. This removes the repeated
@@ -29,12 +31,12 @@ Use the release script rather than invoking `flutter build` directly. It also
 applies the release-only Rust FFI retention flag required by the current
 flutter_vodozemac dependency.
 
-Install the Debian package with `sudo apt install ./dist/deltiecord-0.9.27+84-linux-debian-amd64.deb`.
+Install the Debian package with `sudo apt install ./dist/deltiecord-0.9.27+85-linux-debian-amd64.deb`.
 The package removes only application files when uninstalled; Matrix/session data
 remains in the user's normal XDG application-data and Secret Service stores.
 
-Run the AppImage with `chmod +x dist/deltiecord-0.9.27+84-linux-appimage-x86_64.AppImage` followed by
-`./dist/deltiecord-0.9.27+84-linux-appimage-x86_64.AppImage`. A working desktop Secret Service is
+Run the AppImage with `chmod +x dist/deltiecord-0.9.27+85-linux-appimage-x86_64.AppImage` followed by
+`./dist/deltiecord-0.9.27+85-linux-appimage-x86_64.AppImage`. A working desktop Secret Service is
 required for persisted login and E2EE keys. Audio requires a reachable PulseAudio
 or PipeWire-Pulse service. Wayland screen sharing requires PipeWire,
 `xdg-desktop-portal`, and a working desktop portal backend such as

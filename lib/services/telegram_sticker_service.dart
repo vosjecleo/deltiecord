@@ -11,19 +11,48 @@ const int maximumStickerPackItems = StickerPackDraft.maximumItems;
 const int maximumStickerPackBytes = StickerPackDraft.maximumBytes;
 
 String? telegramStickerSetName(String input) {
-  final value = input.trim();
+  final value = input
+      .replaceAll(
+        RegExp(r'[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]'),
+        '',
+      )
+      .trim();
   if (RegExp(r'^[A-Za-z][A-Za-z0-9_]{0,63}$').hasMatch(value)) {
     return value;
   }
-  final uri = Uri.tryParse(value);
+
+  // Selection/copy from a rich Matrix link may include angle brackets,
+  // surrounding prose, or Unicode direction isolates. Extract only a
+  // Telegram HTTPS URL and still validate its host/path strictly below.
+  final link = RegExp(
+    r'https://(?:www\.)?(?:t\.me|telegram\.me)/[^\s<>]+',
+    caseSensitive: false,
+  ).firstMatch(value)?.group(0);
+  final uri = Uri.tryParse(link ?? value);
+  final segments = uri?.pathSegments
+      .where((segment) => segment.isNotEmpty)
+      .toList(growable: false);
   if (uri == null ||
-      uri.scheme != 'https' ||
-      !const {'t.me', 'telegram.me'}.contains(uri.host.toLowerCase()) ||
-      uri.pathSegments.length != 2 ||
-      uri.pathSegments.first.toLowerCase() != 'addstickers') {
+      uri.scheme.toLowerCase() != 'https' ||
+      !const {
+        't.me',
+        'www.t.me',
+        'telegram.me',
+        'www.telegram.me',
+      }.contains(uri.host.toLowerCase()) ||
+      segments?.length != 2 ||
+      !const {
+        'addstickers',
+        'addemoji',
+      }.contains(segments!.first.toLowerCase())) {
     return null;
   }
-  final name = uri.pathSegments[1];
+  late final String name;
+  try {
+    name = Uri.decodeComponent(segments[1]);
+  } on FormatException {
+    return null;
+  }
   return RegExp(r'^[A-Za-z][A-Za-z0-9_]{0,63}$').hasMatch(name) ? name : null;
 }
 

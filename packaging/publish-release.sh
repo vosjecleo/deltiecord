@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 usage() {
   cat <<'EOF'
-Usage: packaging/publish-release.sh --channel latest|stable|both [--install-host] [--skip-preflight]
+Usage: packaging/publish-release.sh --channel latest|stable|both [--clear-stable] [--install-host] [--skip-preflight]
 
 Validates the committed release, pushes main and its version tag to GitHub and
 the Deltie mirror, waits for GitHub Actions to publish the platform artifacts,
@@ -15,6 +15,7 @@ EOF
 channel=''
 install_host=false
 skip_preflight=false
+clear_stable=false
 while (($#)); do
   case "$1" in
     --channel)
@@ -24,6 +25,10 @@ while (($#)); do
       ;;
     --install-host)
       install_host=true
+      shift
+      ;;
+    --clear-stable)
+      clear_stable=true
       shift
       ;;
     --skip-preflight)
@@ -46,6 +51,10 @@ case "$channel" in
   latest|stable|both) ;;
   *) printf '%s\n' '--channel must be latest, stable, or both.' >&2; exit 2 ;;
 esac
+if $clear_stable && [[ "$channel" != latest ]]; then
+  printf '%s\n' '--clear-stable is only valid while publishing latest.' >&2
+  exit 2
+fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$repo_root"
@@ -93,7 +102,7 @@ if ! $skip_preflight; then
   flutter pub get --enforce-lockfile
   flutter analyze
   flutter test
-  python3 -m unittest discover -s server/tests -p 'test_*.py'
+  python3 -m unittest discover -s server -p 'test_*.py'
   while IFS= read -r script; do bash -n "$script"; done < <(
     find packaging -type f -name '*.sh' -print | sort
   )
@@ -180,6 +189,7 @@ windows_assets="$(asset_json "deltiecord-${release_id}-windows-*")"
 updated_at="$(date --utc +'%Y-%m-%dT%H:%M:%S+00:00')"
 
 jq --arg channel "$channel" \
+  --argjson clear_stable "$clear_stable" \
   --arg version "$version" \
   --argjson build "$build" \
   --arg updated "$updated_at" \
@@ -201,6 +211,12 @@ jq --arg channel "$channel" \
     set_channel("stable") |
     .stable_version = $version | .stable_build = $build
   end |
+  if $clear_stable then
+    .platforms.android.stable = [] |
+    .platforms.linux.stable = [] |
+    .platforms.windows.stable = [] |
+    del(.stable_version, .stable_build)
+  else . end |
   .updated_at = $updated
 ' "$current_manifest" >"$temporary/releases.json"
 jq -e . "$temporary/releases.json" >/dev/null
@@ -244,6 +260,10 @@ if [[ "$channel" == latest || "$channel" == both ]]; then
 fi
 if [[ "$channel" == stable || "$channel" == both ]]; then
   [[ "$(jq -r '.stable_build' <<<"$published")" == "$build" ]]
+fi
+if $clear_stable; then
+  [[ "$(jq '[.platforms[].stable | length] | add' <<<"$published")" == 0 ]]
+  [[ "$(jq -r 'has("stable_version") or has("stable_build")' <<<"$published")" == false ]]
 fi
 
 if $install_host; then

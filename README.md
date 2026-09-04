@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 84**
+> **Current release candidate: version 0.9.27 build 85**
 >
-> Deltiecord is available for desktop and Android. Build 84 fixes adaptive
-> sticker-pack UI, Android timeline catch-up after suspension, and progressively
-> slow desktop room metadata/avatar hydration.
+> Deltiecord is available for desktop and Android. Build 85 fixes Telegram pack
+> links copied from rich message text, on top of build 84's sticker UI, Android
+> resume, and desktop metadata/avatar performance corrections.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 84**
+**Current release candidate: v0.9.27 build 85**

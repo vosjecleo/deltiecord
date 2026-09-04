@@ -37,7 +37,7 @@ class _MessageRow extends StatefulWidget {
   final VoidCallback? onReact;
   final VoidCallback? onRetry;
   final VoidCallback? onCancel;
-  final ValueChanged<String> onToggleReaction;
+  final ValueChanged<ReactionSummary> onToggleReaction;
   final ValueChanged<String> onJumpToReply;
   final List<ChatMessage> mediaMessages;
   final ChatBackend backend;
@@ -387,6 +387,7 @@ class _MessageRowState extends State<_MessageRow> {
                                       ? MatrixHtmlText(
                                           html: message.formattedBody!,
                                           fallback: message.body,
+                                          backend: widget.backend,
                                         )
                                       : MatrixPlainText(
                                           text: message.body,
@@ -477,24 +478,33 @@ class _MessageRowState extends State<_MessageRow> {
                                           backgroundColor: reaction.reactedByMe
                                               ? const Color(0xff424a78)
                                               : const Color(0xff303139),
-                                          label: Text.rich(
-                                            TextSpan(
-                                              children: [
-                                                TextSpan(
-                                                  text: reaction.key,
+                                          // Keep ordinary reactions as one Text
+                                          // node for accessibility and the
+                                          // established widget contract. Custom
+                                          // emoji need a composed image/count row.
+                                          label: reaction.customEmoji == null
+                                              ? Text(
+                                                  '${reaction.key} ${reaction.count}',
                                                   style: TextStyle(
                                                     fontFamily: context
                                                         .deltiecordEmojiFont,
                                                   ),
+                                                )
+                                              : Row(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    CustomEmojiImage(
+                                                      backend: widget.backend,
+                                                      emoji:
+                                                          reaction.customEmoji!,
+                                                      size: 18,
+                                                    ),
+                                                    Text(' ${reaction.count}'),
+                                                  ],
                                                 ),
-                                                TextSpan(
-                                                  text: ' ${reaction.count}',
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          onPressed: () => widget
-                                              .onToggleReaction(reaction.key),
+                                          onPressed: () =>
+                                              widget.onToggleReaction(reaction),
                                         ),
                                     ],
                                   ),

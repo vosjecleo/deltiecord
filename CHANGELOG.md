@@ -1,5 +1,28 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 83 — 2026-09-04
+
+- Added custom/server emoji on top of Matrix image packs, including 120-item
+  packs, strict 128×128 and 256 KiB per-emoji limits, animated inline
+  rendering, stable MXC references, fallback names, autocomplete, picker and
+  reaction support, server-scoped permissions, Telegram import, and deletion.
+- Preserved custom-emoji references in mobile drafts and kept legacy image
+  packs that advertised both `sticker` and `emoticon` usage as stickers.
+- Reconciled the mobile navigation subtree and transient gesture/open state
+  after Android resumes, so Home and Space selection cannot remain frozen.
+
+- Added selective import of public static Telegram sticker packs through a
+  bounded, token-hiding Deltiecord proxy. Animated TGS and WebM stickers are
+  identified and skipped until cross-platform rendering is ready.
+- Raised personal image packs from 50 to 120 stickers, added aggregate media
+  and metadata limits, and preserved each sticker's actual MIME type.
+- Made sticker-pack refresh metadata-only and lazily loaded visible previews
+  with at most four concurrent requests.
+- Made Space categories and channels substantially denser on desktop and
+  mobile while retaining full-row interaction and trailing collapse controls.
+- Reduced the timeline-to-composer gutter to the typing row's actual height
+  and tightened all aligned desktop bottom panels accordingly.
+
 ## Deltiecord 0.9.26 build 82 — 2026-09-03
 
 - Fixed mobile attachment-only image and video events rendering an empty text

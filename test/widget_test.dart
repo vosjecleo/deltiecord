@@ -5,6 +5,7 @@ import 'package:deltiecord/backend/chat_backend.dart';
 import 'package:deltiecord/models/chat_models.dart';
 import 'package:deltiecord/ui/deltiecord_theme.dart';
 import 'package:deltiecord/ui/matrix_html_text.dart';
+import 'package:deltiecord/ui/typing_indicator.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -497,6 +498,15 @@ void main() {
     final style = tester.widget<Text>(label).style!;
     expect(style.fontSize, DeltiecordTypeScale.normal - 1);
     expect(style.fontWeight, FontWeight.w700);
+    final header = find
+        .descendant(of: section, matching: find.byType(GestureDetector))
+        .first;
+    expect(tester.getSize(header).height, 22);
+    final channelTile = find.ancestor(
+      of: find.text('general'),
+      matching: find.byType(ListTile),
+    );
+    expect(tester.getSize(channelTile).height, 30);
   });
 
   testWidgets('channel layout controls follow the configured permission', (
@@ -1775,6 +1785,10 @@ void main() {
       tester.getSize(find.byKey(const Key('conversation-timeline-area'))).width,
     );
     expect(
+      tester.getSize(find.byKey(const Key('typing-indicator'))).height,
+      typingIndicatorHeight,
+    );
+    expect(
       tester.getBottomLeft(find.byKey(const Key('typing-indicator'))).dy,
       composerTop,
     );
@@ -2590,6 +2604,56 @@ void main() {
     );
   });
 
+  testWidgets('Android custom emoji autocomplete sends a stable MXC ID', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..roomList = const [
+        RoomSummary(
+          id: '!emoji:example.org',
+          name: 'emoji',
+          lastMessage: '',
+          unreadCount: 0,
+          usesChannelIcon: true,
+        ),
+      ]
+      ..stickerPackList = [
+        StickerPackSummary(
+          id: 'room:pack',
+          name: 'Server emoji',
+          stickers: [
+            StickerSummary(
+              id: 'party',
+              name: 'party',
+              mxcUri: Uri.parse('mxc://example.org/stable-party'),
+              assetType: StickerAssetType.emoji,
+              packId: 'room:pack',
+            ),
+          ],
+        ),
+      ];
+    await _pumpMobile(tester, backend);
+    await tester.tap(find.text('emoji'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('mobile-composer-field')),
+      ':par',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('mobile-emoji-completion-0')));
+    await tester.pump();
+    await tester.tap(find.bySemanticsLabel('Send; hold to send later'));
+    await tester.pumpAndSettle();
+
+    expect(backend.sentMessages, [':party:']);
+    expect(backend.sentFormattedBodies.single, contains('data-mx-emoticon'));
+    expect(
+      backend.sentFormattedBodies.single,
+      contains('mxc://example.org/stable-party'),
+    );
+  });
+
   testWidgets('Android Home shows the Space rail and DM-only navigation', (
     tester,
   ) async {
@@ -2648,6 +2712,38 @@ void main() {
     expect(edge.foregroundPainter, isNotNull);
   });
 
+  testWidgets('Android rail selection recovers after a long background cycle', (
+    tester,
+  ) async {
+    final backend = FakeBackend()
+      ..currentStatus = SessionStatus.signedIn
+      ..spaceList = const [SpaceSummary(id: '!space:test', name: 'Friends')];
+    await _pumpMobile(tester, backend);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-rail-button-Friends')));
+    await tester.pumpAndSettle();
+    expect(backend.selectedSpaceId, '!space:test');
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('mobile-rail-button-Home')));
+    await tester.pumpAndSettle();
+    expect(backend.selectedSpaceId, isNull);
+    expect(find.text('Home'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('mobile-rail-button-Friends')));
+    await tester.pumpAndSettle();
+    expect(backend.selectedSpaceId, '!space:test');
+    expect(find.text('Friends'), findsWidgets);
+  });
+
   testWidgets('Android categories keep casing and place chevrons after text', (
     tester,
   ) async {
@@ -2689,6 +2785,23 @@ void main() {
     final style = tester.widget<Text>(label).style!;
     expect(style.fontSize, DeltiecordTypeScale.normal - 1);
     expect(style.fontWeight, FontWeight.w700);
+    expect(
+      tester
+          .getSize(find.ancestor(of: label, matching: find.byType(ListTile)))
+          .height,
+      24,
+    );
+    expect(
+      tester
+          .getSize(
+            find.ancestor(
+              of: find.text('general'),
+              matching: find.byType(ListTile),
+            ),
+          )
+          .height,
+      32,
+    );
   });
 
   testWidgets('Android attachment-only rows omit empty caption widgets', (
@@ -3432,6 +3545,7 @@ class FakeBackend extends ChatBackend {
   List<MentionSuggestion> mentionList = const [];
   List<RoomMemberSummary> memberList = const [];
   List<String> typingNames = const [];
+  List<StickerPackSummary> stickerPackList = const [];
   AppPreferences currentPreferences = const AppPreferences();
   bool moreHistory = false;
   bool moreFuture = false;
@@ -3450,6 +3564,7 @@ class FakeBackend extends ChatBackend {
   int profileRefreshRequests = 0;
   Future<void> Function()? historyLoader;
   final List<String> sentMessages = [];
+  final List<String?> sentFormattedBodies = [];
   final List<String?> sentMessageRoomIds = [];
   final List<String?> sentAttachmentRoomIds = [];
   final List<String> redactedMessageIds = [];
@@ -3521,6 +3636,8 @@ class FakeBackend extends ChatBackend {
   List<MentionSuggestion> get mentionSuggestions => mentionList;
   @override
   List<String> get typingUserNames => typingNames;
+  @override
+  List<StickerPackSummary> get stickerPacks => stickerPackList;
 
   void setTypingNames(List<String> names) {
     typingNames = names;
@@ -3810,6 +3927,7 @@ class FakeBackend extends ChatBackend {
     String? editMessageId,
   }) async {
     sentMessages.add(text);
+    sentFormattedBodies.add(formattedBody);
     sentMessageRoomIds.add(roomId);
     lastReplyToMessageId = replyToMessageId;
     lastEditMessageId = editMessageId;
@@ -3832,7 +3950,11 @@ class FakeBackend extends ChatBackend {
   }
 
   @override
-  Future<void> toggleReaction(String messageId, String key) async {
+  Future<void> toggleReaction(
+    String messageId,
+    String key, {
+    CustomEmojiReference? customEmoji,
+  }) async {
     toggledReactions.add((messageId, key));
   }
 

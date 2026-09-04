@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../backend/chat_backend.dart';
 import '../services/emoji_repository.dart';
 import '../services/favourite_reactions_store.dart';
 import 'deltiecord_theme.dart';
+import 'matrix_html_text.dart';
 
 class EmojiPickerDialog extends StatefulWidget {
-  const EmojiPickerDialog({super.key});
+  const EmojiPickerDialog({required this.backend, super.key});
+
+  final ChatBackend backend;
 
   @override
   State<EmojiPickerDialog> createState() => _EmojiPickerDialogState();
@@ -16,11 +20,19 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
   List<EmojiEntry> _results = const [];
   EmojiCategory? _selectedCategory;
   int _generation = 0;
+  List<EmojiEntry> _custom = const [];
 
   @override
   void initState() {
     super.initState();
     _search();
+    widget.backend.refreshStickerPacks().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _custom = customEmojiEntries(widget.backend.stickerPacks);
+      });
+      _search();
+    });
     _query.addListener(_search);
     FavouriteReactionsStore.instance.load().then((_) {
       if (mounted) setState(() {});
@@ -40,7 +52,9 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
       _query.text,
       limit: _query.text.trim().isEmpty ? null : 160,
     );
+    final custom = _custom.where((entry) => entry.matches(_query.text));
     final results = [
+      ...custom,
       ...familiar,
       ...catalog.where(
         (entry) => !familiar.any((match) => match.emoji == entry.emoji),
@@ -70,7 +84,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     }
     final favourites = FavouriteReactionsStore.instance.emoji;
     final favouriteEntries = _results
-        .where((entry) => favourites.contains(entry.emoji))
+        .where((entry) => favourites.contains(entry.favouriteKey))
         .toList(growable: false);
     return AlertDialog(
       title: const Text('Emoji'),
@@ -159,29 +173,37 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
     delegate: SliverChildBuilderDelegate((context, index) {
       final entry = entries[index];
       final favourite = FavouriteReactionsStore.instance.isEmojiFavourite(
-        entry.emoji,
+        entry.favouriteKey,
       );
       return Tooltip(
         message:
             '${entry.name}  :${entry.aliases.firstOrNull ?? entry.name}:\n'
             'Long-press to ${favourite ? 'unfavourite' : 'favourite'}',
         child: InkWell(
-          key: ValueKey('emoji-picker-result-${entry.emoji}'),
-          onTap: () => Navigator.of(context).pop(entry.emoji),
+          key: ValueKey('emoji-picker-result-${entry.favouriteKey}'),
+          onTap: () => Navigator.of(context).pop(entry),
           onLongPress: () async {
-            await FavouriteReactionsStore.instance.toggleEmoji(entry.emoji);
+            await FavouriteReactionsStore.instance.toggleEmoji(
+              entry.favouriteKey,
+            );
             if (mounted) setState(() {});
           },
           child: Stack(
             children: [
               Center(
-                child: Text(
-                  entry.emoji,
-                  style: TextStyle(
-                    fontSize: 25,
-                    fontFamily: context.deltiecordEmojiFont,
-                  ),
-                ),
+                child: entry.customEmoji != null
+                    ? CustomEmojiImage(
+                        backend: widget.backend,
+                        emoji: entry.customEmoji!.customEmoji!,
+                        size: 30,
+                      )
+                    : Text(
+                        entry.emoji,
+                        style: TextStyle(
+                          fontSize: 25,
+                          fontFamily: context.deltiecordEmojiFont,
+                        ),
+                      ),
               ),
               if (favourite)
                 const Positioned(
@@ -197,6 +219,7 @@ class _EmojiPickerDialogState extends State<EmojiPickerDialog> {
   );
 
   IconData _categoryIcon(EmojiCategory category) => switch (category) {
+    EmojiCategory.custom => Icons.add_reaction_outlined,
     EmojiCategory.smileysAndPeople => Icons.mood,
     EmojiCategory.animalsAndNature => Icons.pets,
     EmojiCategory.foodAndDrink => Icons.restaurant,

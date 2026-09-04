@@ -1,9 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../backend/chat_backend.dart';
+import '../models/chat_models.dart';
 import 'deltiecord_theme.dart';
 
 final _emojiPresentationPattern = RegExp(
@@ -143,12 +147,14 @@ class MatrixHtmlText extends StatefulWidget {
     required this.html,
     required this.fallback,
     this.selectable = true,
+    this.backend,
     super.key,
   });
 
   final String html;
   final String fallback;
   final bool selectable;
+  final ChatBackend? backend;
 
   @override
   State<MatrixHtmlText> createState() => _MatrixHtmlTextState();
@@ -211,6 +217,26 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
     final tag = node.localName;
     if (tag == 'mx-reply') return const [];
     if (tag == 'br') return const [TextSpan(text: '\n')];
+    if (tag == 'img' && node.attributes.containsKey('data-mx-emoticon')) {
+      final source = Uri.tryParse(node.attributes['src'] ?? '');
+      final fallback =
+          node.attributes['alt'] ?? node.attributes['title'] ?? ':emoji:';
+      if (source == null || !source.isScheme('mxc')) {
+        return _emojiAwareTextSpans(context, fallback, style);
+      }
+      final name = fallback.replaceAll(RegExp(r'^:|:$'), '');
+      final reference = CustomEmojiReference(id: source, name: name);
+      final backend = widget.backend;
+      if (backend == null) {
+        return _emojiAwareTextSpans(context, fallback, style);
+      }
+      return [
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: CustomEmojiImage(backend: backend, emoji: reference, size: 20),
+        ),
+      ];
+    }
     if (node.attributes.containsKey('data-mx-spoiler') && !_spoilersRevealed) {
       const concealedColor = Color(0xff777985);
       return [
@@ -303,6 +329,76 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
     }
     return children;
   }
+}
+
+class CustomEmojiImage extends StatefulWidget {
+  const CustomEmojiImage({
+    required this.backend,
+    required this.emoji,
+    this.size = 22,
+    super.key,
+  });
+
+  final ChatBackend backend;
+  final CustomEmojiReference emoji;
+  final double size;
+
+  @override
+  State<CustomEmojiImage> createState() => _CustomEmojiImageState();
+}
+
+class _CustomEmojiImageState extends State<CustomEmojiImage> {
+  late Future<Uint8List?> _load;
+
+  @override
+  void initState() {
+    super.initState();
+    _load = _startLoad();
+  }
+
+  @override
+  void didUpdateWidget(covariant CustomEmojiImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.backend != widget.backend ||
+        oldWidget.emoji.id != widget.emoji.id) {
+      _load = _startLoad();
+    }
+  }
+
+  Future<Uint8List?> _startLoad() => widget.backend.loadStickerPreview(
+    StickerSummary(
+      id: widget.emoji.id.toString(),
+      name: widget.emoji.name,
+      mxcUri: widget.emoji.id,
+      assetType: StickerAssetType.emoji,
+      packId: widget.emoji.packId,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List?>(
+    future: _load,
+    builder: (context, snapshot) {
+      final bytes = snapshot.data;
+      if (bytes != null) {
+        return SizedBox.square(
+          dimension: widget.size,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
+        );
+      }
+      if (snapshot.connectionState != ConnectionState.done) {
+        return SizedBox.square(dimension: widget.size);
+      }
+      return Text(
+        widget.emoji.fallback,
+        style: TextStyle(fontSize: widget.size * 0.7),
+      );
+    },
+  );
 }
 
 Widget _noContextMenu(

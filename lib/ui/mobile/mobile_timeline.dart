@@ -12,6 +12,7 @@ import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/emoji_completion.dart';
 import '../../services/emoji_repository.dart';
+import '../../services/custom_emoji.dart';
 import '../../services/favourite_reactions_store.dart';
 import '../../services/giphy_service.dart';
 import '../deltiecord_theme.dart';
@@ -33,6 +34,7 @@ class MobileTimelineView extends StatefulWidget {
     required this.onOpenDetails,
     required this.onOpenSettings,
     required this.initialDraft,
+    required this.initialCustomEmojis,
     required this.onDraftChanged,
     super.key,
   });
@@ -43,7 +45,9 @@ class MobileTimelineView extends StatefulWidget {
   final VoidCallback onOpenDetails;
   final VoidCallback onOpenSettings;
   final String initialDraft;
-  final ValueChanged<String> onDraftChanged;
+  final List<CustomEmojiTextSpan> initialCustomEmojis;
+  final ValueChanged<({String text, List<CustomEmojiTextSpan> emojis})>
+  onDraftChanged;
 
   @override
   State<MobileTimelineView> createState() => _MobileTimelineViewState();
@@ -78,6 +82,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   int? _emojiStart;
   int _emojiGeneration = 0;
   bool _replacingEmoji = false;
+  late List<CustomEmojiTextSpan> _customEmojiSpans;
+  late String _previousComposerText;
   List<MentionSuggestion> _mentionMatches = const [];
   int? _mentionStart;
 
@@ -88,6 +94,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     super.initState();
     _composer = TextEditingController(text: widget.initialDraft)
       ..addListener(_composerChanged);
+    _customEmojiSpans = List.of(widget.initialCustomEmojis);
+    _previousComposerText = widget.initialDraft;
     _scroll.addListener(_handleScroll);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _reportTimelineAtPresent(),
@@ -103,6 +111,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       ..removeListener(_composerChanged)
       ..text = widget.initialDraft
       ..addListener(_composerChanged);
+    _customEmojiSpans = List.of(widget.initialCustomEmojis);
+    _previousComposerText = widget.initialDraft;
     _reply = null;
     _edit = null;
     _attachments.clear();
@@ -116,7 +126,16 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   void _composerChanged() {
-    widget.onDraftChanged(_composer.text);
+    _customEmojiSpans = reconcileCustomEmojiSpans(
+      _previousComposerText,
+      _composer.text,
+      _customEmojiSpans,
+    );
+    _previousComposerText = _composer.text;
+    widget.onDraftChanged((
+      text: _composer.text,
+      emojis: List.unmodifiable(_customEmojiSpans),
+    ));
     unawaited(backend.setComposerTyping(_composer.text.isNotEmpty));
     if (!_replacingEmoji) _updateEmojiCompletion();
     _updateMentionCompletion();
@@ -182,31 +201,45 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       return;
     }
     if (completion.closed) {
+      final custom = customEmojiEntries(backend.stickerPacks)
+          .where(
+            (entry) =>
+                entry.name.toLowerCase() == completion.query.toLowerCase(),
+          )
+          .firstOrNull;
+      if (custom != null) {
+        _replaceEmojiCompletion(completion.start, cursor, custom);
+        return;
+      }
       final generation = ++_emojiGeneration;
       final familiar = EmojiRepository.instance.familiarEmoji(completion.query);
       if (familiar != null) {
-        _replaceEmojiCompletion(completion.start, cursor, familiar);
+        _replaceUnicodeEmojiCompletion(completion.start, cursor, familiar);
         return;
       }
       EmojiRepository.instance.exactAlias(completion.query).then((entry) {
         if (!mounted || generation != _emojiGeneration || entry == null) return;
-        _replaceEmojiCompletion(completion.start, cursor, entry.emoji);
+        _replaceUnicodeEmojiCompletion(completion.start, cursor, entry.emoji);
       });
       return;
     }
 
     final generation = ++_emojiGeneration;
+    final custom = customEmojiEntries(backend.stickerPacks)
+        .where((entry) => entry.matches(completion.query))
+        .take(3)
+        .toList(growable: false);
     final familiar = EmojiRepository.instance.familiarMatches(completion.query);
     setState(() {
       _emojiStart = completion.start;
-      _emojiMatches = familiar;
+      _emojiMatches = [...custom, ...familiar].take(3).toList();
       _emojiSelection = 0;
     });
     EmojiRepository.instance.search(completion.query, limit: 3).then((matches) {
       if (!mounted || generation != _emojiGeneration) return;
       setState(() {
         _emojiStart = completion.start;
-        _emojiMatches = matches;
+        _emojiMatches = [...custom, ...matches].take(3).toList();
         _emojiSelection = matches.isEmpty
             ? 0
             : _emojiSelection.clamp(0, matches.length - 1);
@@ -214,7 +247,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     });
   }
 
-  void _replaceEmojiCompletion(int start, int end, String emoji) {
+  void _replaceUnicodeEmojiCompletion(int start, int end, String emoji) {
     _replacingEmoji = true;
     _composer.value = TextEditingValue(
       text: _composer.text.replaceRange(start, end, emoji),
@@ -231,8 +264,32 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     final end = selection.isValid
         ? selection.extentOffset.clamp(start, _composer.text.length)
         : _composer.text.length;
-    _replaceEmojiCompletion(start, end, entry.emoji);
+    _replaceEmojiCompletion(start, end, entry);
     _focus.requestFocus();
+  }
+
+  void _replaceEmojiCompletion(int start, int end, EmojiEntry entry) {
+    final replacement = entry.insertionText;
+    _replacingEmoji = true;
+    _composer.value = TextEditingValue(
+      text: _composer.text.replaceRange(start, end, replacement),
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+    if (entry.customEmoji?.customEmoji case final custom?) {
+      _customEmojiSpans.add(
+        CustomEmojiTextSpan(
+          start: start,
+          end: start + replacement.length,
+          emoji: custom,
+        ),
+      );
+    }
+    _replacingEmoji = false;
+    _clearEmojiCompletion();
+    widget.onDraftChanged((
+      text: _composer.text,
+      emojis: List.unmodifiable(_customEmojiSpans),
+    ));
   }
 
   void _clearEmojiCompletion() {
@@ -642,7 +699,12 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                             controller: _scroll,
                             reverse: true,
                             physics: const ClampingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(6, 8, 6, 29),
+                            padding: const EdgeInsets.fromLTRB(
+                              6,
+                              8,
+                              6,
+                              typingIndicatorHeight + 1,
+                            ),
                             itemCount:
                                 messages.length +
                                 ((backend.canLoadMoreHistory ||
@@ -733,7 +795,15 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                                           ? () => setState(() {
                                               _edit = message;
                                               _reply = null;
+                                              _customEmojiSpans = const [];
                                               _composer.text = message.body;
+                                              _customEmojiSpans =
+                                                  customEmojiSpansFromHtml(
+                                                    message.formattedBody,
+                                                    message.body,
+                                                  );
+                                              _previousComposerText =
+                                                  message.body;
                                               _composer.selection =
                                                   TextSelection.collapsed(
                                                     offset:
@@ -799,6 +869,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                   ),
           ),
           _MobileComposer(
+            backend: backend,
             controller: _composer,
             focusNode: _focus,
             sending: _sending,
@@ -883,10 +954,16 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   Future<void> _send() async {
-    final text = _composer.text.trim();
+    final serialized = serializeCustomEmojiText(
+      _composer.text,
+      _customEmojiSpans,
+    );
+    final text = serialized.plainText;
     if (_sending || (text.isEmpty && _attachments.isEmpty)) return;
     final roomId = widget.room.id;
     final submittedText = text;
+    final submittedRawText = _composer.text;
+    final submittedEmojiSpans = List<CustomEmojiTextSpan>.of(_customEmojiSpans);
     final submittedAttachments = List<AttachmentDraft>.from(_attachments);
     final reply = _reply;
     final edit = _edit;
@@ -895,6 +972,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       selection: TextSelection.collapsed(offset: 0),
       composing: TextRange.empty,
     );
+    _customEmojiSpans.clear();
+    _previousComposerText = '';
     // Keep the existing Android input connection alive. Reconnecting it here
     // makes the keyboard visibly close and reopen after every sent message;
     // clearing the composing range is sufficient for the next draft.
@@ -909,6 +988,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
         await backend.sendMessage(
           submittedText,
           roomId: roomId,
+          formattedBody: serialized.html,
           replyToMessageId: reply?.id,
           editMessageId: edit?.id,
         );
@@ -937,7 +1017,13 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       if (mounted &&
           backend.selectedRoom?.id == roomId &&
           _composer.text.isEmpty) {
-        _composer.text = submittedText;
+        _composer.text = submittedRawText;
+        _customEmojiSpans = submittedEmojiSpans;
+        _previousComposerText = submittedRawText;
+        widget.onDraftChanged((
+          text: submittedRawText,
+          emojis: List.unmodifiable(submittedEmojiSpans),
+        ));
         setState(() {
           _attachments.insertAll(0, submittedAttachments);
           _reply = reply;
@@ -1091,19 +1177,18 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 
   Future<void> _showEmojiPicker() async {
-    final emoji = await showModalBottomSheet<String>(
+    await backend.refreshStickerPacks();
+    if (!mounted) return;
+    final emoji = await showModalBottomSheet<EmojiEntry>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (context) => const _MobileEmojiPicker(),
+      builder: (context) => _MobileEmojiPicker(backend: backend),
     );
     if (emoji == null) return;
     final selection = _composer.selection;
     final offset = selection.isValid ? selection.start : _composer.text.length;
-    _composer.text = _composer.text.replaceRange(offset, offset, emoji);
-    _composer.selection = TextSelection.collapsed(
-      offset: offset + emoji.length,
-    );
+    _replaceEmojiCompletion(offset, offset, emoji);
     _focus.requestFocus();
   }
 
@@ -1408,6 +1493,7 @@ class _MobileMessageRow extends StatelessWidget {
                                   html: message.formattedBody!,
                                   fallback: message.body,
                                   selectable: false,
+                                  backend: backend,
                                 )
                               : MatrixPlainText(
                                   text: message.body,
@@ -1446,12 +1532,23 @@ class _MobileMessageRow extends StatelessWidget {
                           children: [
                             for (final reaction in message.reactions)
                               ActionChip(
-                                label: Text(
-                                  '${reaction.key} ${reaction.count}',
-                                ),
+                                label: reaction.customEmoji == null
+                                    ? Text('${reaction.key} ${reaction.count}')
+                                    : Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          CustomEmojiImage(
+                                            backend: backend,
+                                            emoji: reaction.customEmoji!,
+                                            size: 18,
+                                          ),
+                                          Text(' ${reaction.count}'),
+                                        ],
+                                      ),
                                 onPressed: () => backend.toggleReaction(
                                   message.id,
                                   reaction.key,
+                                  customEmoji: reaction.customEmoji,
                                 ),
                               ),
                           ],
@@ -1565,13 +1662,21 @@ class _MobileMessageRow extends StatelessWidget {
         await backend.toggleMessagePinned(message.id);
       case 'react':
         if (!context.mounted) return;
-        final emoji = await showModalBottomSheet<String>(
+        await backend.refreshStickerPacks();
+        if (!context.mounted) return;
+        final emoji = await showModalBottomSheet<EmojiEntry>(
           context: context,
           isScrollControlled: true,
           showDragHandle: true,
-          builder: (context) => const _MobileEmojiPicker(),
+          builder: (context) => _MobileEmojiPicker(backend: backend),
         );
-        if (emoji != null) await backend.toggleReaction(message.id, emoji);
+        if (emoji != null) {
+          await backend.toggleReaction(
+            message.id,
+            emoji.emoji,
+            customEmoji: emoji.customEmoji?.customEmoji,
+          );
+        }
     }
   }
 
@@ -1642,6 +1747,7 @@ String _mobileMessageTimestamp(
 
 class _MobileComposer extends StatefulWidget {
   const _MobileComposer({
+    required this.backend,
     required this.controller,
     required this.focusNode,
     required this.sending,
@@ -1664,6 +1770,7 @@ class _MobileComposer extends StatefulWidget {
     required this.mentionMatches,
     required this.onMentionSelected,
   });
+  final ChatBackend backend;
   final TextEditingController controller;
   final FocusNode focusNode;
   final bool sending;
@@ -1786,10 +1893,29 @@ class _MobileComposerState extends State<_MobileComposer> {
                         horizontal: 10,
                         vertical: 8,
                       ),
-                      child: Text(
-                        '${widget.emojiMatches[index].emoji}  :${widget.emojiMatches[index].aliases.firstOrNull ?? widget.emojiMatches[index].name}:',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: Row(
+                        children: [
+                          if (widget
+                                  .emojiMatches[index]
+                                  .customEmoji
+                                  ?.customEmoji
+                              case final custom?)
+                            CustomEmojiImage(
+                              backend: widget.backend,
+                              emoji: custom,
+                              size: 20,
+                            )
+                          else
+                            Text(widget.emojiMatches[index].emoji),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              ':${widget.emojiMatches[index].aliases.firstOrNull ?? widget.emojiMatches[index].name}:',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1805,7 +1931,7 @@ class _MobileComposerState extends State<_MobileComposer> {
         top: false,
         child: Container(
           key: const ValueKey('mobile-composer'),
-          margin: const EdgeInsets.fromLTRB(6, 4, 6, 8),
+          margin: const EdgeInsets.fromLTRB(6, 1, 6, 8),
           decoration: BoxDecoration(
             color: context.deltiecord.island,
             borderRadius: DeltiecordCorners.borderRadius,
@@ -2106,7 +2232,9 @@ class _CloseGlyphPainter extends CustomPainter {
 }
 
 class _MobileEmojiPicker extends StatefulWidget {
-  const _MobileEmojiPicker();
+  const _MobileEmojiPicker({required this.backend});
+
+  final ChatBackend backend;
 
   @override
   State<_MobileEmojiPicker> createState() => _MobileEmojiPickerState();
@@ -2130,10 +2258,14 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
 
   Future<void> _search() async {
     final generation = ++_generation;
-    final results = await EmojiRepository.instance.search(
+    final unicode = await EmojiRepository.instance.search(
       _query.text,
       limit: _query.text.trim().isEmpty ? null : 160,
     );
+    final custom = customEmojiEntries(
+      widget.backend.stickerPacks,
+    ).where((entry) => entry.matches(_query.text));
+    final results = [...custom, ...unicode];
     if (mounted && generation == _generation) {
       setState(() => _results = results);
     }
@@ -2158,7 +2290,7 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
     }
     final favourites = FavouriteReactionsStore.instance.emoji;
     final favouriteEntries = _results
-        .where((entry) => favourites.contains(entry.emoji))
+        .where((entry) => favourites.contains(entry.favouriteKey))
         .toList(growable: false);
     return FractionallySizedBox(
       heightFactor: 0.72,
@@ -2242,19 +2374,27 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
     delegate: SliverChildBuilderDelegate((context, index) {
       final entry = entries[index];
       final favourite = FavouriteReactionsStore.instance.isEmojiFavourite(
-        entry.emoji,
+        entry.favouriteKey,
       );
       return InkWell(
-        key: ValueKey('mobile-emoji-picker-${entry.emoji}'),
-        onTap: () => Navigator.pop(context, entry.emoji),
+        key: ValueKey('mobile-emoji-picker-${entry.favouriteKey}'),
+        onTap: () => Navigator.pop(context, entry),
         onLongPress: () async {
-          await FavouriteReactionsStore.instance.toggleEmoji(entry.emoji);
+          await FavouriteReactionsStore.instance.toggleEmoji(
+            entry.favouriteKey,
+          );
           if (mounted) setState(() {});
         },
         child: Stack(
           children: [
             Center(
-              child: Text(entry.emoji, style: const TextStyle(fontSize: 27)),
+              child: entry.customEmoji != null
+                  ? CustomEmojiImage(
+                      backend: widget.backend,
+                      emoji: entry.customEmoji!.customEmoji!,
+                      size: 30,
+                    )
+                  : Text(entry.emoji, style: const TextStyle(fontSize: 27)),
             ),
             if (favourite)
               const Positioned(
@@ -2270,6 +2410,7 @@ class _MobileEmojiPickerState extends State<_MobileEmojiPicker> {
 }
 
 IconData _mobileEmojiCategoryIcon(EmojiCategory category) => switch (category) {
+  EmojiCategory.custom => Icons.add_reaction_outlined,
   EmojiCategory.smileysAndPeople => Icons.mood,
   EmojiCategory.animalsAndNature => Icons.pets,
   EmojiCategory.foodAndDrink => Icons.restaurant,

@@ -66,6 +66,10 @@ dependency under its own license.
 - [GIPHY](https://developers.giphy.com/) supplies GIF search results through its
   public API. Deltiecord contains its own small client; a rate-limited HTTPS
   proxy holds the shared API key so client binaries never contain it.
+- [Telegram's Bot API](https://core.telegram.org/bots/api) supplies metadata
+  and media for user-requested public static sticker-pack imports. A bounded
+  Deltiecord proxy holds the bot credential; no Telegram code or assets are
+  bundled or republished by Deltiecord itself.
 - [Jome](https://github.com/eepp/jome) supplies the local Unicode emoji name
   and keyword dataset used for offline emoji search and colon completion.
   Deltiecord vendors only `emojis.json`; Jome is MIT licensed.

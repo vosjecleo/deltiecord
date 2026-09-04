@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import '../models/chat_models.dart';
+
 const _familiarAliases = <String, List<String>>{
   '😭': ['sob', 'cry', 'loudly_crying'],
   '😂': ['joy', 'tears_of_joy'],
@@ -23,6 +25,7 @@ String _normalizeEmojiSearchTerm(String value) =>
     value.toLowerCase().replaceAll('_', ' ').trim();
 
 enum EmojiCategory {
+  custom('Custom'),
   smileysAndPeople('Smileys & people'),
   animalsAndNature('Animals & nature'),
   foodAndDrink('Food & drink'),
@@ -56,12 +59,18 @@ class EmojiEntry {
     required this.name,
     required this.aliases,
     required this.category,
+    this.customEmoji,
   });
 
   final String emoji;
   final String name;
   final List<String> aliases;
   final EmojiCategory category;
+  final StickerSummary? customEmoji;
+
+  bool get isCustom => customEmoji != null;
+  String get insertionText => customEmoji?.customEmoji?.fallback ?? emoji;
+  String get favouriteKey => customEmoji?.mxcUri.toString() ?? emoji;
 
   bool matches(String query) {
     final normalized = _normalizeEmojiSearchTerm(query);
@@ -90,6 +99,19 @@ class EmojiEntry {
     return 4;
   }
 }
+
+List<EmojiEntry> customEmojiEntries(Iterable<StickerPackSummary> packs) => [
+  for (final pack in packs)
+    for (final sticker in pack.stickers)
+      if (sticker.assetType == StickerAssetType.emoji)
+        EmojiEntry(
+          emoji: sticker.customEmoji!.fallback,
+          name: sticker.name,
+          aliases: [sticker.name, pack.name],
+          category: EmojiCategory.custom,
+          customEmoji: sticker,
+        ),
+];
 
 /// Lazily loaded local Unicode emoji catalogue and alias search index.
 ///

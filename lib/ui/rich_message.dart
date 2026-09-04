@@ -4,6 +4,8 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:vsc_quill_delta_to_html/vsc_quill_delta_to_html.dart';
 
+import '../services/custom_emoji.dart';
+
 const spoilerEditorColor = '#010101';
 
 // Serialization composes flutter_quill, vsc_quill_delta_to_html, and the Dart
@@ -27,6 +29,7 @@ const spoilerEditorColor = '#010101';
     ConverterOptions.forEmail(),
   );
   var html = converter.convert();
+  html = replaceCustomEmojiEditorLinks(html);
   // Quill has no Matrix spoiler attribute. A reserved editor-only background
   // color provides the WYSIWYG treatment, then becomes the standard Matrix
   // data-mx-spoiler element on the wire.

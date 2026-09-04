@@ -1442,7 +1442,7 @@ class _CategorizedRoomList extends StatelessWidget {
         ),
     ];
     return ReorderableListView(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.zero,
       buildDefaultDragHandles: false,
       onReorderItem: (oldIndex, newIndex) {
         if (!canArrange) return;
@@ -1593,80 +1593,74 @@ class _ChannelCategorySection extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onSecondaryTapDown: current == null
-                    ? null
-                    : (details) =>
-                          _showContextMenu(context, details.globalPosition),
-                child: SizedBox(
-                  height: 30,
-                  child: Row(
-                    children: [
-                      if (current != null && canArrange)
-                        ReorderableDragStartListener(
-                          index: dragIndex!,
-                          child: SizedBox(
-                            key: ValueKey('category-drag-grip-${current.id}'),
-                            width: _gripColumnWidth,
-                            height: 30,
-                            child: Center(
-                              child: Transform.translate(
-                                offset: const Offset(0, 1),
-                                child: const Icon(
-                                  Icons.drag_indicator,
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: current == null
-                              ? null
-                              : () => backend.setChannelCategoryCollapsed(
-                                  current.id,
-                                  !collapsed,
-                                ),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: context.deltiecord.muted,
-                                      fontSize: DeltiecordTypeScale.normal - 1,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                if (current != null) ...[
-                                  const SizedBox(width: 2),
-                                  Icon(
-                                    collapsed
-                                        ? Icons.chevron_right
-                                        : Icons.expand_more,
-                                    size: 16,
-                                    color: context.deltiecord.muted,
-                                  ),
-                                ],
-                              ],
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onSecondaryTapDown: current == null
+                  ? null
+                  : (details) =>
+                        _showContextMenu(context, details.globalPosition),
+              child: SizedBox(
+                height: 22,
+                child: Row(
+                  children: [
+                    if (current != null && canArrange)
+                      ReorderableDragStartListener(
+                        index: dragIndex!,
+                        child: SizedBox(
+                          key: ValueKey('category-drag-grip-${current.id}'),
+                          width: _gripColumnWidth,
+                          height: 22,
+                          child: Center(
+                            child: Transform.translate(
+                              offset: const Offset(0, 1),
+                              child: const Icon(Icons.drag_indicator, size: 14),
                             ),
                           ),
                         ),
+                      )
+                    else
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: InkWell(
+                        onTap: current == null
+                            ? null
+                            : () => backend.setChannelCategoryCollapsed(
+                                current.id,
+                                !collapsed,
+                              ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: context.deltiecord.muted,
+                                    fontSize: DeltiecordTypeScale.normal - 1,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              if (current != null) ...[
+                                const SizedBox(width: 2),
+                                Icon(
+                                  collapsed
+                                      ? Icons.chevron_right
+                                      : Icons.expand_more,
+                                  size: 14,
+                                  color: context.deltiecord.muted,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
-                      const SizedBox(width: 10),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                 ),
               ),
             ),
@@ -1997,7 +1991,6 @@ class _RoomListTile extends StatelessWidget {
             _showContextMenu(context, details.globalPosition),
       );
     }
-    final compactness = backend.preferences.compactness;
     final selectedSpaceId = backend.selectedSpaceId;
     final mayArrange =
         canArrange ??
@@ -2045,8 +2038,8 @@ class _RoomListTile extends StatelessWidget {
           _showContextMenu(context, details.globalPosition),
       child: ListTile(
         dense: true,
-        visualDensity: VisualDensity(vertical: -2 - (compactness * 2)),
-        minTileHeight: 38,
+        visualDensity: const VisualDensity(vertical: -4),
+        minTileHeight: 30,
         contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         minVerticalPadding: 0,
         minLeadingWidth: 0,
@@ -2056,7 +2049,7 @@ class _RoomListTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (mayArrange) dragGrip(),
-            _RoomIcon(room: room, size: 25),
+            _RoomIcon(room: room, size: 21),
           ],
         ),
         title: Text(room.name, maxLines: 1, overflow: TextOverflow.ellipsis),

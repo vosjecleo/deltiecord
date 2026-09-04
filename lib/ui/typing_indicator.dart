@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'deltiecord_theme.dart';
 
+const double typingIndicatorHeight = 20;
+
 /// A translucent timeline overlay for live typing activity.
 ///
 /// Callers place this over the bottom of the timeline rather than allocating
@@ -67,7 +69,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
       child: IgnorePointer(
         child: SizedBox(
           key: const Key('typing-indicator'),
-          height: 28,
+          height: typingIndicatorHeight,
           child: DecoratedBox(
             key: const Key('typing-indicator-gradient'),
             decoration: BoxDecoration(
@@ -91,7 +93,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                   : const Duration(milliseconds: 120),
               opacity: visible ? 1 : 0,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 5, 8, 1),
+                padding: const EdgeInsets.fromLTRB(8, 1, 8, 0),
                 child: Row(
                   children: [
                     AnimatedBuilder(

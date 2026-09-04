@@ -57,6 +57,12 @@ abstract class ChatBackend extends ChangeNotifier {
   List<ScheduledMessageSummary> get scheduledMessages => const [];
   List<InboxItemSummary> get unifiedInbox => const [];
   List<StickerPackSummary> get stickerPacks => const [];
+  List<StickerSummary> get customEmojis => stickerPacks
+      .expand((pack) => pack.stickers)
+      .where((sticker) => sticker.assetType == StickerAssetType.emoji)
+      .toList(growable: false);
+  Future<Uint8List?> loadStickerPreview(StickerSummary sticker) async =>
+      sticker.previewBytes;
   PresenceMode get presenceMode => PresenceMode.online;
   bool get timelineLoading;
   bool get historyLoading;
@@ -307,6 +313,13 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> refreshStickerPacks() async {}
   Future<void> savePersonalStickerPack(StickerPackDraft pack) async =>
       throw UnsupportedError('Sticker-pack editing is unavailable');
+  bool canManageStickerPacksInRoom(String roomId) => false;
+  Future<void> saveRoomStickerPack(
+    String roomId,
+    StickerPackDraft pack,
+  ) async => throw UnsupportedError('Room sticker packs are unavailable');
+  Future<void> deleteStickerPack(StickerPackSummary pack) async =>
+      throw UnsupportedError('Sticker-pack deletion is unavailable');
   Future<void> setPresenceMode(PresenceMode mode) async {}
   Future<SpacePagesSummary> getSpacePages(String spaceId) async =>
       const SpacePagesSummary();
@@ -317,7 +330,11 @@ abstract class ChatBackend extends ChangeNotifier {
   Future<void> redactMessage(String messageId);
   Future<void> retryMessage(String messageId);
   Future<void> cancelPendingMessage(String messageId);
-  Future<void> toggleReaction(String messageId, String key);
+  Future<void> toggleReaction(
+    String messageId,
+    String key, {
+    CustomEmojiReference? customEmoji,
+  });
   Future<void> sendAttachment(
     AttachmentDraft attachment, {
     String? roomId,

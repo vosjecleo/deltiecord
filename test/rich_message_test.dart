@@ -1,3 +1,5 @@
+import 'package:deltiecord/models/chat_models.dart';
+import 'package:deltiecord/services/custom_emoji.dart';
 import 'package:deltiecord/ui/rich_message.dart';
 import 'package:deltiecord/ui/matrix_html_text.dart';
 import 'package:flutter/material.dart';
@@ -40,6 +42,22 @@ void main() {
       'sudo apt install /path/to/deltiecord_0.3.6_amd64.deb',
     );
     expect(message.html, isNull);
+  });
+
+  test('serializes linked composer emoji as Matrix inline media', () {
+    final emoji = CustomEmojiReference(
+      id: Uri(scheme: 'mxc', host: 'example.org', path: '/stable'),
+      name: 'wave',
+    );
+    final document = Document()..insert(0, ':wave:');
+    document.format(0, 6, LinkAttribute(customEmojiEditorLink(emoji)));
+
+    final message = serializeRichMessage(document);
+
+    expect(message.plainText, ':wave:');
+    expect(message.html, contains('data-mx-emoticon'));
+    expect(message.html, contains('mxc://example.org/stable'));
+    expect(message.html, isNot(contains('emoji.deltiecord.invalid')));
   });
 
   testWidgets('rich paragraphs do not retain an empty trailing row', (

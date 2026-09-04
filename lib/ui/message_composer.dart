@@ -2,6 +2,7 @@ part of 'chat_shell.dart';
 
 class _RichComposer extends StatefulWidget {
   const _RichComposer({
+    required this.backend,
     required this.controller,
     required this.focusNode,
     required this.roomName,
@@ -25,6 +26,7 @@ class _RichComposer extends StatefulWidget {
     super.key,
   });
 
+  final ChatBackend backend;
   final QuillController controller;
   final FocusNode focusNode;
   final String roomName;
@@ -102,6 +104,7 @@ class _RichComposerState extends State<_RichComposer> {
   int _emojiSelection = 0;
   int? _emojiStart;
   int _emojiGeneration = 0;
+  bool _replacingEmoji = false;
   int _visibleLineCount = 1;
 
   @override
@@ -111,6 +114,7 @@ class _RichComposerState extends State<_RichComposer> {
   }
 
   void _updateEmojiCompletion() {
+    if (_replacingEmoji) return;
     final text = widget.controller.document.toPlainText();
     final lineCount = max(
       1,
@@ -136,6 +140,14 @@ class _RichComposerState extends State<_RichComposer> {
     if (completion.closed) {
       final query = completion.query;
       final start = completion.start;
+      final custom = customEmojiEntries(widget.backend.stickerPacks)
+          .where((entry) => entry.name.toLowerCase() == query.toLowerCase())
+          .firstOrNull;
+      if (custom != null) {
+        _replaceEmoji(start, cursor, custom);
+        _clearEmojiCompletion();
+        return;
+      }
       final familiar = EmojiRepository.instance.familiarEmoji(query);
       if (familiar != null) {
         widget.controller.replaceText(
@@ -161,11 +173,14 @@ class _RichComposerState extends State<_RichComposer> {
     final start = completion.start;
     final query = completion.query;
     final generation = ++_emojiGeneration;
+    final customMatches = customEmojiEntries(
+      widget.backend.stickerPacks,
+    ).where((entry) => entry.matches(query)).take(3).toList(growable: false);
     final familiarMatches = EmojiRepository.instance.familiarMatches(query);
     if (familiarMatches.isNotEmpty) {
       setState(() {
         _emojiStart = start;
-        _emojiMatches = familiarMatches;
+        _emojiMatches = [...customMatches, ...familiarMatches].take(3).toList();
         _emojiSelection = 0;
       });
       _syncEmojiOverlay();
@@ -174,7 +189,7 @@ class _RichComposerState extends State<_RichComposer> {
       if (!mounted || generation != _emojiGeneration) return;
       setState(() {
         _emojiStart = start;
-        _emojiMatches = matches;
+        _emojiMatches = [...customMatches, ...matches].take(3).toList();
         _emojiSelection = matches.isEmpty
             ? 0
             : _emojiSelection.clamp(0, matches.length - 1);
@@ -209,35 +224,48 @@ class _RichComposerState extends State<_RichComposer> {
     final start = _emojiStart;
     if (start == null) return;
     final end = widget.controller.selection.extentOffset;
-    widget.controller.replaceText(
-      start,
-      end - start,
-      entry.emoji,
-      TextSelection.collapsed(offset: start + entry.emoji.length),
-    );
+    _replaceEmoji(start, end, entry);
     _clearEmojiCompletion();
     widget.focusNode.requestFocus();
   }
 
-  void _insertEmoji(String emoji) {
+  void _replaceEmoji(int start, int end, EmojiEntry entry) {
+    final replacement = entry.insertionText;
+    _replacingEmoji = true;
+    try {
+      widget.controller.replaceText(
+        start,
+        end - start,
+        replacement,
+        TextSelection.collapsed(offset: start + replacement.length),
+      );
+      if (entry.customEmoji?.customEmoji case final custom?) {
+        widget.controller.formatText(
+          start,
+          replacement.length,
+          LinkAttribute(customEmojiEditorLink(custom)),
+        );
+      }
+    } finally {
+      _replacingEmoji = false;
+    }
+  }
+
+  void _insertEmoji(EmojiEntry entry) {
     final selection = widget.controller.selection;
     final start = selection.start < 0
         ? widget.controller.document.length - 1
         : selection.start;
     final length = selection.isValid ? selection.end - selection.start : 0;
-    widget.controller.replaceText(
-      start,
-      length,
-      emoji,
-      TextSelection.collapsed(offset: start + emoji.length),
-    );
+    _replaceEmoji(start, start + length, entry);
+    _clearEmojiCompletion();
     widget.focusNode.requestFocus();
   }
 
   Future<void> showEmojiPicker() async {
-    final emoji = await showDialog<String>(
+    final emoji = await showDialog<EmojiEntry>(
       context: context,
-      builder: (context) => const EmojiPickerDialog(),
+      builder: (context) => EmojiPickerDialog(backend: widget.backend),
     );
     if (emoji != null) _insertEmoji(emoji);
   }
@@ -307,11 +335,24 @@ class _RichComposerState extends State<_RichComposer> {
                           child: Text.rich(
                             TextSpan(
                               children: [
-                                TextSpan(
-                                  text: _emojiMatches[index].emoji,
-                                  style: TextStyle(
-                                    fontFamily: context.deltiecordEmojiFont,
-                                  ),
+                                WidgetSpan(
+                                  alignment: PlaceholderAlignment.middle,
+                                  child:
+                                      _emojiMatches[index].customEmoji != null
+                                      ? CustomEmojiImage(
+                                          backend: widget.backend,
+                                          emoji: _emojiMatches[index]
+                                              .customEmoji!
+                                              .customEmoji!,
+                                          size: 20,
+                                        )
+                                      : Text(
+                                          _emojiMatches[index].emoji,
+                                          style: TextStyle(
+                                            fontFamily:
+                                                context.deltiecordEmojiFont,
+                                          ),
+                                        ),
                                 ),
                                 TextSpan(
                                   text:

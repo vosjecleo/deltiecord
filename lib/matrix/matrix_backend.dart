@@ -8,10 +8,10 @@ import 'dart:typed_data';
 
 import 'package:matrix/matrix.dart' hide RoomSummary;
 import 'package:matrix/encryption/utils/crypto_setup_extension.dart';
-
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
+import '../services/custom_emoji.dart';
 import '../services/avatar_media_pool.dart';
 import '../services/app_sounds.dart';
 import '../services/android_push_bridge.dart';
@@ -115,6 +115,10 @@ class MatrixBackend extends ChatBackend {
   final Map<String, List<LinkPreview>> _linkPreviews = {};
   final Set<String> _hydratedPollResponseIds = {};
   final LinkPreviewCache _linkPreviewUrlCache = LinkPreviewCache();
+  static const _maximumConcurrentStickerPreviewLoads = 4;
+  final Queue<_StickerPreviewLoad> _stickerPreviewQueue = Queue();
+  final Map<String, Future<Uint8List?>> _stickerPreviewLoads = {};
+  int _activeStickerPreviewLoads = 0;
   Timer? _profileRefreshTimer;
   bool _profileRefreshRunning = false;
   final LinkedHashMap<String, _ProfileCacheEntry> _profileCache =
@@ -1046,8 +1050,24 @@ class MatrixBackend extends ChatBackend {
   Future<void> refreshStickerPacks() => _refreshStickerPacks();
 
   @override
+  Future<Uint8List?> loadStickerPreview(StickerSummary sticker) =>
+      _loadStickerPreview(sticker);
+
+  @override
   Future<void> savePersonalStickerPack(StickerPackDraft pack) =>
       _savePersonalStickerPack(pack);
+
+  @override
+  bool canManageStickerPacksInRoom(String roomId) =>
+      _canManageStickerPacksInRoom(roomId);
+
+  @override
+  Future<void> saveRoomStickerPack(String roomId, StickerPackDraft pack) =>
+      _saveRoomStickerPack(roomId, pack);
+
+  @override
+  Future<void> deleteStickerPack(StickerPackSummary pack) =>
+      _deleteStickerPack(pack);
 
   @override
   Future<void> setPresenceMode(PresenceMode mode) => _setPresenceMode(mode);
@@ -1079,8 +1099,11 @@ class MatrixBackend extends ChatBackend {
       _cancelPendingMessage(messageId);
 
   @override
-  Future<void> toggleReaction(String messageId, String key) =>
-      _toggleReaction(messageId, key);
+  Future<void> toggleReaction(
+    String messageId,
+    String key, {
+    CustomEmojiReference? customEmoji,
+  }) => _toggleReaction(messageId, key, customEmoji: customEmoji);
   @override
   Future<void> sendAttachment(
     AttachmentDraft attachment, {
@@ -1171,4 +1194,11 @@ class MatrixBackend extends ChatBackend {
     _dismissedLocalEchoIds.clear();
     super.dispose();
   }
+}
+
+final class _StickerPreviewLoad {
+  const _StickerPreviewLoad(this.sticker, this.completer);
+
+  final StickerSummary sticker;
+  final Completer<Uint8List?> completer;
 }

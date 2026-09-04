@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release: version 0.9.26 build 82, stable and latest**
+> **Current release candidate: version 0.9.27 build 83**
 >
-> Deltiecord is available for desktop and Android. Build 81 adds first-run
-> guidance, preview privacy levels, notification/unread corrections, structured
-> ping badges, favourites, sticker-pack import, and poll-vote refreshes.
+> Deltiecord is available for desktop and Android. Build 83 adds selective
+> Telegram sticker import, 120-item sticker/custom-emoji packs, inline custom
+> emoji and reactions, and Android navigation recovery after long suspension.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release: v0.9.26 build 82, stable and latest**
+**Current release candidate: v0.9.27 build 83**

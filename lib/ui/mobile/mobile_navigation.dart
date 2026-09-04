@@ -768,9 +768,10 @@ class _SpaceRoomList extends StatelessWidget {
       children.add(
         ListTile(
           dense: true,
-          visualDensity: const VisualDensity(vertical: -3),
-          minTileHeight: 36,
+          visualDensity: const VisualDensity(vertical: -4),
+          minTileHeight: 24,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+          minVerticalPadding: 0,
           title: Row(
             children: [
               Flexible(
@@ -788,7 +789,7 @@ class _SpaceRoomList extends StatelessWidget {
               const SizedBox(width: 2),
               Icon(
                 category.collapsed ? Icons.chevron_right : Icons.expand_more,
-                size: 16,
+                size: 14,
                 color: context.deltiecord.muted,
               ),
             ],
@@ -855,11 +856,12 @@ class _SpaceRoomTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListTile(
     dense: true,
-    visualDensity: const VisualDensity(vertical: -3),
-    minTileHeight: 40,
+    visualDensity: const VisualDensity(vertical: -4),
+    minTileHeight: 32,
+    minVerticalPadding: 0,
     leading: Icon(
       room.isVoice ? Icons.volume_up_outlined : Icons.tag,
-      size: 21,
+      size: 20,
     ),
     title: Text(room.name),
     subtitle: room.isVoice && room.voiceParticipants.isNotEmpty

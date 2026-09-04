@@ -372,10 +372,18 @@ extension _MatrixRoomOperations on MatrixBackend {
   }
 
   void _selectSpace(String? spaceId) {
-    if (_selectedSpaceId == spaceId) return;
+    if (_selectedSpaceId == spaceId) {
+      // Android may recreate the rendering surface while preserving this
+      // backend. Re-publish an idempotent rail selection so a resumed room
+      // panel can reconcile even when its last visual state was frozen.
+      _notifyBackendListeners();
+      unawaited(_refreshStickerPacks());
+      return;
+    }
     _selectedSpaceId = spaceId;
     _selectedRoomId = null;
     _closeTimeline();
+    unawaited(_refreshStickerPacks());
     _notifyBackendListeners();
   }
 

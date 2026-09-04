@@ -686,13 +686,21 @@ class StickerPackSummary {
     required this.name,
     required this.stickers,
     this.roomScoped = false,
+    this.sourceRoomId,
+    this.stateKey,
+    this.canManage = false,
   });
 
   final String id;
   final String name;
   final List<StickerSummary> stickers;
   final bool roomScoped;
+  final String? sourceRoomId;
+  final String? stateKey;
+  final bool canManage;
 }
+
+enum StickerAssetType { sticker, emoji }
 
 class StickerSummary {
   const StickerSummary({
@@ -700,22 +708,38 @@ class StickerSummary {
     required this.name,
     required this.mxcUri,
     this.body,
+    this.mimeType = 'image/png',
     this.width,
     this.height,
     this.previewBytes,
+    this.assetType = StickerAssetType.sticker,
+    this.packId,
   });
 
   final String id;
   final String name;
   final Uri mxcUri;
   final String? body;
+  final String mimeType;
   final int? width;
   final int? height;
   final Uint8List? previewBytes;
+  final StickerAssetType assetType;
+  final String? packId;
+
+  CustomEmojiReference? get customEmoji => assetType == StickerAssetType.emoji
+      ? CustomEmojiReference(id: mxcUri, name: name, packId: packId)
+      : null;
 }
 
 class StickerPackDraft {
   const StickerPackDraft({required this.name, required this.stickers});
+
+  static const maximumItems = 120;
+  static const maximumBytes = 100 * 1024 * 1024;
+  static const maximumEmojiBytes = 256 * 1024;
+  static const maximumEmojiPackBytes = 12 * 1024 * 1024;
+  static const maximumEmojiDimension = 128;
 
   final String name;
   final List<StickerDraftItem> stickers;
@@ -726,11 +750,47 @@ class StickerDraftItem {
     required this.shortcode,
     required this.bytes,
     required this.mimeType,
+    this.width,
+    this.height,
+    this.assetType = StickerAssetType.sticker,
   });
 
   final String shortcode;
   final Uint8List bytes;
   final String mimeType;
+  final int? width;
+  final int? height;
+  final StickerAssetType assetType;
+}
+
+/// Stable Matrix media identity plus human-readable fallback metadata.
+///
+/// The MXC URI, not the mutable shortcode, identifies an emoji on the wire.
+/// This also lets two accessible packs expose the same shortcode safely.
+class CustomEmojiReference {
+  const CustomEmojiReference({
+    required this.id,
+    required this.name,
+    this.packId,
+  });
+
+  final Uri id;
+  final String name;
+  final String? packId;
+
+  String get fallback => ':$name:';
+}
+
+class CustomEmojiTextSpan {
+  const CustomEmojiTextSpan({
+    required this.start,
+    required this.end,
+    required this.emoji,
+  });
+
+  final int start;
+  final int end;
+  final CustomEmojiReference emoji;
 }
 
 class SpacePagesSummary {
@@ -890,6 +950,7 @@ class ReactionSummary {
     this.latestSenderId,
     this.latestSender,
     this.latestTimestamp,
+    this.customEmoji,
   });
 
   final String key;
@@ -898,6 +959,7 @@ class ReactionSummary {
   final String? latestSenderId;
   final String? latestSender;
   final DateTime? latestTimestamp;
+  final CustomEmojiReference? customEmoji;
 }
 
 class ReplyPreview {

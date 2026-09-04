@@ -391,11 +391,17 @@ class _ConversationState extends State<_Conversation> {
   }
 
   Future<void> _pickReaction(ChatMessage message) async {
-    final emoji = await showDialog<String>(
+    final emoji = await showDialog<EmojiEntry>(
       context: context,
-      builder: (context) => const EmojiPickerDialog(),
+      builder: (context) => EmojiPickerDialog(backend: widget.backend),
     );
-    if (emoji != null) await widget.backend.toggleReaction(message.id, emoji);
+    if (emoji != null) {
+      await widget.backend.toggleReaction(
+        message.id,
+        emoji.emoji,
+        customEmoji: emoji.customEmoji?.customEmoji,
+      );
+    }
     _focusComposerAfterBuild();
   }
 
@@ -871,7 +877,7 @@ class _ConversationState extends State<_Conversation> {
                                       0,
                                       10,
                                       0,
-                                      29,
+                                      typingIndicatorHeight + 1,
                                     ),
                                     itemCount:
                                         messages.length +
@@ -964,10 +970,12 @@ class _ConversationState extends State<_Conversation> {
                                                         message.id,
                                                       )
                                                 : null,
-                                            onToggleReaction: (key) =>
+                                            onToggleReaction: (reaction) =>
                                                 backend.toggleReaction(
                                                   message.id,
-                                                  key,
+                                                  reaction.key,
+                                                  customEmoji:
+                                                      reaction.customEmoji,
                                                 ),
                                             onJumpToReply: _jumpToEvent,
                                             mediaMessages: mediaMessages,
@@ -1057,6 +1065,7 @@ class _ConversationState extends State<_Conversation> {
                   ),
                 _RichComposer(
                   key: widget.composerKey,
+                  backend: backend,
                   controller: widget.controller,
                   focusNode: widget.composerFocus,
                   roomName: room.name,

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/draft_store.dart';
+import '../../services/custom_emoji.dart';
 import '../settings_screen.dart';
 import 'mobile_details_panel.dart';
 import 'mobile_navigation.dart';
@@ -29,14 +30,17 @@ class _MobileChatShellState extends State<MobileChatShell>
     with WidgetsBindingObserver {
   bool _navigationVisible = true;
   bool _detailsVisible = false;
-  final Map<String, String> _drafts = {};
+  final Map<String, ({String text, List<CustomEmojiTextSpan> emojis})> _drafts =
+      {};
   final DraftStore _draftStore = DraftStore();
   String? _lastRoomId;
   bool _openingRoom = false;
+  int _roomOpenGeneration = 0;
   final Map<int, Offset> _pointerStarts = {};
   double? _navigationDragProgress;
   bool? _dragStartedWithNavigation;
   bool? _reportedConversationVisible;
+  int _resumeGeneration = 0;
 
   ChatBackend get backend => widget.backend;
 
@@ -54,13 +58,8 @@ class _MobileChatShellState extends State<MobileChatShell>
     for (final room in [...backend.rooms]) {
       final stored = _draftStore.read(room.id);
       if (stored == null) continue;
-      final text = stored.delta
-          .whereType<Map>()
-          .map((operation) => operation['insert'])
-          .whereType<String>()
-          .join()
-          .replaceFirst(RegExp(r'\n$'), '');
-      if (text.isNotEmpty) _drafts[room.id] = text;
+      final draft = customEmojiDraftFromDelta(stored.delta);
+      if (draft.text.isNotEmpty) _drafts[room.id] = draft;
     }
     if (mounted) setState(() {});
   }
@@ -93,19 +92,23 @@ class _MobileChatShellState extends State<MobileChatShell>
     // Keep durable navigation state, but discard only transient gesture state
     // so an orphaned pointer cannot leave the Space rail non-interactive.
     _pointerStarts.clear();
-    if (_navigationDragProgress == null && _dragStartedWithNavigation == null) {
-      return;
-    }
     setState(() {
+      _resumeGeneration++;
+      _roomOpenGeneration++;
+      // A suspended room-open future must not suppress subsequent backend
+      // selection notifications after Android thaws the activity.
+      _openingRoom = false;
       _navigationDragProgress = null;
       _dragStartedWithNavigation = null;
     });
   }
 
   Future<void> _openRoom(RoomSummary room) async {
+    final generation = ++_roomOpenGeneration;
     _openingRoom = true;
     try {
       await backend.selectRoom(room.id);
+      if (generation != _roomOpenGeneration) return;
       if (room.isVoice && backend.activeVoiceRoomId != room.id) {
         await backend.joinVoiceRoom(room.id);
       }
@@ -116,7 +119,7 @@ class _MobileChatShellState extends State<MobileChatShell>
         _detailsVisible = false;
       });
     } finally {
-      _openingRoom = false;
+      if (generation == _roomOpenGeneration) _openingRoom = false;
     }
   }
 
@@ -238,16 +241,19 @@ class _MobileChatShellState extends State<MobileChatShell>
                           onOpenDetails: () =>
                               setState(() => _detailsVisible = true),
                           onOpenSettings: _showSettings,
-                          initialDraft: _drafts[room.id] ?? '',
+                          initialDraft: _drafts[room.id]?.text ?? '',
+                          initialCustomEmojis:
+                              _drafts[room.id]?.emojis ?? const [],
                           onDraftChanged: (value) {
-                            if (value.isEmpty) {
+                            if (value.text.isEmpty) {
                               _drafts.remove(room.id);
                               _draftStore.remove(room.id);
                             } else {
                               _drafts[room.id] = value;
-                              _draftStore.write(room.id, [
-                                {'insert': '$value\n'},
-                              ]);
+                              _draftStore.write(
+                                room.id,
+                                customEmojiDraftDelta(value.text, value.emojis),
+                              );
                             }
                           },
                         ),
@@ -265,6 +271,9 @@ class _MobileChatShellState extends State<MobileChatShell>
                     child: Material(
                       elevation: 12,
                       child: MobileNavigationPanel(
+                        key: ValueKey(
+                          'mobile-navigation-panel-$_resumeGeneration',
+                        ),
                         backend: backend,
                         onOpenRoom: _openRoom,
                         onOpenSettings: _showSettings,

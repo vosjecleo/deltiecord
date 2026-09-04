@@ -313,11 +313,36 @@ extension _MatrixEventMapping on MatrixBackend {
     final counts = <String, int>{};
     final mine = <String>{};
     final latestOthers = <String, Event>{};
+    final customEmoji = <String, CustomEmojiReference>{};
     for (final reaction in reactions.where((reaction) => !reaction.redacted)) {
       final key = reaction.content
           .tryGetMap<String, Object?>('m.relates_to')
           ?.tryGet<String>('key');
       if (key == null || key.isEmpty) continue;
+      final metadata = reaction.content.tryGetMap<String, Object?>(
+        'net.deltiecord.emoji',
+      );
+      final emojiId = Uri.tryParse('${metadata?['id'] ?? ''}');
+      final emojiName = '${metadata?['name'] ?? ''}'.trim();
+      if (emojiId != null && emojiId.isScheme('mxc') && emojiName.isNotEmpty) {
+        customEmoji[key] = CustomEmojiReference(
+          id: emojiId,
+          name: emojiName,
+          packId: metadata?['pack'] as String?,
+        );
+      } else if (Uri.tryParse(key)?.isScheme('mxc') == true) {
+        final available = _stickerPacks
+            .expand((pack) => pack.stickers)
+            .where(
+              (sticker) =>
+                  sticker.assetType == StickerAssetType.emoji &&
+                  sticker.mxcUri.toString() == key,
+            )
+            .firstOrNull;
+        if (available?.customEmoji case final reference?) {
+          customEmoji[key] = reference;
+        }
+      }
       counts.update(key, (count) => count + 1, ifAbsent: () => 1);
       if (reaction.senderId == _matrix.userID) {
         mine.add(key);
@@ -339,6 +364,7 @@ extension _MatrixEventMapping on MatrixBackend {
             latestSender: latestOthers[entry.key]?.senderFromMemoryOrFallback
                 .calcDisplayname(),
             latestTimestamp: latestOthers[entry.key]?.originServerTs,
+            customEmoji: customEmoji[entry.key],
           ),
         )
         .toList(growable: false);

@@ -24,6 +24,7 @@ import '../services/temporary_attachment_store.dart';
 import '../services/timezone_catalog.dart';
 import '../services/emoji_repository.dart';
 import '../services/emoji_completion.dart';
+import '../services/custom_emoji.dart';
 import '../services/draft_store.dart';
 import 'giphy_dialog.dart';
 import 'emoji_picker_dialog.dart';
@@ -55,10 +56,10 @@ part 'member_sidebar.dart';
 
 // The two bottom panels meet across separate widget trees. Keeping their
 // geometry shared prevents one-pixel seams when either side is refactored.
-const double _bottomPanelHeight = 68;
+const double _bottomPanelHeight = 56;
 const double _composerControlHeight = 38;
 const double _composerEditorHeight = 36;
-const double _bottomPanelVerticalInset = 8;
+const double _bottomPanelVerticalInset = 2;
 const double _composerIslandVerticalInset = 7;
 
 enum _SidePanelView { profile, members }
@@ -508,6 +509,16 @@ class _ChatShellState extends State<ChatShell> {
 
   void _edit(ChatMessage message) {
     _message.document = Document()..insert(0, message.body);
+    for (final span in customEmojiSpansFromHtml(
+      message.formattedBody,
+      message.body,
+    )) {
+      _message.formatText(
+        span.start,
+        span.end - span.start,
+        LinkAttribute(customEmojiEditorLink(span.emoji)),
+      );
+    }
     _message.updateSelection(
       TextSelection(baseOffset: 0, extentOffset: message.body.length),
       ChangeSource.local,

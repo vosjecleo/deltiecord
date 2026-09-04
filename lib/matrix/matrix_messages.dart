@@ -456,8 +456,12 @@ extension _MatrixMessages on MatrixBackend {
     _notifyBackendListeners();
   }
 
-  Future<void> _toggleReaction(String messageId, String key) async {
-    final value = key.trim();
+  Future<void> _toggleReaction(
+    String messageId,
+    String key, {
+    CustomEmojiReference? customEmoji,
+  }) async {
+    final value = (customEmoji?.id.toString() ?? key).trim();
     if (value.isEmpty) return;
     final timeline = _timeline;
     final event = _eventById(messageId);
@@ -481,7 +485,24 @@ extension _MatrixMessages on MatrixBackend {
         await ownReaction.redactEvent();
       } else {
         await _prepareEncryptedSend(event.room);
-        await event.room.sendReaction(event.eventId, value);
+        if (customEmoji == null) {
+          await event.room.sendReaction(event.eventId, value);
+        } else {
+          await event.room.sendEvent({
+            'm.relates_to': {
+              'rel_type': RelationshipTypes.reaction,
+              'event_id': event.eventId,
+              'key': value,
+            },
+            // Matrix's annotation key remains the immutable MXC ID. This
+            // namespaced fallback keeps deleted/renamed emoji intelligible.
+            'net.deltiecord.emoji': {
+              'id': customEmoji.id.toString(),
+              'name': customEmoji.name,
+              if (customEmoji.packId != null) 'pack': customEmoji.packId,
+            },
+          }, type: EventTypes.Reaction);
+        }
       }
     } catch (exception) {
       _error = _friendlyError(exception);

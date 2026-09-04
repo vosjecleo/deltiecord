@@ -302,7 +302,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       'body': sticker.body ?? sticker.name,
       'url': sticker.mxcUri.toString(),
       'info': {
-        'mimetype': 'image/png',
+        'mimetype': sticker.mimeType,
         if (sticker.width != null) 'w': sticker.width,
         if (sticker.height != null) 'h': sticker.height,
       },
@@ -311,7 +311,13 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
 
   Future<void> _refreshStickerPacks() async {
     final packs = <StickerPackSummary>[];
-    void parsePack(String id, Map<String, Object?> content, bool roomScoped) {
+    void parsePack(
+      String id,
+      Map<String, Object?> content,
+      bool roomScoped, {
+      String? sourceRoomId,
+      String? stateKey,
+    }) {
       final images = content.tryGetMap<String, Object?>('images');
       if (images == null) return;
       final stickers = <StickerSummary>[];
@@ -321,14 +327,18 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         final uri = Uri.tryParse('${item['url'] ?? ''}');
         if (uri == null || !uri.isScheme('mxc')) continue;
         final info = item.tryGetMap<String, Object?>('info');
+        final assetType = stickerAssetTypeFromImagePackItem(item);
         stickers.add(
           StickerSummary(
             id: entry.key,
             name: '${item['body'] ?? entry.key}',
             body: item['body'] as String?,
+            mimeType: info?.tryGet<String>('mimetype') ?? 'image/png',
             mxcUri: uri,
             width: info?.tryGet<int>('w'),
             height: info?.tryGet<int>('h'),
+            assetType: assetType,
+            packId: id,
           ),
         );
       }
@@ -340,68 +350,207 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           name: pack?.tryGet<String>('display_name') ?? 'Stickers',
           stickers: stickers,
           roomScoped: roomScoped,
+          sourceRoomId: sourceRoomId,
+          stateKey: stateKey,
+          canManage:
+              sourceRoomId == null ||
+              (_matrix
+                      .getRoomById(sourceRoomId)
+                      ?.canChangeStateEvent('im.ponies.room_emotes') ??
+                  false),
         ),
       );
     }
 
     final personal = _matrix.accountData['im.ponies.user_emotes']?.content;
     if (personal != null) parsePack('personal', personal, false);
-    final room = _matrix.getRoomById(_selectedRoomId ?? '');
-    final roomPacks = room?.states['im.ponies.room_emotes'];
-    if (roomPacks != null) {
-      for (final entry in roomPacks.entries) {
-        parsePack('room:${entry.key}', entry.value.content, true);
-      }
-    }
-    final hydrated = <StickerPackSummary>[];
-    for (final pack in packs) {
-      final stickers = <StickerSummary>[];
-      for (final sticker in pack.stickers) {
-        Uint8List? bytes;
-        try {
-          bytes = await _avatarMedia(
-            sticker.mxcUri,
-            AvatarMediaPool.profileDimension,
-          );
-        } catch (_) {
-          // A missing preview must not make an otherwise valid pack unusable.
-        }
-        stickers.add(
-          StickerSummary(
-            id: sticker.id,
-            name: sticker.name,
-            mxcUri: sticker.mxcUri,
-            body: sticker.body,
-            width: sticker.width,
-            height: sticker.height,
-            previewBytes: bytes,
-          ),
+    final selectedSpaceId = _selectedSpaceId;
+    final selectedSpace = _matrix.getRoomById(selectedSpaceId ?? '');
+    final spacePacks = selectedSpace?.states['im.ponies.room_emotes'];
+    if (spacePacks != null && selectedSpaceId != null) {
+      for (final entry in spacePacks.entries) {
+        parsePack(
+          'room:$selectedSpaceId:${entry.key}',
+          entry.value.content,
+          true,
+          sourceRoomId: selectedSpaceId,
+          stateKey: entry.key,
         );
       }
-      hydrated.add(
-        StickerPackSummary(
-          id: pack.id,
-          name: pack.name,
-          stickers: stickers,
-          roomScoped: pack.roomScoped,
-        ),
+    }
+    final room = _matrix.getRoomById(_selectedRoomId ?? '');
+    final roomPacks = room?.states['im.ponies.room_emotes'];
+    if (roomPacks != null && room?.id != selectedSpaceId) {
+      for (final entry in roomPacks.entries) {
+        parsePack(
+          'room:${room!.id}:${entry.key}',
+          entry.value.content,
+          true,
+          sourceRoomId: room.id,
+          stateKey: entry.key,
+        );
+      }
+    }
+    // Refreshing packs is metadata-only. Visible picker tiles request their
+    // previews lazily, so a large pack cannot trigger a network burst here.
+    _stickerPacks = List.unmodifiable(packs);
+    _notifyBackendListeners();
+  }
+
+  Future<Uint8List?> _loadStickerPreview(StickerSummary sticker) {
+    if (sticker.previewBytes case final bytes?) return Future.value(bytes);
+    final key = sticker.mxcUri.toString();
+    return _stickerPreviewLoads.putIfAbsent(key, () {
+      final completer = Completer<Uint8List?>();
+      _stickerPreviewQueue.add(_StickerPreviewLoad(sticker, completer));
+      _pumpStickerPreviewQueue();
+      return completer.future.whenComplete(
+        () => _stickerPreviewLoads.remove(key),
+      );
+    });
+  }
+
+  void _pumpStickerPreviewQueue() {
+    while (_activeStickerPreviewLoads <
+            MatrixBackend._maximumConcurrentStickerPreviewLoads &&
+        _stickerPreviewQueue.isNotEmpty) {
+      final load = _stickerPreviewQueue.removeFirst();
+      _activeStickerPreviewLoads++;
+      unawaited(
+        (load.sticker.assetType == StickerAssetType.emoji
+                // Emoji uploads are strictly bounded. Fetching the original
+                // preserves animated GIF/WebP frames that Matrix thumbnails
+                // intentionally flatten.
+                ? _profileOriginalMedia(load.sticker.mxcUri).then(
+                    (bytes) =>
+                        bytes != null &&
+                            bytes.length <= StickerPackDraft.maximumEmojiBytes
+                        ? bytes
+                        : null,
+                  )
+                : _avatarMedia(
+                    load.sticker.mxcUri,
+                    AvatarMediaPool.profileDimension,
+                  ))
+            .then(
+              load.completer.complete,
+              onError: (_) {
+                // A missing preview must not make an otherwise valid pack unusable.
+                load.completer.complete(null);
+              },
+            )
+            .whenComplete(() {
+              _activeStickerPreviewLoads--;
+              _pumpStickerPreviewQueue();
+            }),
       );
     }
-    _stickerPacks = List.unmodifiable(hydrated);
-    _notifyBackendListeners();
   }
 
   Future<void> _savePersonalStickerPack(StickerPackDraft draft) async {
     final userId = _matrix.userID;
     if (userId == null) return;
+    final content = await _uploadStickerPack(draft);
+    await _matrix.setAccountData(userId, 'im.ponies.user_emotes', content);
+    await _refreshStickerPacks();
+  }
+
+  bool _canManageStickerPacksInRoom(String roomId) =>
+      _matrix
+          .getRoomById(roomId)
+          ?.canChangeStateEvent('im.ponies.room_emotes') ??
+      false;
+
+  Future<void> _saveRoomStickerPack(
+    String roomId,
+    StickerPackDraft draft,
+  ) async {
+    if (!_canManageStickerPacksInRoom(roomId)) {
+      throw StateError('You cannot manage emoji or sticker packs here.');
+    }
+    final content = await _uploadStickerPack(draft);
+    final stateKey =
+        'deltiecord-${DateTime.now().millisecondsSinceEpoch}-'
+        '${Random.secure().nextInt(0x7fffffff)}';
+    await _matrix.setRoomStateWithKey(
+      roomId,
+      'im.ponies.room_emotes',
+      stateKey,
+      content,
+    );
+    await _refreshStickerPacks();
+  }
+
+  Future<void> _deleteStickerPack(StickerPackSummary pack) async {
+    final userId = _matrix.userID;
+    if (pack.sourceRoomId == null) {
+      if (userId == null || pack.id != 'personal') return;
+      await _matrix.setAccountData(userId, 'im.ponies.user_emotes', {
+        'pack': {'display_name': 'Stickers', 'usage': <String>[]},
+        'images': <String, Object?>{},
+      });
+    } else {
+      final stateKey = pack.stateKey;
+      if (stateKey == null ||
+          !_canManageStickerPacksInRoom(pack.sourceRoomId!)) {
+        throw StateError('You cannot delete this pack.');
+      }
+      await _matrix.setRoomStateWithKey(
+        pack.sourceRoomId!,
+        'im.ponies.room_emotes',
+        stateKey,
+        {
+          'pack': {'display_name': pack.name, 'usage': <String>[]},
+          'images': <String, Object?>{},
+        },
+      );
+    }
+    await _refreshStickerPacks();
+  }
+
+  Future<Map<String, Object?>> _uploadStickerPack(
+    StickerPackDraft draft,
+  ) async {
     final name = draft.name.trim();
-    if (name.isEmpty || draft.stickers.isEmpty || draft.stickers.length > 50) {
-      throw StateError('A sticker pack needs a name and 1–50 images.');
+    if (name.isEmpty ||
+        draft.stickers.isEmpty ||
+        draft.stickers.length > StickerPackDraft.maximumItems) {
+      throw StateError('A sticker pack needs a name and 1–120 images.');
+    }
+    final estimatedMetadataBytes =
+        utf8.encode(name).length +
+        draft.stickers.fold<int>(
+          512,
+          (total, item) =>
+              total +
+              utf8.encode(item.shortcode).length * 2 +
+              utf8.encode(item.mimeType).length +
+              256,
+        );
+    if (estimatedMetadataBytes > 60 * 1024) {
+      throw StateError('Sticker names make this pack metadata too large.');
     }
     final images = <String, Object?>{};
+    var totalBytes = 0;
+    var emojiBytes = 0;
     for (final item in draft.stickers) {
+      var width = item.width;
+      var height = item.height;
       if (item.bytes.isEmpty || item.bytes.length > 5 * 1024 * 1024) {
         throw StateError('Each sticker must be at most 5 MiB.');
+      }
+      if (item.assetType == StickerAssetType.emoji) {
+        final dimensions = validateCustomEmojiAsset(item.bytes, item.mimeType);
+        emojiBytes += item.bytes.length;
+        if (emojiBytes > StickerPackDraft.maximumEmojiPackBytes) {
+          throw StateError('Custom emoji in a pack must be at most 12 MiB.');
+        }
+        width = dimensions.width;
+        height = dimensions.height;
+      }
+      totalBytes += item.bytes.length;
+      if (totalBytes > StickerPackDraft.maximumBytes) {
+        throw StateError('A sticker pack must be at most 100 MiB in total.');
       }
       final shortcode = item.shortcode
           .trim()
@@ -416,19 +565,37 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       images[shortcode] = {
         'body': shortcode,
         'url': uri.toString(),
-        'usage': ['sticker', 'emoticon'],
-        'info': {'mimetype': item.mimeType, 'size': item.bytes.length},
+        'usage': [
+          item.assetType == StickerAssetType.emoji ? 'emoticon' : 'sticker',
+        ],
+        'net.deltiecord.asset_type': item.assetType.name,
+        'info': {
+          'mimetype': item.mimeType,
+          'size': item.bytes.length,
+          'w': ?width,
+          'h': ?height,
+        },
       };
     }
     if (images.isEmpty) throw StateError('No valid sticker images were found.');
-    await _matrix.setAccountData(userId, 'im.ponies.user_emotes', {
+    final content = <String, Object?>{
       'pack': {
         'display_name': name,
-        'usage': ['sticker', 'emoticon'],
+        'usage': draft.stickers
+            .map(
+              (item) => item.assetType == StickerAssetType.emoji
+                  ? 'emoticon'
+                  : 'sticker',
+            )
+            .toSet()
+            .toList(growable: false),
       },
       'images': images,
-    });
-    await _refreshStickerPacks();
+    };
+    if (utf8.encode(jsonEncode(content)).length > 60 * 1024) {
+      throw StateError('Sticker-pack metadata exceeds the safe sync limit.');
+    }
+    return content;
   }
 
   String _stickerExtension(String mimeType) => switch (mimeType) {

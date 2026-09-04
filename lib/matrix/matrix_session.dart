@@ -28,6 +28,7 @@ extension _MatrixSession on MatrixBackend {
         _spaceRoomOrderOverrides.clear();
         _applySyncedProfilePresence();
         _loadSettings();
+        if (_stickerPackSourcesChanged()) unawaited(_refreshStickerPacks());
         unawaited(_enforceCallDeviceHandoff());
         unawaited(_restoreExpiredMemberTimeouts());
         _notifyBackendListeners();
@@ -186,6 +187,7 @@ extension _MatrixSession on MatrixBackend {
       _temporaryRoomMutes.clear();
       _temporaryRoomMuteRestoreModes.clear();
       _stickerPacks = const [];
+      _stickerPackSourceSignature = null;
       _notificationsPrimed = false;
       _maximumUploadBytes = null;
       _mediaPlaybackSources.clear();

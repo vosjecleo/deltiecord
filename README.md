@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 88**
+> **Current release candidate: version 0.9.27 build 89**
 >
-> Deltiecord is available for desktop and Android. Build 88 adds optional
-> transparent-padding trimming for custom emoji and lets message emoji open
-> their accessible source pack on mobile and desktop.
+> Deltiecord is available for desktop and Android. Build 89 preserves multiple
+> personal sticker and emoji packs, repairs post-import synchronization, and
+> renders inline custom emoji more clearly.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 88**
+**Current release candidate: v0.9.27 build 89**

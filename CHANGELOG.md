@@ -1,5 +1,17 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 89 — 2026-09-04
+
+- Fixed personal sticker and custom-emoji imports replacing the previously
+  saved pack by assigning additional packs distinct synced account-data slots.
+- Kept the first personal pack in Matrix's interoperable image-pack slot,
+  added independent removal and safe reuse for up to 64 active personal packs.
+- Waited for authoritative Matrix sync after personal-pack writes and refreshed
+  packs when synced sources change, so imported emoji appear without reopening
+  the picker repeatedly.
+- Added visible progress while uploading imported packs and increased inline
+  custom-emoji rendering from 20 to 26 logical pixels.
+
 ## Deltiecord 0.9.27 build 88 — 2026-09-04
 
 - Added optional transparent-padding trimming when importing static custom

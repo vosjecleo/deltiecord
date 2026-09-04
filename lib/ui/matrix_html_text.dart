@@ -239,7 +239,7 @@ class _MatrixHtmlTextState extends State<MatrixHtmlText> {
       final image = CustomEmojiImage(
         backend: backend,
         emoji: reference,
-        size: 20,
+        size: 26,
       );
       return [
         WidgetSpan(

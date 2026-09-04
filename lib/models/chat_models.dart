@@ -688,6 +688,7 @@ class StickerPackSummary {
     this.roomScoped = false,
     this.sourceRoomId,
     this.stateKey,
+    this.accountDataType,
     this.canManage = false,
     this.globallyEnabled = false,
   });
@@ -698,6 +699,7 @@ class StickerPackSummary {
   final bool roomScoped;
   final String? sourceRoomId;
   final String? stateKey;
+  final String? accountDataType;
   final bool canManage;
   final bool globallyEnabled;
 }

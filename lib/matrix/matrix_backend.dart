@@ -21,6 +21,7 @@ import '../services/link_preview_policy.dart';
 import '../services/link_preview_service.dart';
 import '../services/profile_refresh_policy.dart';
 import '../services/poll_tally.dart';
+import '../services/personal_sticker_packs.dart';
 import '../services/secret_redaction.dart';
 import '../services/scheduled_message_store.dart';
 import '../services/timeline_window_policy.dart';
@@ -159,6 +160,7 @@ class MatrixBackend extends ChatBackend {
   final Map<String, RoomNotificationMode> _temporaryRoomMuteRestoreModes = {};
   PresenceMode _presenceMode = PresenceMode.online;
   List<StickerPackSummary> _stickerPacks = const [];
+  String? _stickerPackSourceSignature;
   bool _retryingOfflineSends = false;
   bool _notificationsPrimed = false;
   bool _notificationPreviewsEnabled = true;

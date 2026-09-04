@@ -179,6 +179,10 @@ void main() {
       ),
     );
 
+    expect(
+      tester.getSize(find.byType(CustomEmojiImage)),
+      const Size.square(26),
+    );
     await tester.tap(find.bySemanticsLabel('View :party_cat: emoji pack'));
     await tester.pumpAndSettle();
 

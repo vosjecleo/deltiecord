@@ -202,6 +202,7 @@ class _StickerPickerContentsState extends State<_StickerPickerContents> {
           roomScoped: pack.roomScoped,
           sourceRoomId: pack.sourceRoomId,
           stateKey: pack.stateKey,
+          accountDataType: pack.accountDataType,
           canManage: pack.canManage,
           globallyEnabled: pack.globallyEnabled,
         );
@@ -727,11 +728,8 @@ Future<void> _manageStickerPacks(
     final draft = StickerPackDraft(name: name, stickers: items);
     final destination = await _chooseStickerPackDestination(context, backend);
     if (destination == _cancelledPackDestination) return;
-    if (destination == null) {
-      await backend.savePersonalStickerPack(draft);
-    } else {
-      await backend.saveRoomStickerPack(destination, draft);
-    }
+    if (!context.mounted) return;
+    await _saveStickerPackWithProgress(context, backend, draft, destination);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Personal sticker pack saved.')),
@@ -1358,11 +1356,8 @@ Future<void> _importTelegramStickerPack(
       if (!context.mounted) return;
       final destination = await _chooseStickerPackDestination(context, backend);
       if (destination == _cancelledPackDestination) return;
-      if (destination == null) {
-        await backend.savePersonalStickerPack(draft);
-      } else {
-        await backend.saveRoomStickerPack(destination, draft);
-      }
+      if (!context.mounted) return;
+      await _saveStickerPackWithProgress(context, backend, draft, destination);
     } finally {
       progress.dispose();
     }
@@ -1385,6 +1380,19 @@ Future<void> _importTelegramStickerPack(
     }
   }
 }
+
+Future<void> _saveStickerPackWithProgress(
+  BuildContext context,
+  ChatBackend backend,
+  StickerPackDraft draft,
+  String? destination,
+) => _withStickerProgress<void>(
+  context,
+  label: 'Uploading ${draft.stickers.length} pack items…',
+  operation: () => destination == null
+      ? backend.savePersonalStickerPack(draft)
+      : backend.saveRoomStickerPack(destination, draft),
+);
 
 Future<T> _withStickerProgress<T>(
   BuildContext context, {

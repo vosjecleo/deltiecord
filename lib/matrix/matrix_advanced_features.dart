@@ -338,6 +338,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       bool roomScoped, {
       String? sourceRoomId,
       String? stateKey,
+      String? accountDataType,
       bool globallyEnabled = false,
     }) {
       if (!parsedIds.add(id)) return;
@@ -375,6 +376,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           roomScoped: roomScoped,
           sourceRoomId: sourceRoomId,
           stateKey: stateKey,
+          accountDataType: accountDataType,
           canManage:
               sourceRoomId == null ||
               (_matrix
@@ -386,8 +388,30 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       );
     }
 
-    final personal = _matrix.accountData['im.ponies.user_emotes']?.content;
-    if (personal != null) parsePack('personal', personal, false);
+    final personal =
+        _matrix.accountData[matrixPersonalImagePackAccountDataType]?.content;
+    if (personal != null) {
+      parsePack(
+        'personal',
+        personal,
+        false,
+        accountDataType: matrixPersonalImagePackAccountDataType,
+      );
+    }
+    final additionalPersonalPacks = _matrix.accountData.entries
+        .where(
+          (entry) =>
+              entry.key.startsWith(
+                deltiecordPersonalImagePackAccountDataPrefix,
+              ) &&
+              accountDataContainsImagePack(entry.value.content),
+        )
+        .take(maximumPersonalImagePacks - 1);
+    for (final entry in additionalPersonalPacks) {
+      final id = personalImagePackIdForAccountDataType(entry.key);
+      if (id == null) continue;
+      parsePack(id, entry.value.content, false, accountDataType: entry.key);
+    }
     final selectedSpaceId = _selectedSpaceId;
     final selectedSpace = _matrix.getRoomById(selectedSpaceId ?? '');
     final spacePacks = selectedSpace?.states['im.ponies.room_emotes'];
@@ -439,7 +463,38 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     // Refreshing packs is metadata-only. Visible picker tiles request their
     // previews lazily, so a large pack cannot trigger a network burst here.
     _stickerPacks = List.unmodifiable(packs);
+    _stickerPackSourceSignature = _stickerPackSourcesSignature();
     _notifyBackendListeners();
+  }
+
+  bool _stickerPackSourcesChanged() =>
+      _stickerPackSourceSignature != _stickerPackSourcesSignature();
+
+  String _stickerPackSourcesSignature() {
+    final accountData =
+        _matrix.accountData.entries
+            .where(
+              (entry) =>
+                  isPersonalImagePackAccountDataType(entry.key) ||
+                  entry.key == 'im.ponies.emote_rooms',
+            )
+            .toList(growable: false)
+          ..sort((left, right) => left.key.compareTo(right.key));
+    Map<String, Object?> roomPacks(String? roomId) {
+      final events = _matrix
+          .getRoomById(roomId ?? '')
+          ?.states['im.ponies.room_emotes'];
+      return events?.map((key, event) => MapEntry(key, event.content)) ??
+          const {};
+    }
+
+    return jsonEncode({
+      'account': {
+        for (final entry in accountData) entry.key: entry.value.content,
+      },
+      'space': roomPacks(_selectedSpaceId),
+      'room': roomPacks(_selectedRoomId),
+    });
   }
 
   Future<Uint8List?> _loadStickerPreview(StickerSummary sticker) {
@@ -524,8 +579,110 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     final userId = _matrix.userID;
     if (userId == null) return;
     final content = await _uploadStickerPack(draft);
-    await _matrix.setAccountData(userId, 'im.ponies.user_emotes', content);
+    final legacy =
+        _matrix.accountData[matrixPersonalImagePackAccountDataType]?.content;
+    late final String accountDataType;
+    if (!accountDataContainsImagePack(legacy)) {
+      accountDataType = matrixPersonalImagePackAccountDataType;
+    } else {
+      final reusable = _matrix.accountData.entries
+          .where(
+            (entry) =>
+                entry.key.startsWith(
+                  deltiecordPersonalImagePackAccountDataPrefix,
+                ) &&
+                !accountDataContainsImagePack(entry.value.content),
+          )
+          .firstOrNull;
+      if (reusable != null) {
+        accountDataType = reusable.key;
+      } else {
+        final existingAdditional = _matrix.accountData.entries
+            .where(
+              (entry) =>
+                  entry.key.startsWith(
+                    deltiecordPersonalImagePackAccountDataPrefix,
+                  ) &&
+                  accountDataContainsImagePack(entry.value.content),
+            )
+            .length;
+        if (existingAdditional >= maximumPersonalImagePacks - 1) {
+          throw StateError(
+            'Personal sticker and emoji packs are limited to '
+            '$maximumPersonalImagePacks packs.',
+          );
+        }
+        final secureRandom = Random.secure();
+        do {
+          accountDataType = additionalPersonalImagePackAccountDataType(
+            Uint8List.fromList(
+              List<int>.generate(12, (_) => secureRandom.nextInt(256)),
+            ),
+          );
+        } while (_matrix.accountData.containsKey(accountDataType));
+      }
+    }
+    await _setImagePackAccountDataAndAwaitSync(
+      userId,
+      accountDataType,
+      content,
+    );
     await _refreshStickerPacks();
+  }
+
+  Future<void> _setImagePackAccountDataAndAwaitSync(
+    String userId,
+    String type,
+    Map<String, Object?> content,
+  ) async {
+    final synced = Completer<void>();
+    // matrix-dart-sdk applies account-data PUTs to its cache only when /sync
+    // returns them. Wait for that authoritative transition so the new pack is
+    // visible when this method completes instead of requiring a second picker
+    // open. A bounded timeout still permits eventual offline reconciliation.
+    final subscription = _matrix.onSync.stream.listen((_) {
+      if (_sameJsonValue(_matrix.accountData[type]?.content, content)) {
+        if (!synced.isCompleted) synced.complete();
+      }
+    });
+    try {
+      await _matrix.setAccountData(userId, type, content);
+      final cached = _matrix.accountData[type]?.content;
+      if (_sameJsonValue(cached, content) && !synced.isCompleted) {
+        synced.complete();
+      }
+      try {
+        await synced.future.timeout(const Duration(seconds: 12));
+      } on TimeoutException {
+        // The PUT succeeded. A delayed /sync will still trigger the persistent
+        // account-data listener and publish the pack when connectivity catches
+        // up, so do not misreport a successful import as failed.
+      }
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  bool _sameJsonValue(Object? left, Object? right) {
+    if (identical(left, right) || left == right) return true;
+    if (left is List && right is List) {
+      if (left.length != right.length) return false;
+      for (var index = 0; index < left.length; index++) {
+        if (!_sameJsonValue(left[index], right[index])) return false;
+      }
+      return true;
+    }
+    if (left is Map && right is Map) {
+      if (left.length != right.length) return false;
+      for (final entry in left.entries) {
+        if (!right.containsKey(entry.key) ||
+            !_sameJsonValue(entry.value, right[entry.key])) {
+          return false;
+        }
+      }
+      return true;
+    }
+    return false;
   }
 
   bool _canManageStickerPacksInRoom(String roomId) =>
@@ -557,8 +714,13 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
   Future<void> _deleteStickerPack(StickerPackSummary pack) async {
     final userId = _matrix.userID;
     if (pack.sourceRoomId == null) {
-      if (userId == null || pack.id != 'personal') return;
-      await _matrix.setAccountData(userId, 'im.ponies.user_emotes', {
+      final accountDataType = pack.accountDataType;
+      if (userId == null ||
+          accountDataType == null ||
+          !isPersonalImagePackAccountDataType(accountDataType)) {
+        return;
+      }
+      await _setImagePackAccountDataAndAwaitSync(userId, accountDataType, {
         'pack': {'display_name': 'Stickers', 'usage': <String>[]},
         'images': <String, Object?>{},
       });

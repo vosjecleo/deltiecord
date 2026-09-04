@@ -1,6 +1,6 @@
 # Changelog
 
-## Deltiecord 0.9.27 build 92 — 2026-09-04
+## Deltiecord 0.9.27 build 93 — 2026-09-04
 
 - Made transparent-canvas trimming the default for imported and reprocessed
   static custom emoji while keeping it optional, with a stable live preview.
@@ -13,8 +13,8 @@
   default or overwriting deliberate existing accessibility sizes.
 - Replaced Android's unreliable save-as image flow with a single Save image
   action that writes through scoped storage to Downloads/Deltiecord.
-- Kept cached generated build tooling outside CI formatting checks and repaired
-  the verified Flutter archive cache path inside Debian's build container.
+- Kept cached generated build tooling outside CI formatting checks and made
+  verified Flutter archive cache guards portable across Linux containers.
 
 ## Deltiecord 0.9.27 build 90 — 2026-09-04
 

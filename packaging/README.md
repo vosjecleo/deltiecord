@@ -31,12 +31,12 @@ Use the release script rather than invoking `flutter build` directly. It also
 applies the release-only Rust FFI retention flag required by the current
 flutter_vodozemac dependency.
 
-Install the Debian package with `sudo apt install ./dist/deltiecord-0.9.27+92-linux-debian-amd64.deb`.
+Install the Debian package with `sudo apt install ./dist/deltiecord-0.9.27+93-linux-debian-amd64.deb`.
 The package removes only application files when uninstalled; Matrix/session data
 remains in the user's normal XDG application-data and Secret Service stores.
 
-Run the AppImage with `chmod +x dist/deltiecord-0.9.27+92-linux-appimage-x86_64.AppImage` followed by
-`./dist/deltiecord-0.9.27+92-linux-appimage-x86_64.AppImage`. A working desktop Secret Service is
+Run the AppImage with `chmod +x dist/deltiecord-0.9.27+93-linux-appimage-x86_64.AppImage` followed by
+`./dist/deltiecord-0.9.27+93-linux-appimage-x86_64.AppImage`. A working desktop Secret Service is
 required for persisted login and E2EE keys. Audio requires a reachable PulseAudio
 or PipeWire-Pulse service. Wayland screen sharing requires PipeWire,
 `xdg-desktop-portal`, and a working desktop portal backend such as

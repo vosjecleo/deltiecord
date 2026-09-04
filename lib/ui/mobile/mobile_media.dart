@@ -14,6 +14,7 @@ import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/temporary_attachment_store.dart';
 import '../deltiecord_theme.dart';
+import '../advanced_chat_dialogs.dart';
 
 /// Fits media inside a bounded frame without changing its aspect ratio.
 ///
@@ -82,10 +83,12 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
     return GestureDetector(
       onTap: hidden
           ? () => setState(() => _revealed = true)
+          : attachment.sticker
+          ? _openStickerPack
           : image
           ? _openImageFullscreen
           : null,
-      onLongPress: hidden ? null : _showMediaActions,
+      onLongPress: hidden || attachment.sticker ? null : _showMediaActions,
       child: Stack(
         alignment: Alignment.center,
         children: [
@@ -106,6 +109,13 @@ class _MobileAttachmentViewState extends State<MobileAttachmentView> {
       ),
     );
   }
+
+  Future<void> _openStickerPack() => showStickerPackForMessage(
+    context,
+    widget.backend,
+    messageId: widget.message.id,
+    attachment: widget.message.attachment!,
+  );
 
   Future<void> _openImageFullscreen() async {
     final bytes = await widget.backend.downloadAttachment(widget.message.id);
@@ -253,8 +263,12 @@ class _MobileImageState extends State<_MobileImage> {
     final screen = MediaQuery.sizeOf(context);
     final attachment = widget.message.attachment!;
     final frame = mobileMediaFrameSize(
-      maxWidth: min(420, max(120, screen.width - 76)),
-      maxHeight: min(520, max(180, screen.height * 0.48)),
+      maxWidth: attachment.sticker
+          ? 128
+          : min(420, max(120, screen.width - 76)),
+      maxHeight: attachment.sticker
+          ? 128
+          : min(520, max(180, screen.height * 0.48)),
       width: attachment.width,
       height: attachment.height,
     );
@@ -263,9 +277,13 @@ class _MobileImageState extends State<_MobileImage> {
       width: frame.width,
       height: frame.height,
       child: ClipRRect(
-        borderRadius: DeltiecordCorners.borderRadius,
+        borderRadius: attachment.sticker
+            ? BorderRadius.zero
+            : DeltiecordCorners.borderRadius,
         child: ColoredBox(
-          color: context.deltiecord.elevated,
+          color: attachment.sticker
+              ? Colors.transparent
+              : context.deltiecord.elevated,
           child: FutureBuilder<Uint8List>(
             future: _bytes,
             builder: (context, snapshot) {

@@ -297,6 +297,12 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
   Future<void> _sendSticker(StickerSummary sticker, {String? roomId}) async {
     final room = _matrix.getRoomById(roomId ?? _selectedRoomId ?? '');
     if (room == null) return;
+    final pack = _stickerPacks
+        .where(
+          (candidate) =>
+              candidate.stickers.any((item) => item.mxcUri == sticker.mxcUri),
+        )
+        .firstOrNull;
     await _prepareEncryptedSend(room);
     await room.sendEvent({
       'body': sticker.body ?? sticker.name,
@@ -306,18 +312,35 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         if (sticker.width != null) 'w': sticker.width,
         if (sticker.height != null) 'h': sticker.height,
       },
+      if (pack != null)
+        'net.deltiecord.sticker_pack': {
+          'id': pack.id,
+          'display_name': pack.name,
+          if (pack.sourceRoomId != null) 'room_id': pack.sourceRoomId,
+          if (pack.stateKey != null) 'state_key': pack.stateKey,
+        },
     }, type: EventTypes.Sticker);
   }
 
   Future<void> _refreshStickerPacks() async {
     final packs = <StickerPackSummary>[];
+    final parsedIds = <String>{};
+    final enabledRooms = _matrix.accountData['im.ponies.emote_rooms']?.content
+        .tryGetMap<String, Object?>('rooms');
+    bool globallyEnabled(String roomId, String stateKey) =>
+        enabledRooms
+            ?.tryGetMap<String, Object?>(roomId)
+            ?.containsKey(stateKey) ??
+        false;
     void parsePack(
       String id,
       Map<String, Object?> content,
       bool roomScoped, {
       String? sourceRoomId,
       String? stateKey,
+      bool globallyEnabled = false,
     }) {
+      if (!parsedIds.add(id)) return;
       final images = content.tryGetMap<String, Object?>('images');
       if (images == null) return;
       final stickers = <StickerSummary>[];
@@ -358,6 +381,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
                       .getRoomById(sourceRoomId)
                       ?.canChangeStateEvent('im.ponies.room_emotes') ??
                   false),
+          globallyEnabled: globallyEnabled,
         ),
       );
     }
@@ -375,6 +399,7 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           true,
           sourceRoomId: selectedSpaceId,
           stateKey: entry.key,
+          globallyEnabled: globallyEnabled(selectedSpaceId, entry.key),
         );
       }
     }
@@ -388,7 +413,27 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
           true,
           sourceRoomId: room.id,
           stateKey: entry.key,
+          globallyEnabled: globallyEnabled(room.id, entry.key),
         );
+      }
+    }
+    if (enabledRooms != null) {
+      for (final roomEntry in enabledRooms.entries) {
+        final enabledRoom = _matrix.getRoomById(roomEntry.key);
+        if (enabledRoom == null || roomEntry.value is! Map) continue;
+        for (final stateKey
+            in (roomEntry.value as Map).keys.whereType<String>()) {
+          final event = enabledRoom.states['im.ponies.room_emotes']?[stateKey];
+          if (event == null) continue;
+          parsePack(
+            'room:${enabledRoom.id}:$stateKey',
+            event.content,
+            true,
+            sourceRoomId: enabledRoom.id,
+            stateKey: stateKey,
+            globallyEnabled: true,
+          );
+        }
       }
     }
     // Refreshing packs is metadata-only. Visible picker tiles request their
@@ -417,21 +462,20 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
       final load = _stickerPreviewQueue.removeFirst();
       _activeStickerPreviewLoads++;
       unawaited(
-        (load.sticker.assetType == StickerAssetType.emoji
-                // Emoji uploads are strictly bounded. Fetching the original
-                // preserves animated GIF/WebP frames that Matrix thumbnails
-                // intentionally flatten.
-                ? _profileOriginalMedia(load.sticker.mxcUri).then(
-                    (bytes) =>
-                        bytes != null &&
-                            bytes.length <= StickerPackDraft.maximumEmojiBytes
-                        ? bytes
-                        : null,
-                  )
-                : _avatarMedia(
-                    load.sticker.mxcUri,
-                    AvatarMediaPool.profileDimension,
-                  ))
+        // Element X and FluffyChat both prefer original media for stickers.
+        // Homeserver thumbnail endpoints commonly reject imported WebP files
+        // and intentionally flatten animation.
+        _profileOriginalMedia(load.sticker.mxcUri)
+            .then(
+              (bytes) =>
+                  bytes != null &&
+                      bytes.length <=
+                          (load.sticker.assetType == StickerAssetType.emoji
+                              ? StickerPackDraft.maximumEmojiBytes
+                              : 5 * 1024 * 1024)
+                  ? bytes
+                  : null,
+            )
             .then(
               load.completer.complete,
               onError: (_) {
@@ -505,6 +549,41 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         },
       );
     }
+    await _refreshStickerPacks();
+  }
+
+  Future<void> _setStickerPackGloballyEnabled(
+    StickerPackSummary pack,
+    bool enabled,
+  ) async {
+    final userId = _matrix.userID;
+    final roomId = pack.sourceRoomId;
+    final stateKey = pack.stateKey;
+    if (userId == null || roomId == null || stateKey == null) {
+      throw StateError('Only server or room sticker packs can be enabled.');
+    }
+    final existing = _matrix.accountData['im.ponies.emote_rooms']?.content;
+    final rooms = Map<String, dynamic>.from(
+      existing?.tryGetMap<String, Object?>('rooms') ?? const {},
+    );
+    final roomPacks = Map<String, dynamic>.from(
+      (rooms[roomId] as Map?) ?? const {},
+    );
+    if (enabled) {
+      roomPacks[stateKey] = <String, Object?>{};
+      rooms[roomId] = roomPacks;
+    } else {
+      roomPacks.remove(stateKey);
+      if (roomPacks.isEmpty) {
+        rooms.remove(roomId);
+      } else {
+        rooms[roomId] = roomPacks;
+      }
+    }
+    await _matrix.setAccountData(userId, 'im.ponies.emote_rooms', {
+      ...?existing,
+      'rooms': rooms,
+    });
     await _refreshStickerPacks();
   }
 

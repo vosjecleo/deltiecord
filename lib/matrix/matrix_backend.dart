@@ -593,6 +593,11 @@ class MatrixBackend extends ChatBackend {
   void setConversationVisible(bool visible) {
     if (_conversationVisible == visible) return;
     _conversationVisible = visible;
+    final roomId = _selectedRoomId;
+    if (visible && roomId != null) {
+      InAppNotificationCenter.dismissRoom(roomId);
+      unawaited(_notifications.clearRoom(roomId));
+    }
     if (_mayAdvanceReadMarker) unawaited(_markSelectedRoomRead());
   }
 
@@ -1075,6 +1080,12 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> deleteStickerPack(StickerPackSummary pack) =>
       _deleteStickerPack(pack);
+
+  @override
+  Future<void> setStickerPackGloballyEnabled(
+    StickerPackSummary pack,
+    bool enabled,
+  ) => _setStickerPackGloballyEnabled(pack, enabled);
 
   @override
   Future<void> setPresenceMode(PresenceMode mode) => _setPresenceMode(mode);

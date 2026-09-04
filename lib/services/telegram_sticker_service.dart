@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -64,6 +66,7 @@ final class TelegramStickerReference {
     required this.width,
     required this.height,
     required this.size,
+    required this.animated,
   });
 
   final int index;
@@ -72,6 +75,7 @@ final class TelegramStickerReference {
   final int width;
   final int height;
   final int size;
+  final bool animated;
 }
 
 final class TelegramStickerPack {
@@ -93,8 +97,9 @@ final class TelegramStickerPack {
 /// Telegram's Bot API requires a secret bot token. Keeping that token on the
 /// proxy avoids embedding a reusable credential in every distributed client.
 final class TelegramStickerService {
-  TelegramStickerService({Uri? proxyUri})
-    : _proxyUri = proxyUri ?? Uri.parse(_defaultProxyUrl);
+  TelegramStickerService({Uri? proxyUri, this.convertedSize = 256})
+    : assert(convertedSize == 128 || convertedSize == 256),
+      _proxyUri = proxyUri ?? Uri.parse(_defaultProxyUrl);
 
   static const _defaultProxyUrl = String.fromEnvironment(
     'TELEGRAM_STICKER_PROXY_URL',
@@ -102,14 +107,17 @@ final class TelegramStickerService {
   );
   static const _metadataLimit = 256 * 1024;
   static const _stickerLimit = 1024 * 1024;
-  static const _timeout = Duration(seconds: 12);
+  static const _timeout = Duration(seconds: 20);
 
   final Uri _proxyUri;
+  final int convertedSize;
   final HttpClient _http = HttpClient()
-    ..connectionTimeout = const Duration(seconds: 8)
-    ..idleTimeout = const Duration(seconds: 12)
+    ..connectionTimeout = const Duration(seconds: 10)
+    ..idleTimeout = const Duration(seconds: 20)
     ..userAgent = 'Deltiecord/$deltiecordVersion';
   final Map<String, Future<Uint8List>> _downloads = {};
+  final Queue<Completer<void>> _downloadWaiters = Queue();
+  int _activeDownloads = 0;
 
   Future<TelegramStickerPack> inspect(String input) async {
     final setName = telegramStickerSetName(input);
@@ -119,7 +127,9 @@ final class TelegramStickerService {
       );
     }
     _requireSecureProxy();
-    final uri = _proxyUri.replace(queryParameters: {'set': setName});
+    final uri = _proxyUri.replace(
+      queryParameters: {'set': setName, 'size': '$convertedSize'},
+    );
     final response = await _get(uri, accept: 'application/json');
     if (response.statusCode != HttpStatus.ok) {
       await response.drain<void>();
@@ -158,6 +168,7 @@ final class TelegramStickerService {
       final height = raw['height'];
       final size = raw['size'];
       final mimeType = raw['mime_type'];
+      final animated = raw['animated'];
       if (index is! int ||
           width is! int ||
           height is! int ||
@@ -186,6 +197,7 @@ final class TelegramStickerService {
           width: width,
           height: height,
           size: size,
+          animated: animated == true,
         ),
       );
     }
@@ -247,35 +259,89 @@ final class TelegramStickerService {
   Future<Uint8List> _download(
     TelegramStickerPack pack,
     TelegramStickerReference sticker,
-  ) {
+  ) async {
     final key = '${pack.setName}:${sticker.index}';
-    return _downloads.putIfAbsent(key, () async {
-      _requireSecureProxy();
-      final path = _proxyUri.path.endsWith('/')
-          ? '${_proxyUri.path}file'
-          : '${_proxyUri.path}/file';
-      final uri = _proxyUri.replace(
-        path: path,
-        queryParameters: {'set': pack.setName, 'index': '${sticker.index}'},
-      );
-      final response = await _get(uri, accept: sticker.mimeType);
-      if (response.statusCode != HttpStatus.ok) {
-        await response.drain<void>();
-        throw HttpException(
-          'Telegram sticker download returned ${response.statusCode}.',
-        );
+    final existing = _downloads[key];
+    if (existing != null) return existing;
+    final future = _withDownloadSlot(() => _downloadWithRetry(pack, sticker));
+    _downloads[key] = future;
+    try {
+      return await future;
+    } catch (_) {
+      // A transient failure must not poison the service cache. Preview tiles
+      // and the subsequent import action must both be able to retry it.
+      if (identical(_downloads[key], future)) _downloads.remove(key);
+      rethrow;
+    }
+  }
+
+  Future<T> _withDownloadSlot<T>(Future<T> Function() operation) async {
+    if (_activeDownloads >= 4) {
+      final waiter = Completer<void>();
+      _downloadWaiters.add(waiter);
+      await waiter.future;
+    }
+    _activeDownloads++;
+    try {
+      return await operation();
+    } finally {
+      _activeDownloads--;
+      if (_downloadWaiters.isNotEmpty) {
+        _downloadWaiters.removeFirst().complete();
       }
-      if (!hasContentType(response, const ['image/png', 'image/webp']) ||
-          response.contentLength > _stickerLimit) {
-        await response.drain<void>();
-        throw const HttpException('Telegram returned invalid sticker media.');
+    }
+  }
+
+  Future<Uint8List> _downloadWithRetry(
+    TelegramStickerPack pack,
+    TelegramStickerReference sticker,
+  ) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await _downloadOnce(pack, sticker);
+      } catch (error) {
+        lastError = error;
+        if (attempt == 2) rethrow;
+        await Future<void>.delayed(Duration(milliseconds: 300 * (attempt + 1)));
       }
-      return readBoundedResponse(
-        response,
-        maximumBytes: _stickerLimit,
-        inactivityTimeout: _timeout,
+    }
+    throw lastError!;
+  }
+
+  Future<Uint8List> _downloadOnce(
+    TelegramStickerPack pack,
+    TelegramStickerReference sticker,
+  ) async {
+    _requireSecureProxy();
+    final path = _proxyUri.path.endsWith('/')
+        ? '${_proxyUri.path}file'
+        : '${_proxyUri.path}/file';
+    final uri = _proxyUri.replace(
+      path: path,
+      queryParameters: {
+        'set': pack.setName,
+        'index': '${sticker.index}',
+        'size': '$convertedSize',
+      },
+    );
+    final response = await _get(uri, accept: sticker.mimeType);
+    if (response.statusCode != HttpStatus.ok) {
+      await response.drain<void>();
+      throw HttpException(
+        'Telegram sticker download returned ${response.statusCode}.',
       );
-    });
+    }
+    if (!hasContentType(response, const ['image/png', 'image/webp']) ||
+        response.contentLength > _stickerLimit) {
+      await response.drain<void>();
+      throw const HttpException('Telegram returned invalid sticker media.');
+    }
+    return readBoundedResponse(
+      response,
+      maximumBytes: _stickerLimit,
+      inactivityTimeout: _timeout,
+    );
   }
 
   Future<HttpClientResponse> _get(Uri uri, {required String accept}) async {

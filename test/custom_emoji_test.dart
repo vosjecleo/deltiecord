@@ -128,4 +128,39 @@ void main() {
       throwsStateError,
     );
   });
+
+  test('oversized custom emoji is fitted and centred without stretching', () {
+    final source = image.Image(width: 256, height: 128, numChannels: 4);
+    image.fill(source, color: image.ColorRgba8(255, 0, 0, 255));
+    final prepared = prepareCustomEmojiAsset(
+      Uint8List.fromList(image.encodePng(source)),
+      'image/png',
+      filter: CustomEmojiResizeFilter.bicubic,
+    );
+
+    expect(prepared.resized, isTrue);
+    expect(prepared.mimeType, 'image/png');
+    expect((prepared.width, prepared.height), (128, 128));
+    final decoded = image.decodePng(prepared.bytes)!;
+    expect(decoded.getPixel(64, 0).a, 0);
+    expect(decoded.getPixel(64, 31).a, 0);
+    expect(decoded.getPixel(64, 32).a, greaterThan(0));
+    expect(decoded.getPixel(64, 95).a, greaterThan(0));
+    expect(decoded.getPixel(64, 96).a, 0);
+  });
+
+  test('safe custom emoji retains its original bytes and animation type', () {
+    final bytes = Uint8List.fromList(
+      image.encodePng(image.Image(width: 64, height: 48)),
+    );
+    final prepared = prepareCustomEmojiAsset(
+      bytes,
+      'image/png',
+      filter: CustomEmojiResizeFilter.bilinear,
+    );
+
+    expect(prepared.resized, isFalse);
+    expect(identical(prepared.bytes, bytes), isTrue);
+    expect((prepared.width, prepared.height), (64, 48));
+  });
 }

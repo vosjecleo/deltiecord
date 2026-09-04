@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as image;
@@ -7,6 +8,103 @@ import 'package:html/parser.dart' as html_parser;
 import '../models/chat_models.dart';
 
 const _editorEmojiHost = 'emoji.deltiecord.invalid';
+
+enum CustomEmojiResizeFilter { bilinear, bicubic }
+
+final class PreparedCustomEmoji {
+  const PreparedCustomEmoji({
+    required this.bytes,
+    required this.mimeType,
+    required this.width,
+    required this.height,
+    required this.resized,
+  });
+
+  final Uint8List bytes;
+  final String mimeType;
+  final int width;
+  final int height;
+  final bool resized;
+}
+
+/// Converts an oversized static emoji into a centred 128×128 PNG.
+///
+/// The longest edge is reduced to 128 without changing the aspect ratio; the
+/// other edge is centred on transparent pixels. Assets already within the
+/// emoji limits are returned byte-for-byte so GIF/WebP animation is retained.
+PreparedCustomEmoji prepareCustomEmojiAsset(
+  Uint8List bytes,
+  String mimeType, {
+  required CustomEmojiResizeFilter filter,
+}) {
+  if (!const {
+    'image/png',
+    'image/jpeg',
+    'image/gif',
+    'image/webp',
+  }.contains(mimeType)) {
+    throw StateError('Custom emoji must be PNG, JPEG, GIF or WebP.');
+  }
+  if (bytes.isEmpty || bytes.length > 5 * 1024 * 1024) {
+    throw StateError('Source emoji images must be at most 5 MiB.');
+  }
+  final decoder = image.findDecoderForData(bytes);
+  final header = decoder?.startDecode(bytes);
+  if (header == null ||
+      header.width <= 0 ||
+      header.height <= 0 ||
+      header.width > 4096 ||
+      header.height > 4096 ||
+      header.width * header.height > 16 * 1024 * 1024) {
+    throw StateError('Custom emoji has unsafe or unsupported dimensions.');
+  }
+  if (header.width <= StickerPackDraft.maximumEmojiDimension &&
+      header.height <= StickerPackDraft.maximumEmojiDimension &&
+      bytes.length <= StickerPackDraft.maximumEmojiBytes) {
+    return PreparedCustomEmoji(
+      bytes: bytes,
+      mimeType: mimeType,
+      width: header.width,
+      height: header.height,
+      resized: false,
+    );
+  }
+
+  final decoded = image.decodeImage(bytes);
+  if (decoded == null) throw StateError('Could not decode custom emoji.');
+  final oriented = image.bakeOrientation(decoded);
+  const target = StickerPackDraft.maximumEmojiDimension;
+  final scale = target / max(oriented.width, oriented.height);
+  final resizedWidth = max(1, (oriented.width * scale).round());
+  final resizedHeight = max(1, (oriented.height * scale).round());
+  final resized = image.copyResize(
+    oriented,
+    width: resizedWidth,
+    height: resizedHeight,
+    interpolation: switch (filter) {
+      CustomEmojiResizeFilter.bilinear => image.Interpolation.linear,
+      CustomEmojiResizeFilter.bicubic => image.Interpolation.cubic,
+    },
+  );
+  final canvas = image.Image(width: target, height: target, numChannels: 4);
+  image.compositeImage(
+    canvas,
+    resized,
+    dstX: (target - resizedWidth) ~/ 2,
+    dstY: (target - resizedHeight) ~/ 2,
+  );
+  final encoded = Uint8List.fromList(image.encodePng(canvas, level: 6));
+  if (encoded.length > StickerPackDraft.maximumEmojiBytes) {
+    throw StateError('Resized emoji still exceeds 256 KiB.');
+  }
+  return PreparedCustomEmoji(
+    bytes: encoded,
+    mimeType: 'image/png',
+    width: target,
+    height: target,
+    resized: true,
+  );
+}
 
 StickerAssetType stickerAssetTypeFromImagePackItem(Map<String, Object?> item) {
   final explicit = item['net.deltiecord.asset_type'];

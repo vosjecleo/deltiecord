@@ -1,0 +1,13 @@
+# Optional dependencies for bounded Telegram TGS-to-WebP conversion.
+# Install these into the service environment and point LOTTIE_CONVERT_BIN at
+# that environment's lottie_convert.py entry point.
+CairoSVG==2.8.2
+cairocffi==1.7.1
+cffi==2.1.1
+cssselect2==0.10.1
+defusedxml==0.7.1
+lottie==0.7.2
+pillow==11.3.0
+pycparser==3.0
+tinycss2==1.5.1
+webencodings==0.6.1

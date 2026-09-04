@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/favourite_reactions_store.dart';
+import '../services/custom_emoji.dart';
 import '../services/telegram_sticker_service.dart';
 import 'deltiecord_theme.dart';
 
@@ -147,163 +148,347 @@ Future<StickerSummary?> showStickerPicker(
   if (!context.mounted) return null;
   return _showStickerSurface<StickerSummary>(
     context,
-    desktopWidth: 680,
-    desktopHeight: 560,
-    mobileHeightFactor: 0.76,
+    desktopWidth: 640,
+    desktopHeight: 600,
+    mobileHeightFactor: 0.82,
     surfaceKey: const ValueKey('sticker-picker-surface'),
-    builder: (context) => ListenableBuilder(
-      listenable: FavouriteReactionsStore.instance,
-      builder: (context, _) {
-        final favouriteStickers = backend.stickerPacks
-            .expand((pack) => pack.stickers)
-            .where(
-              (sticker) =>
-                  sticker.assetType == StickerAssetType.sticker &&
-                  FavouriteReactionsStore.instance.isStickerFavourite(
-                    sticker.mxcUri,
-                  ),
-            )
+    builder: (context) => _StickerPickerContents(backend: backend),
+  );
+}
+
+class _StickerPickerContents extends StatefulWidget {
+  const _StickerPickerContents({required this.backend});
+
+  final ChatBackend backend;
+
+  @override
+  State<_StickerPickerContents> createState() => _StickerPickerContentsState();
+}
+
+class _StickerPickerContentsState extends State<_StickerPickerContents> {
+  String _query = '';
+
+  List<StickerPackSummary> _packs() {
+    final favouriteStickers = widget.backend.stickerPacks
+        .expand((pack) => pack.stickers)
+        .where(
+          (sticker) =>
+              sticker.assetType == StickerAssetType.sticker &&
+              FavouriteReactionsStore.instance.isStickerFavourite(
+                sticker.mxcUri,
+              ),
+        )
+        .toList(growable: false);
+    final query = _query.trim().toLowerCase();
+    return <StickerPackSummary>[
+      if (favouriteStickers.isNotEmpty)
+        StickerPackSummary(
+          id: 'favourites',
+          name: 'Favourites',
+          stickers: favouriteStickers,
+        ),
+      ...widget.backend.stickerPacks.map((pack) {
+        final stickers = pack.stickers
+            .where((sticker) {
+              if (sticker.assetType != StickerAssetType.sticker) return false;
+              return query.isEmpty ||
+                  sticker.name.toLowerCase().contains(query);
+            })
             .toList(growable: false);
-        final packs = <StickerPackSummary>[
-          if (favouriteStickers.isNotEmpty)
-            StickerPackSummary(
-              id: 'favourites',
-              name: 'Favourites',
-              stickers: favouriteStickers,
+        return StickerPackSummary(
+          id: pack.id,
+          name: pack.name,
+          stickers: stickers,
+          roomScoped: pack.roomScoped,
+          sourceRoomId: pack.sourceRoomId,
+          stateKey: pack.stateKey,
+          canManage: pack.canManage,
+          globallyEnabled: pack.globallyEnabled,
+        );
+      }),
+    ].where((pack) => pack.stickers.isNotEmpty).toList(growable: false);
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([
+      FavouriteReactionsStore.instance,
+      widget.backend,
+    ]),
+    builder: (context, _) {
+      final packs = _packs();
+      final palette = Theme.of(context).extension<DeltiecordPalette>();
+      final surface =
+          palette?.surface ?? Theme.of(context).colorScheme.surfaceContainer;
+      return Material(
+        color: surface,
+        child: CustomScrollView(
+          key: const ValueKey('sticker-picker-scroll'),
+          slivers: [
+            SliverAppBar(
+              pinned: true,
+              automaticallyImplyLeading: false,
+              backgroundColor: surface,
+              surfaceTintColor: Colors.transparent,
+              titleSpacing: 10,
+              title: TextField(
+                key: const ValueKey('sticker-search'),
+                onChanged: (value) => setState(() => _query = value),
+                decoration: const InputDecoration(
+                  hintText: 'Search stickers',
+                  prefixIcon: Icon(Icons.search, size: 20),
+                  isDense: true,
+                ),
+              ),
+              actions: [
+                IconButton(
+                  tooltip: 'Manage sticker packs',
+                  onPressed: () async {
+                    await _manageStickerPacks(context, widget.backend);
+                    await widget.backend.refreshStickerPacks();
+                  },
+                  icon: const Icon(Icons.add_photo_alternate_outlined),
+                ),
+                const SizedBox(width: 4),
+              ],
             ),
-          ...backend.stickerPacks
-              .map(
-                (pack) => StickerPackSummary(
-                  id: pack.id,
-                  name: pack.name,
-                  stickers: pack.stickers
-                      .where(
-                        (sticker) =>
-                            sticker.assetType == StickerAssetType.sticker,
-                      )
-                      .toList(growable: false),
-                  roomScoped: pack.roomScoped,
-                  sourceRoomId: pack.sourceRoomId,
-                  stateKey: pack.stateKey,
-                  canManage: pack.canManage,
+            if (packs.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: FilledButton.icon(
+                    onPressed: () =>
+                        _manageStickerPacks(context, widget.backend),
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: Text(
+                      _query.isEmpty
+                          ? 'Create or import a pack'
+                          : 'No matching stickers',
+                    ),
+                  ),
                 ),
               )
-              .where((pack) => pack.stickers.isNotEmpty),
-        ];
-        return packs.isEmpty
-            ? Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text(
-                        'No compatible sticker packs found.',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    FilledButton.icon(
-                      onPressed: () => _manageStickerPacks(context, backend),
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('Create or import a pack'),
-                    ),
-                  ],
+            else
+              for (final pack in packs) ...[
+                SliverToBoxAdapter(
+                  child: _StickerPackHeader(
+                    backend: widget.backend,
+                    pack: pack,
+                  ),
                 ),
-              )
-            : DefaultTabController(
-                length: packs.length,
-                child: Column(
-                  children: [
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        tooltip: 'Create or import sticker pack',
-                        onPressed: () => _manageStickerPacks(context, backend),
-                        icon: const Icon(Icons.add_photo_alternate_outlined),
-                      ),
-                    ),
-                    TabBar(
-                      isScrollable: true,
-                      tabs: [for (final pack in packs) Tab(text: pack.name)],
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          for (final pack in packs)
-                            GridView.builder(
-                              padding: const EdgeInsets.all(12),
-                              gridDelegate:
-                                  const SliverGridDelegateWithMaxCrossAxisExtent(
-                                    maxCrossAxisExtent: 112,
-                                    mainAxisSpacing: 8,
-                                    crossAxisSpacing: 8,
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                  sliver: SliverGrid.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 84,
+                          mainAxisSpacing: 6,
+                          crossAxisSpacing: 6,
+                        ),
+                    itemCount: pack.stickers.length,
+                    itemBuilder: (context, index) {
+                      final sticker = pack.stickers[index];
+                      final favourite = FavouriteReactionsStore.instance
+                          .isStickerFavourite(sticker.mxcUri);
+                      return InkWell(
+                        key: ValueKey('sticker-${pack.id}-${sticker.id}'),
+                        onTap: () => Navigator.pop(context, sticker),
+                        onLongPress: () => FavouriteReactionsStore.instance
+                            .toggleSticker(sticker.mxcUri),
+                        borderRadius: DeltiecordCorners.borderRadius,
+                        child: Tooltip(
+                          message: sticker.name,
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: _StickerPreviewImage(
+                                    backend: widget.backend,
+                                    sticker: sticker,
                                   ),
-                              itemCount: pack.stickers.length,
-                              itemBuilder: (context, index) {
-                                final sticker = pack.stickers[index];
-                                final favourite = FavouriteReactionsStore
-                                    .instance
-                                    .isStickerFavourite(sticker.mxcUri);
-                                return InkWell(
-                                  key: ValueKey(
-                                    'sticker-${pack.id}-${sticker.id}',
-                                  ),
-                                  onTap: () => Navigator.pop(context, sticker),
-                                  onLongPress: () => FavouriteReactionsStore
-                                      .instance
-                                      .toggleSticker(sticker.mxcUri),
-                                  borderRadius: DeltiecordCorners.borderRadius,
-                                  child: Tooltip(
-                                    message: sticker.name,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(6),
-                                      child: Stack(
-                                        children: [
-                                          Positioned.fill(
-                                            child: _StickerPreviewImage(
-                                              backend: backend,
-                                              sticker: sticker,
-                                            ),
-                                          ),
-                                          Positioned(
-                                            right: 0,
-                                            top: 0,
-                                            child: IconButton(
-                                              tooltip: favourite
-                                                  ? 'Remove from favourites'
-                                                  : 'Add to favourites',
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                              onPressed: () =>
-                                                  FavouriteReactionsStore
-                                                      .instance
-                                                      .toggleSticker(
-                                                        sticker.mxcUri,
-                                                      ),
-                                              icon: Icon(
-                                                favourite
-                                                    ? Icons.star
-                                                    : Icons.star_border,
-                                                size: 18,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+                                ),
+                              ),
+                              if (favourite)
+                                const Positioned(
+                                  right: 1,
+                                  top: 1,
+                                  child: Icon(Icons.star, size: 14),
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              );
-      },
+              ],
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _StickerPackHeader extends StatelessWidget {
+  const _StickerPackHeader({required this.backend, required this.pack});
+
+  final ChatBackend backend;
+  final StickerPackSummary pack;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    dense: true,
+    contentPadding: const EdgeInsets.only(left: 12, right: 4),
+    title: Text(pack.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+    trailing: pack.id == 'favourites'
+        ? null
+        : PopupMenuButton<String>(
+            tooltip: 'Pack options',
+            onSelected: (action) async {
+              if (action == 'toggle') {
+                await backend.setStickerPackGloballyEnabled(
+                  pack,
+                  !pack.globallyEnabled,
+                );
+              } else if (action == 'delete') {
+                await _confirmDeleteStickerPack(context, backend, pack);
+              }
+            },
+            itemBuilder: (context) => [
+              if (pack.sourceRoomId != null)
+                PopupMenuItem(
+                  value: 'toggle',
+                  child: Text(
+                    pack.globallyEnabled
+                        ? 'Remove from my account'
+                        : 'Use pack everywhere',
+                  ),
+                ),
+              if (pack.canManage)
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete pack'),
+                ),
+            ],
+          ),
+  );
+}
+
+Future<void> showStickerPackForMessage(
+  BuildContext context,
+  ChatBackend backend, {
+  required String messageId,
+  required ChatAttachment attachment,
+}) async {
+  await backend.refreshStickerPacks();
+  final reference = await backend.getAttachmentReference(messageId);
+  if (!context.mounted) return;
+  final pack = backend.stickerPacks.where((candidate) {
+    if (attachment.stickerPackId != null &&
+        candidate.id == attachment.stickerPackId) {
+      return true;
+    }
+    return reference != null &&
+        candidate.stickers.any(
+          (sticker) => sticker.mxcUri.toString() == reference,
+        );
+  }).firstOrNull;
+  if (pack == null) {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                attachment.stickerPackName ?? 'Sticker',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This message does not expose an accessible Matrix image '
+                'pack. The sticker can still be viewed in the timeline.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+  final action = await _showStickerSurface<String>(
+    context,
+    desktopWidth: 520,
+    desktopHeight: 480,
+    mobileHeightFactor: 0.62,
+    surfaceKey: const ValueKey('message-sticker-pack-surface'),
+    builder: (context) => Material(
+      color:
+          Theme.of(context).extension<DeltiecordPalette>()?.surface ??
+          Theme.of(context).colorScheme.surfaceContainer,
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(
+              pack.name,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text('${pack.stickers.length} items'),
+          ),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 84,
+                mainAxisSpacing: 6,
+                crossAxisSpacing: 6,
+              ),
+              itemCount: pack.stickers.length,
+              itemBuilder: (context, index) => Padding(
+                padding: const EdgeInsets.all(4),
+                child: _StickerPreviewImage(
+                  backend: backend,
+                  sticker: pack.stickers[index],
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Close'),
+                ),
+                if (pack.sourceRoomId != null) ...[
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () => Navigator.pop(context, 'toggle'),
+                    icon: Icon(pack.globallyEnabled ? Icons.remove : Icons.add),
+                    label: Text(
+                      pack.globallyEnabled
+                          ? 'Remove from my account'
+                          : 'Add to my account',
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     ),
   );
+  if (action == 'toggle') {
+    await backend.setStickerPackGloballyEnabled(pack, !pack.globallyEnabled);
+  }
 }
 
 /// Sticker management is a compact dialog on desktop and a draggable sheet on
@@ -487,7 +672,10 @@ Future<void> _manageStickerPacks(
     if (selectedItems == null || selectedItems.isEmpty || !context.mounted) {
       return;
     }
-    final items = _asAssetType(selectedItems, assetType);
+    final items = assetType == StickerAssetType.emoji
+        ? await _prepareEmojiItems(context, selectedItems)
+        : _asAssetType(selectedItems, assetType);
+    if (items == null || !context.mounted) return;
     final name = await _askStickerPackName(context);
     if (name == null || !context.mounted) return;
     final draft = StickerPackDraft(name: name, stickers: items);
@@ -622,6 +810,156 @@ List<StickerDraftItem> _asAssetType(
     ),
 ];
 
+Future<List<StickerDraftItem>?> _prepareEmojiItems(
+  BuildContext context,
+  List<StickerDraftItem> items,
+) async {
+  final needsResize = <StickerDraftItem>[];
+  for (final item in items) {
+    try {
+      validateCustomEmojiAsset(item.bytes, item.mimeType);
+    } catch (_) {
+      needsResize.add(item);
+    }
+  }
+  var filter = CustomEmojiResizeFilter.bicubic;
+  if (needsResize.isNotEmpty) {
+    final selected = await _chooseEmojiResizeFilter(context, needsResize.first);
+    if (selected == null) return null;
+    filter = selected;
+  }
+
+  final prepared = <StickerDraftItem>[];
+  for (final item in items) {
+    final result = await compute(_prepareEmojiInIsolate, (
+      item.bytes,
+      item.mimeType,
+      filter.index,
+    ));
+    prepared.add(
+      StickerDraftItem(
+        shortcode: item.shortcode,
+        bytes: result.bytes,
+        mimeType: result.mimeType,
+        width: result.width,
+        height: result.height,
+        assetType: StickerAssetType.emoji,
+      ),
+    );
+  }
+  return prepared;
+}
+
+PreparedCustomEmoji _prepareEmojiInIsolate((Uint8List, String, int) request) =>
+    prepareCustomEmojiAsset(
+      request.$1,
+      request.$2,
+      filter: CustomEmojiResizeFilter.values[request.$3],
+    );
+
+Future<CustomEmojiResizeFilter?> _chooseEmojiResizeFilter(
+  BuildContext context,
+  StickerDraftItem example,
+) => showDialog<CustomEmojiResizeFilter>(
+  context: context,
+  builder: (context) => _EmojiResizeDialog(example: example),
+);
+
+class _EmojiResizeDialog extends StatefulWidget {
+  const _EmojiResizeDialog({required this.example});
+
+  final StickerDraftItem example;
+
+  @override
+  State<_EmojiResizeDialog> createState() => _EmojiResizeDialogState();
+}
+
+class _EmojiResizeDialogState extends State<_EmojiResizeDialog> {
+  var _filter = CustomEmojiResizeFilter.bicubic;
+
+  Future<PreparedCustomEmoji> _preview() => compute(_prepareEmojiInIsolate, (
+    widget.example.bytes,
+    widget.example.mimeType,
+    _filter.index,
+  ));
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Resize custom emoji'),
+    content: SizedBox(
+      width: 360,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Images larger than 128×128 will keep their aspect ratio, fit '
+            'inside a centred 128×128 canvas, and never be stretched.',
+          ),
+          const SizedBox(height: 12),
+          SizedBox.square(
+            dimension: 128,
+            child: FutureBuilder<PreparedCustomEmoji>(
+              future: _preview(),
+              builder: (context, snapshot) {
+                final result = snapshot.data;
+                return result == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: context.deltiecord.elevated,
+                          borderRadius: DeltiecordCorners.borderRadius,
+                        ),
+                        child: Image.memory(result.bytes, fit: BoxFit.contain),
+                      );
+              },
+            ),
+          ),
+          const SizedBox(height: 12),
+          SegmentedButton<CustomEmojiResizeFilter>(
+            segments: const [
+              ButtonSegment(
+                value: CustomEmojiResizeFilter.bicubic,
+                label: Text('Bicubic'),
+              ),
+              ButtonSegment(
+                value: CustomEmojiResizeFilter.bilinear,
+                label: Text('Bilinear'),
+              ),
+            ],
+            selected: {_filter},
+            onSelectionChanged: (value) =>
+                setState(() => _filter = value.single),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _filter == CustomEmojiResizeFilter.bicubic
+                ? 'Smoother; recommended for artwork'
+                : 'Slightly sharper and faster',
+          ),
+          if (const {
+            'image/gif',
+            'image/webp',
+          }.contains(widget.example.mimeType))
+            const Text(
+              'Oversized animated images are converted to a static PNG.',
+              style: TextStyle(fontSize: DeltiecordTypeScale.normal),
+            ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context, _filter),
+        child: const Text('Resize and continue'),
+      ),
+    ],
+  );
+}
+
 Future<String?> _chooseStickerPackDestination(
   BuildContext context,
   ChatBackend backend,
@@ -686,6 +1024,14 @@ Future<void> _deleteStickerPack(
     ),
   );
   if (selected == null || !context.mounted) return;
+  await _confirmDeleteStickerPack(context, backend, selected);
+}
+
+Future<void> _confirmDeleteStickerPack(
+  BuildContext context,
+  ChatBackend backend,
+  StickerPackSummary selected,
+) async {
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -744,7 +1090,9 @@ Future<void> _importTelegramStickerPack(
   linkController.dispose();
   if (input == null || input.isEmpty || !context.mounted) return;
 
-  final service = TelegramStickerService();
+  final service = TelegramStickerService(
+    convertedSize: assetType == StickerAssetType.emoji ? 128 : 256,
+  );
   try {
     final pack = await _withStickerProgress(
       context,
@@ -781,10 +1129,12 @@ Future<void> _importTelegramStickerPack(
           onProgress: (complete, total) => progress.value = (complete, total),
         ),
       );
-      final draft = StickerPackDraft(
-        name: name,
-        stickers: _asAssetType(items, assetType),
-      );
+      if (!context.mounted) return;
+      final preparedItems = assetType == StickerAssetType.emoji
+          ? await _prepareEmojiItems(context, items)
+          : _asAssetType(items, assetType);
+      if (preparedItems == null || !context.mounted) return;
+      final draft = StickerPackDraft(name: name, stickers: preparedItems);
       if (!context.mounted) return;
       final destination = await _chooseStickerPackDestination(context, backend);
       if (destination == _cancelledPackDestination) return;
@@ -980,10 +1330,10 @@ class _TelegramStickerPreview extends StatefulWidget {
 }
 
 class _TelegramStickerPreviewState extends State<_TelegramStickerPreview> {
-  late final Future<Uint8List> _bytes = widget.service.preview(
-    widget.pack,
-    widget.sticker,
-  );
+  late Future<Uint8List> _bytes = _load();
+
+  Future<Uint8List> _load() =>
+      widget.service.preview(widget.pack, widget.sticker);
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Uint8List>(
@@ -993,9 +1343,10 @@ class _TelegramStickerPreviewState extends State<_TelegramStickerPreview> {
         return Image.memory(bytes, fit: BoxFit.contain);
       }
       if (snapshot.hasError) {
-        return Icon(
-          Icons.broken_image_outlined,
-          color: context.deltiecord.muted,
+        return IconButton(
+          tooltip: 'Retry preview',
+          onPressed: () => setState(() => _bytes = _load()),
+          icon: Icon(Icons.refresh, color: context.deltiecord.muted),
         );
       }
       return const Center(

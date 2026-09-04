@@ -357,7 +357,13 @@ class _DesktopActivityReporterState extends State<_DesktopActivityReporter>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    HardwareKeyboard.instance.addHandler(_globalKeyActivity);
     _activity();
+  }
+
+  bool _globalKeyActivity(KeyEvent event) {
+    if (event is KeyDownEvent || event is KeyRepeatEvent) _activity();
+    return false;
   }
 
   void _activity() {
@@ -384,6 +390,7 @@ class _DesktopActivityReporterState extends State<_DesktopActivityReporter>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    HardwareKeyboard.instance.removeHandler(_globalKeyActivity);
     _idleTimer?.cancel();
     widget.backend.setDesktopIdle(true);
     super.dispose();
@@ -399,6 +406,7 @@ class _DesktopActivityReporterState extends State<_DesktopActivityReporter>
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _activity(),
       onPointerMove: (_) => _activity(),
+      onPointerHover: (_) => _activity(),
       onPointerSignal: (_) => _activity(),
       child: widget.child,
     ),

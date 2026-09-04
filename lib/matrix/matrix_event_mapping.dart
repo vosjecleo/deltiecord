@@ -230,6 +230,9 @@ extension _MatrixEventMapping on MatrixBackend {
   ChatAttachment? _attachmentFor(Event event) {
     if (event.type == EventTypes.Sticker) {
       final info = event.content.tryGetMap<String, Object?>('info');
+      final pack = event.content.tryGetMap<String, Object?>(
+        'net.deltiecord.sticker_pack',
+      );
       return ChatAttachment(
         kind: AttachmentKind.image,
         name: event.content.tryGet<String>('body') ?? 'Sticker',
@@ -239,6 +242,12 @@ extension _MatrixEventMapping on MatrixBackend {
         spoiler: false,
         width: info?.tryGet<int>('w'),
         height: info?.tryGet<int>('h'),
+        sticker: true,
+        animated:
+            info?.tryGet<String>('mimetype') == 'image/gif' ||
+            info?.tryGet<String>('mimetype') == 'image/webp',
+        stickerPackId: pack?.tryGet<String>('id'),
+        stickerPackName: pack?.tryGet<String>('display_name'),
       );
     }
     if (!event.hasAttachment) return null;

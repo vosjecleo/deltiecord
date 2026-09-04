@@ -689,6 +689,7 @@ class StickerPackSummary {
     this.sourceRoomId,
     this.stateKey,
     this.canManage = false,
+    this.globallyEnabled = false,
   });
 
   final String id;
@@ -698,6 +699,7 @@ class StickerPackSummary {
   final String? sourceRoomId;
   final String? stateKey;
   final bool canManage;
+  final bool globallyEnabled;
 }
 
 enum StickerAssetType { sticker, emoji }
@@ -882,6 +884,9 @@ class ChatAttachment {
     this.thumbnailSize,
     this.thumbnailWidth,
     this.thumbnailHeight,
+    this.sticker = false,
+    this.stickerPackId,
+    this.stickerPackName,
   });
 
   final AttachmentKind kind;
@@ -898,6 +903,11 @@ class ChatAttachment {
   final int? thumbnailSize;
   final int? thumbnailWidth;
   final int? thumbnailHeight;
+
+  /// Matrix `m.sticker` content is deliberately not presented as an image.
+  final bool sticker;
+  final String? stickerPackId;
+  final String? stickerPackName;
 }
 
 class AttachmentDraft {

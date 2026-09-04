@@ -557,6 +557,16 @@ extension _MatrixSession on MatrixBackend {
           : 'New room activity';
       final notificationAvatar = await _notificationAvatarFor(room, event);
       final notificationImage = await _notificationImageFor(displayEvent);
+      // Avatar/media enrichment is asynchronous. The user may open this room
+      // while those bytes are loading; re-check immediately before posting so
+      // a stale task cannot resurrect a notification that room-open cleared.
+      if (activeDesktopOwnsExternalNotifications ||
+          (room.id == _selectedRoomId && _conversationVisible) ||
+          event.senderId == _matrix.userID) {
+        InAppNotificationCenter.dismissRoom(room.id);
+        unawaited(_notifications.clearRoom(room.id));
+        continue;
+      }
       if (notificationAvatar != null) {
         _cacheNotificationAvatar(room.id, notificationAvatar);
       }

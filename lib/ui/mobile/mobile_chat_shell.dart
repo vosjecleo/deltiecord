@@ -34,7 +34,7 @@ class _MobileChatShellState extends State<MobileChatShell>
       {};
   final DraftStore _draftStore = DraftStore();
   String? _lastRoomId;
-  bool _openingRoom = false;
+  String? _lastSpaceId;
   int _roomOpenGeneration = 0;
   final Map<int, Offset> _pointerStarts = {};
   double? _navigationDragProgress;
@@ -48,6 +48,7 @@ class _MobileChatShellState extends State<MobileChatShell>
   void initState() {
     super.initState();
     _lastRoomId = backend.selectedRoom?.id;
+    _lastSpaceId = backend.selectedSpaceId;
     WidgetsBinding.instance.addObserver(this);
     backend.addListener(_backendChanged);
     unawaited(_restoreDrafts());
@@ -65,15 +66,20 @@ class _MobileChatShellState extends State<MobileChatShell>
   }
 
   void _backendChanged() {
-    if (!mounted || _openingRoom) return;
+    if (!mounted) return;
     final roomId = backend.selectedRoom?.id;
-    if (roomId != null && roomId != _lastRoomId) {
-      _lastRoomId = roomId;
-      setState(() {
+    final spaceId = backend.selectedSpaceId;
+    final roomChanged = roomId != _lastRoomId;
+    final spaceChanged = spaceId != _lastSpaceId;
+    if (!roomChanged && !spaceChanged) return;
+    _lastRoomId = roomId;
+    _lastSpaceId = spaceId;
+    setState(() {
+      if (roomChanged && roomId != null) {
         _navigationVisible = false;
         _detailsVisible = false;
-      });
-    }
+      }
+    });
   }
 
   @override
@@ -97,30 +103,27 @@ class _MobileChatShellState extends State<MobileChatShell>
       _roomOpenGeneration++;
       // A suspended room-open future must not suppress subsequent backend
       // selection notifications after Android thaws the activity.
-      _openingRoom = false;
       _navigationDragProgress = null;
       _dragStartedWithNavigation = null;
     });
+    // Rebuilding the navigation subtree reconciles the rail and room card
+    // after Android recreates its surface. Do not re-select the Space through
+    // the backend here: Space selection intentionally clears the active room.
   }
 
   Future<void> _openRoom(RoomSummary room) async {
     final generation = ++_roomOpenGeneration;
-    _openingRoom = true;
-    try {
-      await backend.selectRoom(room.id);
-      if (generation != _roomOpenGeneration) return;
-      if (room.isVoice && backend.activeVoiceRoomId != room.id) {
-        await backend.joinVoiceRoom(room.id);
-      }
-      if (!mounted) return;
-      setState(() {
-        _lastRoomId = room.id;
-        _navigationVisible = false;
-        _detailsVisible = false;
-      });
-    } finally {
-      if (generation == _roomOpenGeneration) _openingRoom = false;
+    await backend.selectRoom(room.id);
+    if (generation != _roomOpenGeneration) return;
+    if (room.isVoice && backend.activeVoiceRoomId != room.id) {
+      await backend.joinVoiceRoom(room.id);
     }
+    if (!mounted) return;
+    setState(() {
+      _lastRoomId = room.id;
+      _navigationVisible = false;
+      _detailsVisible = false;
+    });
   }
 
   void _showSettings() => showDeltiecordSettings(context, backend);

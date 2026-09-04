@@ -1,5 +1,27 @@
 # Changelog
 
+## Deltiecord 0.9.27 build 86 — 2026-09-04
+
+- Added bounded server-side conversion of Telegram TGS and WebM animations to
+  animated WebP, with separate 128px emoji and 256px sticker outputs.
+- Restricted conversion to Bot API-resolved pack items and added fixed media
+  bounds, subprocess resource limits, per-client and global quotas, two
+  conversion workers, and a bounded result cache; arbitrary uploads and URLs
+  are never accepted.
+- Reworked the sticker picker into compact, theme-aware mobile sheets and
+  desktop dialogs, including search, favourites, pack actions, removal, and
+  Matrix-compatible global room-pack enablement.
+- Rendered `m.sticker` events as dedicated 128px stickers, opened their pack
+  instead of generic image actions, and included stable pack hints in newly
+  sent events without breaking standard Matrix clients.
+- Added retryable, four-at-a-time Telegram preview/import downloads and made
+  transient failures recover instead of poisoning the download cache.
+- Added aspect-preserving 128×128 custom-emoji preparation with transparent
+  centring and a previewable bicubic/bilinear choice for oversized assets.
+- Fixed Android room/Space navigation after long background suspension,
+  notification dismissal races when opening a room, desktop AFK detection
+  during keyboard/pointer activity, and desktop bottom-island spacing.
+
 ## Deltiecord 0.9.27 build 85 — 2026-09-04
 
 - Fixed Telegram pack links copied from rich message text being rejected when

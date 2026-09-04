@@ -320,6 +320,10 @@ abstract class ChatBackend extends ChangeNotifier {
   ) async => throw UnsupportedError('Room sticker packs are unavailable');
   Future<void> deleteStickerPack(StickerPackSummary pack) async =>
       throw UnsupportedError('Sticker-pack deletion is unavailable');
+  Future<void> setStickerPackGloballyEnabled(
+    StickerPackSummary pack,
+    bool enabled,
+  ) async => throw UnsupportedError('Sticker-pack activation is unavailable');
   Future<void> setPresenceMode(PresenceMode mode) async {}
   Future<SpacePagesSummary> getSpacePages(String spaceId) async =>
       const SpacePagesSummary();

@@ -715,6 +715,7 @@ class _AttachmentViewState extends State<_AttachmentView> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.attachment.sticker) return _buildSticker();
     if (widget.attachment.spoiler && !_revealed) {
       return Align(
         alignment: Alignment.centerLeft,
@@ -835,6 +836,51 @@ class _AttachmentViewState extends State<_AttachmentView> {
               ),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSticker() {
+    _imageBytes ??= widget.backend.downloadAttachment(widget.messageId);
+    final width = widget.attachment.width;
+    final height = widget.attachment.height;
+    final ratio = width != null && height != null && width > 0 && height > 0
+        ? (width / height).clamp(0.25, 4.0).toDouble()
+        : 1.0;
+    final frame = ratio >= 1 ? Size(128, 128 / ratio) : Size(128 * ratio, 128);
+    return FutureBuilder<Uint8List>(
+      future: _imageBytes,
+      builder: (context, snapshot) {
+        final bytes = snapshot.data;
+        return SizedBox(
+          key: ValueKey('sticker-frame-${widget.messageId}'),
+          width: frame.width,
+          height: frame.height,
+          child: bytes != null
+              ? InkWell(
+                  onTap: () => showStickerPackForMessage(
+                    context,
+                    widget.backend,
+                    messageId: widget.messageId,
+                    attachment: widget.attachment,
+                  ),
+                  child: _PreferenceAwareImage(
+                    bytes: bytes,
+                    animated: widget.attachment.animated,
+                    autoplay:
+                        widget.backend.preferences.autoplayGifs &&
+                        !widget.backend.preferences.reducedMotion,
+                  ),
+                )
+              : snapshot.hasError
+              ? const Center(child: Icon(Icons.broken_image_outlined))
+              : const Center(
+                  child: SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
         );
       },
     );

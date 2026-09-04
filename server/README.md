@@ -27,7 +27,18 @@ validated public sticker-set short name; the proxy resolves Bot API file IDs
 and never returns its bot token or Telegram file URLs. Static PNG/WebP media is
 bounded to 1 MiB per item, sets to 120 entries, upstream concurrency to the
 shared request semaphore, and metadata caching to 64 sets for five minutes.
-Animated TGS and WebM sets are reported but not proxied yet.
+Animated TGS and WebM items are converted to animated WebP when the optional
+conversion tools are installed. WebM uses FFmpeg; TGS uses the pinned packages
+in `requirements-conversion.txt` and `lottie_convert.py`. By default the proxy
+looks beside its Python interpreter; set `LOTTIE_CONVERT_BIN` when installing
+the converter into a separate environment.
+The endpoint never accepts uploaded media or arbitrary URLs: it resolves a
+validated pack name and item index through Telegram's Bot API. Conversion is
+limited to 128px emoji or 256px stickers, two concurrent jobs, fixed frame and
+duration bounds, subprocess resource limits, a 64 MiB in-memory LRU cache, and
+separate per-client/global rate limits. These defaults can be tightened with
+`MAX_CONCURRENT_CONVERSIONS`, `TELEGRAM_CONVERT_RATE_LIMIT`, and
+`TELEGRAM_GLOBAL_CONVERT_RATE_LIMIT`.
 
 `TELEGRAM_RATE_LIMIT` defaults to 240 requests per client per minute so four
 bounded client download workers can import a full 120-item set. Place a shared

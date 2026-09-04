@@ -59,8 +59,8 @@ part 'member_sidebar.dart';
 const double _bottomPanelHeight = 56;
 const double _composerControlHeight = 38;
 const double _composerEditorHeight = 36;
-const double _bottomPanelVerticalInset = 2;
-const double _composerIslandVerticalInset = 7;
+const double _bottomPanelVerticalInset = 8;
+const double _composerIslandVerticalInset = 6;
 
 enum _SidePanelView { profile, members }
 

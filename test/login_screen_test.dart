@@ -32,4 +32,18 @@ void main() {
       expect(normalizedMatrixLoginName(' alice '), 'alice');
     });
   });
+
+  group('deltie.net registration names', () {
+    test('accepts Matrix-safe localparts', () {
+      expect(isValidDeltiecordLocalpart('alice_2'), isTrue);
+      expect(isValidDeltiecordLocalpart('alice/example'), isTrue);
+    });
+
+    test('rejects full IDs, uppercase, whitespace, and empty names', () {
+      expect(isValidDeltiecordLocalpart('@alice:deltie.net'), isFalse);
+      expect(isValidDeltiecordLocalpart('Alice'), isFalse);
+      expect(isValidDeltiecordLocalpart('alice smith'), isFalse);
+      expect(isValidDeltiecordLocalpart(''), isFalse);
+    });
+  });
 }

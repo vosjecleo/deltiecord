@@ -354,6 +354,8 @@ class _StickerPackHeader extends StatelessWidget {
                 );
               } else if (action == 'delete') {
                 await _confirmDeleteStickerPack(context, backend, pack);
+              } else if (action == 'publish') {
+                await _publishPersonalStickerPack(context, backend, pack);
               }
             },
             itemBuilder: (context) => [
@@ -365,6 +367,14 @@ class _StickerPackHeader extends StatelessWidget {
                         ? 'Remove from my account'
                         : 'Use pack everywhere',
                   ),
+                ),
+              if (pack.sourceRoomId == null &&
+                  backend.spaces.any(
+                    (space) => backend.canManageStickerPacksInRoom(space.id),
+                  ))
+                const PopupMenuItem(
+                  value: 'publish',
+                  child: Text('Publish to server'),
                 ),
               if (pack.canManage)
                 const PopupMenuItem(
@@ -681,6 +691,18 @@ Future<void> _manageStickerPacks(
               subtitle: const Text('Rename, crop, rescale or change aliases'),
               onTap: () => Navigator.pop(context, 'edit-emoji'),
             ),
+          if (backend.stickerPacks.any((pack) => pack.sourceRoomId == null) &&
+              backend.spaces.any(
+                (space) => backend.canManageStickerPacksInRoom(space.id),
+              ))
+            ListTile(
+              leading: const Icon(Icons.public_outlined),
+              title: const Text('Publish a personal pack'),
+              subtitle: const Text(
+                'Move a pack to a server so members can add it',
+              ),
+              onTap: () => Navigator.pop(context, 'publish'),
+            ),
           ListTile(
             leading: const Icon(Icons.folder_zip_outlined),
             title: const Text('Import emoji ZIP'),
@@ -710,6 +732,10 @@ Future<void> _manageStickerPacks(
   }
   if (action == 'edit-emoji') {
     await _editExistingEmojiPack(context, backend);
+    return;
+  }
+  if (action == 'publish') {
+    await _publishPersonalStickerPack(context, backend);
     return;
   }
   final assetType = action.endsWith('-emoji')
@@ -1378,6 +1404,75 @@ Future<void> _deleteStickerPack(
   );
   if (selected == null || !context.mounted) return;
   await _confirmDeleteStickerPack(context, backend, selected);
+}
+
+Future<void> _publishPersonalStickerPack(
+  BuildContext context,
+  ChatBackend backend, [
+  StickerPackSummary? initialPack,
+]) async {
+  var pack = initialPack;
+  pack ??= await showModalBottomSheet<StickerPackSummary>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const ListTile(title: Text('Choose a personal pack')),
+          for (final candidate in backend.stickerPacks.where(
+            (candidate) => candidate.sourceRoomId == null,
+          ))
+            ListTile(
+              leading: const Icon(Icons.collections_outlined),
+              title: Text(candidate.name),
+              subtitle: Text('${candidate.stickers.length} items'),
+              onTap: () => Navigator.pop(context, candidate),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (pack == null || !context.mounted) return;
+  final spaces = backend.spaces
+      .where((space) => backend.canManageStickerPacksInRoom(space.id))
+      .toList(growable: false);
+  final roomId = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const ListTile(
+            title: Text('Publish to server'),
+            subtitle: Text(
+              'The server copy becomes canonical. Members can add it, and '
+              'future owner edits update their copy automatically.',
+            ),
+          ),
+          for (final space in spaces)
+            ListTile(
+              leading: const Icon(Icons.hub_outlined),
+              title: Text(space.name),
+              onTap: () => Navigator.pop(context, space.id),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (roomId == null || !context.mounted) return;
+  final selectedPack = pack;
+  await _withStickerProgress<void>(
+    context,
+    label: 'Publishing ${selectedPack.name}…',
+    operation: () => backend.publishPersonalStickerPack(selectedPack, roomId),
+  );
+  if (context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('${selectedPack.name} is now a server pack.')),
+    );
+  }
 }
 
 Future<void> _confirmDeleteStickerPack(

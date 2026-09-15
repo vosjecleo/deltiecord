@@ -22,7 +22,12 @@ extension _MatrixTimelineSupport on MatrixBackend {
       }
       if (!seen.add(event.senderId)) continue;
       final sender = event.senderFromMemoryOrFallback;
-      final avatar = sender.avatarUrl;
+      final profile = _profileCache[event.senderId];
+      // Room membership can lag behind the global profile, especially for our
+      // own user immediately after login or an avatar change. Prefer the
+      // shared profile cache so timeline hydration cannot evict an avatar that
+      // is already visible in the user island and DM list.
+      final avatar = profile != null ? profile.avatarUri : sender.avatarUrl;
       if (_senderAvatarUris.containsKey(event.senderId) &&
           _senderAvatarUris[event.senderId] == avatar &&
           _senderAvatarBytes[event.senderId] != null) {
@@ -43,7 +48,6 @@ extension _MatrixTimelineSupport on MatrixBackend {
         }
       }
 
-      final profile = _profileCache[event.senderId];
       if (profile?.avatarUri == avatar &&
           profile?.profile.avatarBytes != null) {
         final bytes = profile!.profile.avatarBytes!;

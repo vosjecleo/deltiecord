@@ -736,6 +736,63 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     await _refreshStickerPacks();
   }
 
+  Future<void> _publishPersonalStickerPack(
+    StickerPackSummary pack,
+    String roomId,
+  ) async {
+    if (pack.sourceRoomId != null ||
+        pack.accountDataType == null ||
+        !isPersonalImagePackAccountDataType(pack.accountDataType!)) {
+      throw StateError(
+        'Only a personal sticker or emoji pack can be published.',
+      );
+    }
+    if (!_canManageStickerPacksInRoom(roomId)) {
+      throw StateError('You cannot publish emoji or sticker packs here.');
+    }
+    final userId = _matrix.userID;
+    final type = pack.accountDataType!;
+    final existing = _matrix.accountData[type]?.content;
+    if (userId == null || existing == null) {
+      throw StateError('The personal pack is no longer available.');
+    }
+    final personalPackId = pack.id == 'personal'
+        ? 'legacy'
+        : pack.id.startsWith('personal:')
+        ? pack.id.substring('personal:'.length)
+        : null;
+    final content = type == matrixPersonalImagePackAccountDataType
+        ? personalPackId == null
+              ? null
+              : personalImagePackContent(existing, packId: personalPackId)
+        : Map<String, Object?>.from(existing);
+    if (content == null || !accountDataContainsImagePack(content)) {
+      throw StateError('The personal pack is no longer available.');
+    }
+
+    final stateKey =
+        'deltiecord-${DateTime.now().millisecondsSinceEpoch}-'
+        '${Random.secure().nextInt(0x7fffffff)}';
+    // Publish and subscribe before deleting the personal source. Any failure
+    // can therefore leave a harmless duplicate, but can never lose the pack.
+    await _matrix.setRoomStateWithKey(
+      roomId,
+      'im.ponies.room_emotes',
+      stateKey,
+      content,
+    );
+    await _setRoomStickerPackEnabled(roomId, stateKey, true);
+
+    final cleared = type == matrixPersonalImagePackAccountDataType
+        ? removePersonalImagePack(existing, packId: personalPackId!)
+        : <String, Object?>{
+            'pack': {'display_name': 'Stickers', 'usage': <String>[]},
+            'images': <String, Object?>{},
+          };
+    await _setImagePackAccountDataAndAwaitSync(userId, type, cleared);
+    await _refreshStickerPacks();
+  }
+
   Future<void> _deleteStickerPack(StickerPackSummary pack) async {
     final userId = _matrix.userID;
     if (pack.sourceRoomId == null) {
@@ -840,6 +897,17 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
     if (userId == null || roomId == null || stateKey == null) {
       throw StateError('Only server or room sticker packs can be enabled.');
     }
+    await _setRoomStickerPackEnabled(roomId, stateKey, enabled);
+    await _refreshStickerPacks();
+  }
+
+  Future<void> _setRoomStickerPackEnabled(
+    String roomId,
+    String stateKey,
+    bool enabled,
+  ) async {
+    final userId = _matrix.userID;
+    if (userId == null) throw StateError('Sign in to change sticker packs.');
     final existing = _matrix.accountData['im.ponies.emote_rooms']?.content;
     final rooms = Map<String, dynamic>.from(
       existing?.tryGetMap<String, Object?>('rooms') ?? const {},
@@ -858,11 +926,13 @@ extension _MatrixAdvancedFeatures on MatrixBackend {
         rooms[roomId] = roomPacks;
       }
     }
-    await _matrix.setAccountData(userId, 'im.ponies.emote_rooms', {
-      ...?existing,
-      'rooms': rooms,
-    });
-    await _refreshStickerPacks();
+    final updated = <String, Object?>{...?existing, 'rooms': rooms};
+    await _matrix.setAccountData(userId, 'im.ponies.emote_rooms', updated);
+    await _matrix.database.storeAccountData('im.ponies.emote_rooms', updated);
+    _matrix.accountData['im.ponies.emote_rooms'] = BasicEvent(
+      type: 'im.ponies.emote_rooms',
+      content: updated,
+    );
   }
 
   Future<Map<String, Object?>> _uploadStickerPack(

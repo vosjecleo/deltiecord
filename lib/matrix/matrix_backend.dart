@@ -694,6 +694,12 @@ class MatrixBackend extends ChatBackend {
   );
 
   @override
+  Future<void> registerDeltiecordAccount({
+    required String username,
+    required String password,
+  }) => _registerDeltiecordAccount(username: username, password: password);
+
+  @override
   Future<void> logout() => _logoutSession();
 
   @override
@@ -1115,6 +1121,12 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> saveRoomStickerPack(String roomId, StickerPackDraft pack) =>
       _saveRoomStickerPack(roomId, pack);
+
+  @override
+  Future<void> publishPersonalStickerPack(
+    StickerPackSummary pack,
+    String roomId,
+  ) => _publishPersonalStickerPack(pack, roomId);
 
   @override
   Future<void> deleteStickerPack(StickerPackSummary pack) =>

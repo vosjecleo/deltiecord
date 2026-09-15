@@ -18,16 +18,25 @@ class _LoginScreenState extends State<LoginScreen> {
   final _homeserver = TextEditingController(text: 'https://matrix.deltie.net');
   final _username = TextEditingController();
   final _password = TextEditingController();
+  final _passwordConfirmation = TextEditingController();
+  bool _registering = false;
 
-  Future<void> _login() async {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    final uri = normalizedHomeserverUri(_homeserver.text);
-    if (uri == null) return;
-    await widget.backend.login(
-      homeserver: uri,
-      username: normalizedMatrixLoginName(_username.text),
-      password: _password.text,
-    );
+    if (_registering) {
+      await widget.backend.registerDeltiecordAccount(
+        username: _username.text.trim(),
+        password: _password.text,
+      );
+    } else {
+      final uri = normalizedHomeserverUri(_homeserver.text);
+      if (uri == null) return;
+      await widget.backend.login(
+        homeserver: uri,
+        username: normalizedMatrixLoginName(_username.text),
+        password: _password.text,
+      );
+    }
     if (widget.backend.status == SessionStatus.signedIn) {
       TextInput.finishAutofillContext();
     }
@@ -38,6 +47,7 @@ class _LoginScreenState extends State<LoginScreen> {
     _homeserver.dispose();
     _username.dispose();
     _password.dispose();
+    _passwordConfirmation.dispose();
     super.dispose();
   }
 
@@ -71,50 +81,73 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Sign in to Matrix',
+                        Text(
+                          _registering
+                              ? 'Create your deltie.net account'
+                              : 'Sign in to Matrix',
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 28),
-                        TextFormField(
-                          controller: _homeserver,
-                          autofillHints: const [AutofillHints.url],
-                          keyboardType: TextInputType.url,
-                          enabled: !loading,
-                          decoration: const InputDecoration(
-                            labelText: 'Homeserver',
-                            hintText: 'https://matrix.example.org',
-                            border: InputBorder.none,
+                        if (_registering)
+                          const ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.dns_outlined),
+                            title: Text('matrix.deltie.net'),
+                            subtitle: Text(
+                              'New accounts currently use Deltiecord’s homeserver.',
+                            ),
+                          )
+                        else
+                          TextFormField(
+                            controller: _homeserver,
+                            autofillHints: const [AutofillHints.url],
+                            keyboardType: TextInputType.url,
+                            enabled: !loading,
+                            decoration: const InputDecoration(
+                              labelText: 'Homeserver',
+                              hintText: 'https://matrix.example.org',
+                              border: InputBorder.none,
+                            ),
+                            validator: (value) {
+                              final uri = normalizedHomeserverUri(value ?? '');
+                              return uri == null
+                                  ? 'Enter a valid homeserver address.'
+                                  : null;
+                            },
                           ),
-                          validator: (value) {
-                            final uri = normalizedHomeserverUri(value ?? '');
-                            return uri == null
-                                ? 'Enter a valid homeserver address.'
-                                : null;
-                          },
-                        ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _username,
                           autofillHints: const [AutofillHints.username],
                           enabled: !loading,
-                          decoration: const InputDecoration(
-                            labelText: 'Username or Matrix ID',
+                          decoration: InputDecoration(
+                            labelText: _registering
+                                ? 'Choose a username'
+                                : 'Username or Matrix ID',
                             border: InputBorder.none,
                           ),
-                          validator: (value) =>
-                              value == null || value.trim().isEmpty
-                              ? 'Enter your username.'
-                              : null,
+                          validator: (value) {
+                            final username = value?.trim() ?? '';
+                            if (username.isEmpty) return 'Enter your username.';
+                            if (_registering &&
+                                !isValidDeltiecordLocalpart(username)) {
+                              return 'Use lowercase letters, numbers, dots, hyphens, or underscores.';
+                            }
+                            return null;
+                          },
                         ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _password,
-                          autofillHints: const [AutofillHints.password],
+                          autofillHints: [
+                            _registering
+                                ? AutofillHints.newPassword
+                                : AutofillHints.password,
+                          ],
                           enabled: !loading,
                           obscureText: true,
                           onFieldSubmitted: (_) {
-                            if (!loading) _login();
+                            if (!loading && !_registering) _submit();
                           },
                           decoration: const InputDecoration(
                             labelText: 'Password',
@@ -124,6 +157,25 @@ class _LoginScreenState extends State<LoginScreen> {
                               ? 'Enter your password.'
                               : null,
                         ),
+                        if (_registering) ...[
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _passwordConfirmation,
+                            autofillHints: const [AutofillHints.newPassword],
+                            enabled: !loading,
+                            obscureText: true,
+                            onFieldSubmitted: (_) {
+                              if (!loading) _submit();
+                            },
+                            decoration: const InputDecoration(
+                              labelText: 'Confirm password',
+                              border: InputBorder.none,
+                            ),
+                            validator: (value) => value != _password.text
+                                ? 'Passwords do not match.'
+                                : null,
+                          ),
+                        ],
                         if (widget.backend.error case final error?) ...[
                           const SizedBox(height: 12),
                           Text(
@@ -135,10 +187,31 @@ class _LoginScreenState extends State<LoginScreen> {
                         ],
                         const SizedBox(height: 18),
                         FilledButton(
-                          onPressed: loading ? null : _login,
+                          onPressed: loading ? null : _submit,
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 11),
-                            child: Text(loading ? 'Signing in…' : 'Sign in'),
+                            child: Text(
+                              loading
+                                  ? _registering
+                                        ? 'Creating account…'
+                                        : 'Signing in…'
+                                  : _registering
+                                  ? 'Create account'
+                                  : 'Sign in',
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: loading
+                              ? null
+                              : () {
+                                  widget.backend.clearError();
+                                  setState(() => _registering = !_registering);
+                                },
+                          child: Text(
+                            _registering
+                                ? 'I already have an account'
+                                : 'Create a deltie.net account',
                           ),
                         ),
                         const SizedBox(height: 14),
@@ -181,3 +254,6 @@ String normalizedMatrixLoginName(String input) {
   final separator = value.indexOf(':', 1);
   return separator > 1 ? value.substring(1, separator) : value;
 }
+
+bool isValidDeltiecordLocalpart(String input) =>
+    RegExp(r'^[a-z0-9._=\-/]+$').hasMatch(input.trim());

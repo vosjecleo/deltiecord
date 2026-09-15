@@ -127,6 +127,10 @@ abstract class ChatBackend extends ChangeNotifier {
     required String username,
     required String password,
   });
+  Future<void> registerDeltiecordAccount({
+    required String username,
+    required String password,
+  }) async => throw UnsupportedError('Account registration is unavailable');
   Future<void> logout();
   void clearError();
   Future<void> refreshEncryptionSetup();
@@ -324,6 +328,10 @@ abstract class ChatBackend extends ChangeNotifier {
     String roomId,
     StickerPackDraft pack,
   ) async => throw UnsupportedError('Room sticker packs are unavailable');
+  Future<void> publishPersonalStickerPack(
+    StickerPackSummary pack,
+    String roomId,
+  ) async => throw UnsupportedError('Publishing sticker packs is unavailable');
   Future<void> deleteStickerPack(StickerPackSummary pack) async =>
       throw UnsupportedError('Sticker-pack deletion is unavailable');
   Future<void> replaceStickerPack(

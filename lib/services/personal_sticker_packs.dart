@@ -100,6 +100,16 @@ List<({String id, Map<String, Object?> content})> splitPersonalImagePacks(
   return result;
 }
 
+Map<String, Object?>? personalImagePackContent(
+  Map<String, Object?> existing, {
+  required String packId,
+}) {
+  for (final pack in splitPersonalImagePacks(existing)) {
+    if (pack.id == packId) return Map<String, Object?>.from(pack.content);
+  }
+  return null;
+}
+
 /// Adds [newPack] without replacing any existing personal sticker/emoji pack.
 Map<String, Object?> mergePersonalImagePack(
   Map<String, Object?>? existing,

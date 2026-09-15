@@ -1,5 +1,24 @@
 # Changelog
 
+## Deltiecord 0.9.29 build 96 — 2026-09-16
+
+- Added first-party account registration for `matrix.deltie.net`, including
+  password-manager autofill, password confirmation, Matrix UI-auth handling,
+  friendly username/rate-limit errors, and automatic sign-in after creation.
+- Automatically onboard newly registered accounts into the Deltie Space and
+  its public Announcements and General channels, with explicit server-side
+  registration throttling.
+- Re-armed Android’s per-conversation five-minute alert cadence whenever its
+  notification is opened, acted upon, or swiped away, without muting or
+  disturbing other conversations.
+- Prevented stale room membership state from evicting the already cached own
+  profile avatar while a timeline hydrates.
+- Added safe promotion of personal sticker and custom-emoji packs to a server:
+  existing stable MXC media IDs are reused, the server pack is subscribed
+  account-wide, and the personal source is removed only after publication.
+- Renamed the user-facing Regular appearance option to Gray while preserving
+  its stored setting and palette for compatibility.
+
 ## Deltiecord 0.9.29 build 95 — 2026-09-16
 
 - Unified own-user, room-list, timeline, and profile avatar caching; validate

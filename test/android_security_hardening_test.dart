@@ -74,6 +74,9 @@ void main() {
         contains(r'StableIdentifier.requestCode("notification:$roomId")'),
       );
       expect(publisher, contains(r'"alert:${digest(data.roomId)}"'));
+      expect(publisher, contains('.setDeleteIntent(dismissIntent('));
+      expect(publisher, contains('fun resetAlertCooldown'));
+      expect(publisher, contains(r'.remove("alert:${digest(roomId)}")'));
       expect(publisher, isNot(contains('deltiecord_notification_history')));
       expect(dartResolver, contains('declaredSize == null'));
       expect(dartResolver, contains('width * height > 8000000'));

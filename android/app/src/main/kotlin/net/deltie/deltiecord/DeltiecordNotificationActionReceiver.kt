@@ -10,8 +10,15 @@ import android.content.Intent
 class DeltiecordNotificationActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val roomId = intent.getStringExtra(EXTRA_ROOM_ID) ?: return
-        val eventId = intent.getStringExtra(EXTRA_EVENT_ID) ?: return
         val action = intent.getStringExtra(EXTRA_ACTION) ?: return
+        if (action == ACTION_DISMISS) {
+            // Dismissing an alert ends the current notification burst. The
+            // next message should alert even when the five-minute cadence has
+            // not elapsed, while retained unread history stays available.
+            DeltiecordNotificationPublisher.resetAlertCooldown(context, roomId)
+            return
+        }
+        val eventId = intent.getStringExtra(EXTRA_EVENT_ID) ?: return
         val reply = RemoteInput.getResultsFromIntent(intent)
             ?.getCharSequence(KEY_REPLY)
             ?.toString()
@@ -26,5 +33,6 @@ class DeltiecordNotificationActionReceiver : BroadcastReceiver() {
         const val EXTRA_EVENT_ID = "event_id"
         const val EXTRA_ACTION = "action"
         const val KEY_REPLY = "reply_text"
+        const val ACTION_DISMISS = "dismiss"
     }
 }

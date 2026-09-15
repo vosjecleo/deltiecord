@@ -127,6 +127,36 @@ void main() {
     expect((remaining.single.content['pack'] as Map)['display_name'], 'Second');
   });
 
+  test('extracting one pack preserves stable media IDs for publication', () {
+    var merged = mergePersonalImagePack(null, {
+      'pack': {
+        'display_name': 'First',
+        'usage': ['sticker'],
+      },
+      'images': {
+        'wave': {'body': 'wave', 'url': 'mxc://example.org/stable'},
+      },
+    }, packId: 'first');
+    merged = mergePersonalImagePack(merged, {
+      'pack': {
+        'display_name': 'Second',
+        'usage': ['emoticon'],
+      },
+      'images': {
+        'wave': {'body': 'wave', 'url': 'mxc://example.org/other'},
+      },
+    }, packId: 'second');
+
+    final extracted = personalImagePackContent(merged, packId: 'first');
+    expect((extracted!['pack'] as Map)['display_name'], 'First');
+    expect((extracted['images'] as Map).values, hasLength(1));
+    expect(
+      ((extracted['images'] as Map).values.single as Map)['url'],
+      'mxc://example.org/stable',
+    );
+    expect(personalImagePackContent(merged, packId: 'missing'), isNull);
+  });
+
   test('replacing one pack preserves the others and their storage keys', () {
     var merged = mergePersonalImagePack(null, {
       'pack': {

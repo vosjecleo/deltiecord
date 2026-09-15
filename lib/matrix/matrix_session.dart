@@ -118,26 +118,85 @@ extension _MatrixSession on MatrixBackend {
             ? 'Deltiecord Android'
             : 'Deltiecord Desktop',
       );
-      await _loadDeviceAppearance();
-      _loadSettings();
-      _initializeVoice();
-      _status = SessionStatus.signedIn;
-      _connectionStatus = ConnectionStatus.online;
-      _startProfileRefreshTimer();
-      // Login does not recreate the Matrix client, so it does not pass through
-      // the session-restoration hydration path above. Hydrate the same profile
-      // and room metadata here before the first sync-dependent UI settles.
-      unawaited(_refreshProfile());
-      unawaited(_refreshRoomMetadata());
-      unawaited(_refreshMediaConfig());
-      unawaited(_restoreUnifiedPushPusher());
-      await refreshEncryptionSetup();
+      await _finishPasswordAuthentication();
     } catch (exception) {
       _status = SessionStatus.signedOut;
       _connectionStatus = ConnectionStatus.offline;
       _error = _friendlyError(exception);
     }
     _notifyBackendListeners();
+  }
+
+  Future<void> _registerDeltiecordAccount({
+    required String username,
+    required String password,
+  }) async {
+    _status = SessionStatus.signingIn;
+    _connectionStatus = ConnectionStatus.connecting;
+    _error = null;
+    _notifyBackendListeners();
+    try {
+      await _matrix.checkHomeserver(Uri.parse('https://matrix.deltie.net'));
+      final deviceName = Platform.isAndroid
+          ? 'Deltiecord Android'
+          : 'Deltiecord Desktop';
+      try {
+        await _matrix.register(
+          username: username,
+          password: password,
+          initialDeviceDisplayName: deviceName,
+        );
+      } on MatrixException catch (exception) {
+        final offersDummy =
+            exception.authenticationFlows?.any(
+              (flow) => flow.stages.contains('m.login.dummy'),
+            ) ??
+            false;
+        if (!offersDummy || exception.session == null) rethrow;
+        await _matrix.register(
+          username: username,
+          password: password,
+          initialDeviceDisplayName: deviceName,
+          auth: AuthenticationData(
+            type: 'm.login.dummy',
+            session: exception.session,
+          ),
+        );
+      }
+      await _finishPasswordAuthentication();
+    } on MatrixException catch (exception) {
+      _status = SessionStatus.signedOut;
+      _connectionStatus = ConnectionStatus.offline;
+      _error = switch (exception.error) {
+        MatrixError.M_USER_IN_USE => 'That username is already taken.',
+        MatrixError.M_INVALID_USERNAME =>
+          'Use lowercase letters, numbers, dots, hyphens, or underscores.',
+        MatrixError.M_LIMIT_EXCEEDED =>
+          'Too many accounts were created recently. Please try again later.',
+        _ => _friendlyError(exception),
+      };
+    } catch (exception) {
+      _status = SessionStatus.signedOut;
+      _connectionStatus = ConnectionStatus.offline;
+      _error = _friendlyError(exception);
+    }
+    _notifyBackendListeners();
+  }
+
+  Future<void> _finishPasswordAuthentication() async {
+    await _loadDeviceAppearance();
+    _loadSettings();
+    _initializeVoice();
+    _status = SessionStatus.signedIn;
+    _connectionStatus = ConnectionStatus.online;
+    _startProfileRefreshTimer();
+    // Password login and registration reuse the initialized Matrix client, so
+    // neither passes through the restored-session hydration path above.
+    unawaited(_refreshProfile());
+    unawaited(_refreshRoomMetadata());
+    unawaited(_refreshMediaConfig());
+    unawaited(_restoreUnifiedPushPusher());
+    await refreshEncryptionSetup();
   }
 
   Future<void> _logoutSession() async {

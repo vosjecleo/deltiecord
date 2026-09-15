@@ -917,7 +917,7 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           ButtonSegment(
             value: DeltiecordThemeMode.regular,
             icon: Icon(Icons.dark_mode_outlined),
-            label: Text('Regular'),
+            label: Text('Gray'),
           ),
           ButtonSegment(
             value: DeltiecordThemeMode.dark,

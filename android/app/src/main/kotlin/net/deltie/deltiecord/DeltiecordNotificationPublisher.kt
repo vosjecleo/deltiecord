@@ -165,6 +165,7 @@ object DeltiecordNotificationPublisher {
             .setCategory(Notification.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
+            .setDeleteIntent(dismissIntent(context, data.roomId))
             .setWhen(latest.optLong("timestamp", System.currentTimeMillis()))
             .setShowWhen(true)
             .setOnlyAlertOnce(!shouldAlert)
@@ -246,6 +247,22 @@ object DeltiecordNotificationPublisher {
             StableIdentifier.requestCode("$roomId|$eventId|$action"),
             intent,
             flags,
+        )
+    }
+
+    private fun dismissIntent(context: Context, roomId: String): PendingIntent {
+        val intent = Intent(context, DeltiecordNotificationActionReceiver::class.java).apply {
+            putExtra(DeltiecordNotificationActionReceiver.EXTRA_ROOM_ID, roomId)
+            putExtra(
+                DeltiecordNotificationActionReceiver.EXTRA_ACTION,
+                DeltiecordNotificationActionReceiver.ACTION_DISMISS,
+            )
+        }
+        return PendingIntent.getBroadcast(
+            context,
+            StableIdentifier.requestCode("$roomId|dismiss"),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }
 
@@ -571,7 +588,18 @@ object DeltiecordNotificationPublisher {
             entry.optString("imagePath").takeIf(String::isNotBlank)?.let(::File)?.delete()
         }
         historyFile(context, roomId).delete()
+        resetAlertCooldown(context, roomId)
         manager(context).cancel(notificationId(roomId))
+    }
+
+    @Synchronized
+    fun resetAlertCooldown(context: Context, roomId: String) {
+        // commit is intentional for the same reason as shouldAlert(): a push
+        // worker can race with a foreground-open or dismissal broadcast.
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .remove("alert:${digest(roomId)}")
+            .commit()
     }
 
     private fun notificationId(roomId: String): Int =

@@ -179,7 +179,10 @@ object DeltiecordNotificationPublisher {
             notificationBuilder.setSound(null).setVibrate(longArrayOf())
         }
         val notification = notificationBuilder.build()
-        manager(context).notify(data.roomId, 9001, notification)
+        // Some Android/OEM builds apply onlyAlertOnce state by numeric ID even
+        // when different notification tags are supplied. A deterministic ID
+        // per room keeps one conversation's cooldown from silencing another.
+        manager(context).notify(notificationId(data.roomId), notification)
         context.getSharedPreferences("deltiecord_unified_push", Context.MODE_PRIVATE)
             .edit()
             .putLong("last_notification_posted_ms", System.currentTimeMillis())
@@ -246,6 +249,7 @@ object DeltiecordNotificationPublisher {
         )
     }
 
+    @Synchronized
     private fun shouldAlert(context: Context, data: MessageData): Boolean {
         if ((!data.sound && !data.vibrate) || data.alertCadence == "silent") return false
         if (data.alertCadence == "everyMessage") return true
@@ -254,7 +258,9 @@ object DeltiecordNotificationPublisher {
         val now = System.currentTimeMillis()
         val previous = preferences.getLong(key, 0)
         if (now - previous < ALERT_COOLDOWN_MS) return false
-        preferences.edit().putLong(key, now).apply()
+        // commit is intentional: background workers for different events can
+        // overlap, and the next decision must observe this timestamp.
+        preferences.edit().putLong(key, now).commit()
         return true
     }
 
@@ -565,8 +571,11 @@ object DeltiecordNotificationPublisher {
             entry.optString("imagePath").takeIf(String::isNotBlank)?.let(::File)?.delete()
         }
         historyFile(context, roomId).delete()
-        manager(context).cancel(roomId, 9001)
+        manager(context).cancel(notificationId(roomId))
     }
+
+    private fun notificationId(roomId: String): Int =
+        StableIdentifier.requestCode("notification:$roomId")
 
     private fun digest(value: String): String = MessageDigest.getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))

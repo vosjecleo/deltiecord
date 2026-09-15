@@ -70,6 +70,8 @@ class AppPreferences {
     this.sharePresence = true,
     this.desktopIdleMinutes = 5,
     this.directLinkPreviewMode = DirectLinkPreviewMode.none,
+    this.trustedPreviewDomainsAdded = const {},
+    this.trustedPreviewDomainsRemoved = const {},
     this.improveTwitterLinks = true,
     this.accentColor = 0xff6975d9,
     this.fontFamily = 'System',
@@ -120,6 +122,8 @@ class AppPreferences {
   /// Homeserver-generated Matrix previews remain enabled regardless. New
   /// installations deliberately default this to false.
   final DirectLinkPreviewMode directLinkPreviewMode;
+  final Set<String> trustedPreviewDomainsAdded;
+  final Set<String> trustedPreviewDomainsRemoved;
 
   /// Compatibility view for older call sites and stored settings.
   bool get fetchDirectLinkPreviews =>
@@ -169,6 +173,8 @@ class AppPreferences {
     bool? sharePresence,
     int? desktopIdleMinutes,
     DirectLinkPreviewMode? directLinkPreviewMode,
+    Set<String>? trustedPreviewDomainsAdded,
+    Set<String>? trustedPreviewDomainsRemoved,
     bool? fetchDirectLinkPreviews,
     bool? improveTwitterLinks,
     int? accentColor,
@@ -222,6 +228,10 @@ class AppPreferences {
             : fetchDirectLinkPreviews
             ? DirectLinkPreviewMode.allPublicSites
             : DirectLinkPreviewMode.none),
+    trustedPreviewDomainsAdded:
+        trustedPreviewDomainsAdded ?? this.trustedPreviewDomainsAdded,
+    trustedPreviewDomainsRemoved:
+        trustedPreviewDomainsRemoved ?? this.trustedPreviewDomainsRemoved,
     improveTwitterLinks: improveTwitterLinks ?? this.improveTwitterLinks,
     accentColor: accentColor ?? this.accentColor,
     fontFamily: fontFamily ?? this.fontFamily,

@@ -140,11 +140,14 @@ class _RichComposerState extends State<_RichComposer> {
     if (completion.closed) {
       final query = completion.query;
       final start = completion.start;
-      final custom = customEmojiEntries(widget.backend.stickerPacks)
+      final customMatches = customEmojiEntries(widget.backend.stickerPacks)
           .where((entry) => entry.name.toLowerCase() == query.toLowerCase())
-          .firstOrNull;
-      if (custom != null) {
-        _replaceEmoji(start, cursor, custom);
+          .take(2)
+          .toList(growable: false);
+      // Aliases are display metadata, not stable IDs. Ambiguous typed aliases
+      // stay literal until the user explicitly selects a pack entry.
+      if (customMatches.length == 1) {
+        _replaceEmoji(start, cursor, customMatches.single);
         _clearEmojiCompletion();
         return;
       }

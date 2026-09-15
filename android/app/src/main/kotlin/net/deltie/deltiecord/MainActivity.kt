@@ -19,6 +19,8 @@ class MainActivity : FlutterActivity() {
             "net.deltie.deltiecord/background_push"
         private const val MEDIA_SAVER_CHANNEL =
             "net.deltie.deltiecord/media_saver"
+        private const val VIDEO_THUMBNAIL_CHANNEL =
+            "net.deltie.deltiecord/video_thumbnail"
         private const val REGISTRATION_TIMEOUT_MS = 30_000L
     }
 
@@ -214,6 +216,34 @@ class MainActivity : FlutterActivity() {
                     onFailure = { exception ->
                         mainHandler.post {
                             result.error("save_failed", exception.message, null)
+                        }
+                    },
+                )
+            }
+        }
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            VIDEO_THUMBNAIL_CHANNEL,
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "generate") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            val bytes = call.argument<ByteArray>("bytes")
+            val mimeType = call.argument<String>("mimeType")
+            val maxDimension = call.argument<Int>("maxDimension") ?: 800
+            if (bytes == null || bytes.isEmpty()) {
+                result.error("invalid_video", "Missing video data.", null)
+                return@setMethodCallHandler
+            }
+            mediaSaveExecutor.execute {
+                runCatching {
+                    AndroidVideoThumbnail.generate(this, bytes, mimeType, maxDimension)
+                }.fold(
+                    onSuccess = { thumbnail -> mainHandler.post { result.success(thumbnail) } },
+                    onFailure = { exception ->
+                        mainHandler.post {
+                            result.error("thumbnail_failed", exception.message, null)
                         }
                     },
                 )

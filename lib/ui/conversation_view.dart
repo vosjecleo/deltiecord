@@ -561,6 +561,7 @@ class _ConversationState extends State<_Conversation> {
     final backend = widget.backend;
     final room = backend.selectedRoom!;
     final messages = backend.messages;
+    final mediaAlbums = MediaAlbumIndex.fromNewestFirst(messages);
     _scheduleInitialViewportFill();
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _reportTimelineAtPresent(),
@@ -920,6 +921,11 @@ class _ConversationState extends State<_Conversation> {
                                         );
                                       }
                                       final message = messages[index];
+                                      if (mediaAlbums.hiddenMessageIds.contains(
+                                        message.id,
+                                      )) {
+                                        return const SizedBox.shrink();
+                                      }
                                       final older = index + 1 < messages.length
                                           ? messages[index + 1]
                                           : null;
@@ -939,6 +945,8 @@ class _ConversationState extends State<_Conversation> {
                                             const _UnreadDivider(),
                                           _MessageRow(
                                             message: message,
+                                            albumMessages:
+                                                mediaAlbums.albums[message.id],
                                             highlighted:
                                                 _highlightedMessageId ==
                                                 message.id,

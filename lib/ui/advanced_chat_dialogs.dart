@@ -743,7 +743,14 @@ Future<void> _manageStickerPacks(
     await _saveStickerPackWithProgress(context, backend, draft, destination);
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Personal sticker pack saved.')),
+        SnackBar(
+          content: Text(
+            destination == null
+                ? 'Personal sticker pack saved.'
+                : 'Server sticker pack published. Members can add it and '
+                      'receive future pack updates.',
+          ),
+        ),
       );
     }
   } catch (exception) {
@@ -1306,10 +1313,9 @@ Future<String?> _chooseStickerPackDestination(
   BuildContext context,
   ChatBackend backend,
 ) async {
-  final spaceId = backend.selectedSpaceId;
-  if (spaceId == null || !backend.canManageStickerPacksInRoom(spaceId)) {
-    return null;
-  }
+  final manageableSpaces = backend.spaces
+      .where((space) => backend.canManageStickerPacksInRoom(space.id))
+      .toList(growable: false);
   final choice = await showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
@@ -1318,24 +1324,29 @@ Future<String?> _chooseStickerPackDestination(
         children: [
           ListTile(
             leading: const Icon(Icons.person_outline),
-            title: const Text('Personal pack'),
-            subtitle: const Text('Available wherever your account can use it'),
+            title: const Text('My account'),
+            subtitle: const Text(
+              'Private to this account and available in every conversation',
+            ),
             onTap: () => Navigator.pop(context, 'personal'),
           ),
-          ListTile(
-            leading: const Icon(Icons.hub_outlined),
-            title: const Text('Current server'),
-            subtitle: const Text('Available only to members of this Space'),
-            onTap: () => Navigator.pop(context, 'server'),
-          ),
+          for (final space in manageableSpaces)
+            ListTile(
+              leading: const Icon(Icons.hub_outlined),
+              title: Text(space.name),
+              subtitle: const Text(
+                'Publish to this server; members can add it and updates sync',
+              ),
+              onTap: () => Navigator.pop(context, space.id),
+            ),
         ],
       ),
     ),
   );
   return switch (choice) {
     'personal' => null,
-    'server' => spaceId,
-    _ => _cancelledPackDestination,
+    null => _cancelledPackDestination,
+    final roomId => roomId,
   };
 }
 

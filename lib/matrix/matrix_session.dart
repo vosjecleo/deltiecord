@@ -777,6 +777,12 @@ extension _MatrixSession on MatrixBackend {
           ((content?.tryGet<bool>('fetch_direct_link_previews') ?? false)
               ? DirectLinkPreviewMode.allPublicSites
               : DirectLinkPreviewMode.none),
+      trustedPreviewDomainsAdded: _stringSet(
+        content?['trusted_preview_domains_added'],
+      ),
+      trustedPreviewDomainsRemoved: _stringSet(
+        content?['trusted_preview_domains_removed'],
+      ),
       improveTwitterLinks:
           content?.tryGet<bool>('improve_twitter_links') ?? true,
       accentColor: content?.tryGet<int>('accent_color') ?? 0xff6975d9,
@@ -851,6 +857,14 @@ extension _MatrixSession on MatrixBackend {
     final previewPolicyChanged =
         preferences.directLinkPreviewMode !=
             _preferences.directLinkPreviewMode ||
+        !_sameStringSet(
+          preferences.trustedPreviewDomainsAdded,
+          _preferences.trustedPreviewDomainsAdded,
+        ) ||
+        !_sameStringSet(
+          preferences.trustedPreviewDomainsRemoved,
+          _preferences.trustedPreviewDomainsRemoved,
+        ) ||
         preferences.improveTwitterLinks != _preferences.improveTwitterLinks;
     if (previewPolicyChanged) {
       // A previous homeserver-only miss must not suppress a newly opted-in
@@ -921,6 +935,10 @@ extension _MatrixSession on MatrixBackend {
           'desktop_idle_minutes': preferences.desktopIdleMinutes,
           'fetch_direct_link_previews': preferences.fetchDirectLinkPreviews,
           'direct_link_preview_mode': preferences.directLinkPreviewMode.name,
+          'trusted_preview_domains_added':
+              preferences.trustedPreviewDomainsAdded.toList()..sort(),
+          'trusted_preview_domains_removed':
+              preferences.trustedPreviewDomainsRemoved.toList()..sort(),
           'improve_twitter_links': preferences.improveTwitterLinks,
           'accent_color': preferences.accentColor,
           'font_family': preferences.fontFamily,
@@ -1107,3 +1125,15 @@ extension _MatrixSession on MatrixBackend {
     _notifyBackendListeners();
   }
 }
+
+Set<String> _stringSet(Object? value) {
+  if (value is! Iterable) return const {};
+  return value
+      .whereType<String>()
+      .map((item) => item.trim().toLowerCase())
+      .where((item) => item.isNotEmpty)
+      .toSet();
+}
+
+bool _sameStringSet(Set<String> left, Set<String> right) =>
+    left.length == right.length && left.containsAll(right);

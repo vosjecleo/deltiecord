@@ -22,6 +22,7 @@ import '../matrix_html_text.dart';
 import '../poll_card.dart';
 import '../typing_indicator.dart';
 import '../room_search_panel.dart';
+import '../media_album.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
@@ -33,6 +34,7 @@ class MobileTimelineView extends StatefulWidget {
     required this.onOpenNavigation,
     required this.onOpenDetails,
     required this.onOpenSettings,
+    required this.navigationGestureActive,
     required this.initialDraft,
     required this.initialCustomEmojis,
     required this.onDraftChanged,
@@ -44,6 +46,7 @@ class MobileTimelineView extends StatefulWidget {
   final VoidCallback onOpenNavigation;
   final VoidCallback onOpenDetails;
   final VoidCallback onOpenSettings;
+  final bool navigationGestureActive;
   final String initialDraft;
   final List<CustomEmojiTextSpan> initialCustomEmojis;
   final ValueChanged<({String text, List<CustomEmojiTextSpan> emojis})>
@@ -92,9 +95,12 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   void initState() {
     super.initState();
-    _composer = TextEditingController(text: widget.initialDraft)
-      ..addListener(_composerChanged);
     _customEmojiSpans = List.of(widget.initialCustomEmojis);
+    _composer = _CustomEmojiEditingController(
+      backend: backend,
+      spans: () => _customEmojiSpans,
+      text: widget.initialDraft,
+    )..addListener(_composerChanged);
     _previousComposerText = widget.initialDraft;
     _scroll.addListener(_handleScroll);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -201,14 +207,15 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       return;
     }
     if (completion.closed) {
-      final custom = customEmojiEntries(backend.stickerPacks)
+      final customMatches = customEmojiEntries(backend.stickerPacks)
           .where(
             (entry) =>
                 entry.name.toLowerCase() == completion.query.toLowerCase(),
           )
-          .firstOrNull;
-      if (custom != null) {
-        _replaceEmojiCompletion(completion.start, cursor, custom);
+          .take(2)
+          .toList(growable: false);
+      if (customMatches.length == 1) {
+        _replaceEmojiCompletion(completion.start, cursor, customMatches.single);
         return;
       }
       final generation = ++_emojiGeneration;
@@ -507,6 +514,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   Widget build(BuildContext context) {
     final messages = backend.messages;
+    final mediaAlbums = MediaAlbumIndex.fromNewestFirst(messages);
     final physicalPixel = 1 / MediaQuery.devicePixelRatioOf(context);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _reportTimelineAtPresent(),
@@ -741,6 +749,11 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                                 );
                               }
                               final message = messages[index];
+                              if (mediaAlbums.hiddenMessageIds.contains(
+                                message.id,
+                              )) {
+                                return const SizedBox.shrink();
+                              }
                               final older = index + 1 < messages.length
                                   ? messages[index + 1]
                                   : null;
@@ -781,7 +794,11 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                                       ),
                                     _MobileMessageRow(
                                       backend: backend,
+                                      navigationGestureActive:
+                                          widget.navigationGestureActive,
                                       message: message,
+                                      albumMessages:
+                                          mediaAlbums.albums[message.id],
                                       grouped: grouped,
                                       highlighted:
                                           _highlightedMessageId == message.id,
@@ -958,7 +975,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       _composer.text,
       _customEmojiSpans,
     );
-    final text = serialized.plainText;
+    final text = unescapeLiteralEmojiAliases(serialized.plainText);
+    final formatted = serialized.html == null
+        ? null
+        : unescapeLiteralEmojiAliases(serialized.html!);
     if (_sending || (text.isEmpty && _attachments.isEmpty)) return;
     final roomId = widget.room.id;
     final submittedText = text;
@@ -988,7 +1008,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
         await backend.sendMessage(
           submittedText,
           roomId: roomId,
-          formattedBody: serialized.html,
+          formattedBody: formatted,
           replyToMessageId: reply?.id,
           editMessageId: edit?.id,
         );
@@ -1230,6 +1250,70 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   }
 }
 
+/// Renders explicitly selected custom emoji in Android's plain-text composer
+/// without changing the draft's stable fallback text or cursor offsets. One
+/// visible widget plus zero-width placeholders occupies the alias's original
+/// character count, so selection and IME edits remain aligned with the model.
+class _CustomEmojiEditingController extends TextEditingController {
+  _CustomEmojiEditingController({
+    required this.backend,
+    required this.spans,
+    required super.text,
+  });
+
+  final ChatBackend backend;
+  final List<CustomEmojiTextSpan> Function() spans;
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final source = text;
+    final valid =
+        spans()
+            .where(
+              (span) =>
+                  span.start >= 0 &&
+                  span.end <= source.length &&
+                  span.start < span.end &&
+                  source.substring(span.start, span.end) == span.emoji.fallback,
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.start.compareTo(b.start));
+    if (valid.isEmpty) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    final children = <InlineSpan>[];
+    var cursor = 0;
+    for (final span in valid) {
+      if (span.start < cursor) continue;
+      children.add(TextSpan(text: source.substring(cursor, span.start)));
+      children.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: CustomEmojiImage(
+            backend: backend,
+            emoji: span.emoji,
+            size: 25,
+          ),
+        ),
+      );
+      for (var index = span.start + 1; index < span.end; index++) {
+        children.add(const WidgetSpan(child: SizedBox.shrink()));
+      }
+      cursor = span.end;
+    }
+    children.add(TextSpan(text: source.substring(cursor)));
+    return TextSpan(style: style, children: children);
+  }
+}
+
 final class _TimelineScrollAnchor {
   const _TimelineScrollAnchor(this.eventId, this.screenTop);
 
@@ -1277,7 +1361,9 @@ class _MobileDaySeparator extends StatelessWidget {
 class _MobileMessageRow extends StatelessWidget {
   const _MobileMessageRow({
     required this.backend,
+    required this.navigationGestureActive,
     required this.message,
+    this.albumMessages,
     required this.grouped,
     required this.highlighted,
     required this.onJumpToReply,
@@ -1286,7 +1372,9 @@ class _MobileMessageRow extends StatelessWidget {
     required this.onProfile,
   });
   final ChatBackend backend;
+  final bool navigationGestureActive;
   final ChatMessage message;
+  final List<ChatMessage>? albumMessages;
   final bool grouped;
   final bool highlighted;
   final ValueChanged<String> onJumpToReply;
@@ -1313,7 +1401,11 @@ class _MobileMessageRow extends StatelessWidget {
     }
     return Dismissible(
       key: ValueKey('swipe-${message.id}'),
-      direction: DismissDirection.endToStart,
+      // A cancelled drawer swipe must not leak through as a reply gesture on
+      // the message beneath it.
+      direction: navigationGestureActive
+          ? DismissDirection.none
+          : DismissDirection.endToStart,
       dismissThresholds: const {DismissDirection.endToStart: 0.15},
       confirmDismiss: (_) async {
         onReply();
@@ -1487,6 +1579,7 @@ class _MobileMessageRow extends StatelessWidget {
                         ),
                       if (!message.redacted &&
                           message.poll == null &&
+                          albumMessages == null &&
                           message.body.isNotEmpty)
                         KeyedSubtree(
                           key: ValueKey('mobile-message-body-${message.id}'),
@@ -1518,7 +1611,26 @@ class _MobileMessageRow extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 5),
                           child: PollCard(backend: backend, message: message),
                         ),
-                      if (message.attachment != null)
+                      if (albumMessages case final album?)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 5),
+                          child: MediaAlbumGrid(
+                            messages: album,
+                            height: 250,
+                            itemBuilder: (context, albumMessage) => FittedBox(
+                              fit: BoxFit.cover,
+                              clipBehavior: Clip.hardEdge,
+                              child: SizedBox.square(
+                                dimension: 250,
+                                child: MobileAttachmentView(
+                                  backend: backend,
+                                  message: albumMessage,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (message.attachment != null)
                         Padding(
                           key: ValueKey(
                             'mobile-message-attachment-${message.id}',

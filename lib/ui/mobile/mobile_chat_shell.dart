@@ -244,6 +244,8 @@ class _MobileChatShellState extends State<MobileChatShell>
                           onOpenDetails: () =>
                               setState(() => _detailsVisible = true),
                           onOpenSettings: _showSettings,
+                          navigationGestureActive:
+                              _navigationDragProgress != null,
                           initialDraft: _drafts[room.id]?.text ?? '',
                           initialCustomEmojis:
                               _drafts[room.id]?.emojis ?? const [],

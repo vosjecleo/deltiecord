@@ -107,6 +107,8 @@ extension _MatrixLinkPreviews on MatrixBackend {
     final directAllowed = LinkPreviewNetworkPolicy.allowsDirectFallback(
       _preferences.directLinkPreviewMode,
       requestUrl,
+      added: _preferences.trustedPreviewDomainsAdded,
+      removed: _preferences.trustedPreviewDomainsRemoved,
     );
     // A homeserver can return useful OpenGraph text while omitting a playable
     // provider stream. In an explicitly allowed direct mode, enrich that card
@@ -120,7 +122,11 @@ extension _MatrixLinkPreviews on MatrixBackend {
         final fetched = await _directPreviewFetcher.fetch(
           requestUrl,
           allowUrl: trustedOnly
-              ? LinkPreviewNetworkPolicy.isTrustedProviderUrl
+              ? (uri) => LinkPreviewNetworkPolicy.isTrustedProviderUrl(
+                  uri,
+                  added: _preferences.trustedPreviewDomainsAdded,
+                  removed: _preferences.trustedPreviewDomainsRemoved,
+                )
               : null,
         );
         if (fetched != null) {

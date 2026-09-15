@@ -35,4 +35,8 @@ void main() {
     final result = findEmojiCompletion(afterFence, afterFence.length);
     expect(result?.query, 'sob');
   });
+
+  test('send-time escape preserves an ambiguous alias as plain text', () {
+    expect(unescapeLiteralEmojiAliases(r'hello :party\:'), 'hello :party:');
+  });
 }

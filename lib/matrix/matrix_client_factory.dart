@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import '../services/android_video_thumbnail.dart';
+
 const deltiecordRoomPresentationEventType = 'net.deltiecord.room.presentation';
 const deltiecordSpaceChannelsEventType = 'net.deltiecord.space.channels';
 
@@ -40,6 +42,7 @@ Future<Client> createMatrixClient() async {
   return Client(
     'Deltiecord',
     database: sdkDatabase,
+    customVideoThumbnailGenerator: AndroidVideoThumbnail.generate,
     // Room presentation controls whether a room exposes a timeline/composer or
     // MatrixRTC controls. Load it with the initial room state so a fresh device
     // cannot briefly (or permanently, without another rebuild) treat a voice

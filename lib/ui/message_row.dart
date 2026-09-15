@@ -12,6 +12,7 @@ String _formatMessageClock(DateTime value, {required bool use24HourTime}) {
 class _MessageRow extends StatefulWidget {
   const _MessageRow({
     required this.message,
+    this.albumMessages,
     required this.highlighted,
     required this.startsGroup,
     required this.onReply,
@@ -29,6 +30,7 @@ class _MessageRow extends StatefulWidget {
   });
 
   final ChatMessage message;
+  final List<ChatMessage>? albumMessages;
   final bool highlighted;
   final bool startsGroup;
   final VoidCallback onReply;
@@ -379,7 +381,8 @@ class _MessageRowState extends State<_MessageRow> {
                                     ],
                                   ],
                                 ),
-                              if (message.body.isNotEmpty &&
+                              if (widget.albumMessages == null &&
+                                  message.body.isNotEmpty &&
                                   message.poll == null)
                                 KeyedSubtree(
                                   key: ValueKey('message-body-${message.id}'),
@@ -416,7 +419,36 @@ class _MessageRowState extends State<_MessageRow> {
                                     message: message,
                                   ),
                                 ),
-                              if (message.attachment case final attachment?)
+                              if (widget.albumMessages case final album?)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 430,
+                                    ),
+                                    child: MediaAlbumGrid(
+                                      messages: album,
+                                      height: 300,
+                                      itemBuilder: (context, albumMessage) =>
+                                          FittedBox(
+                                            fit: BoxFit.cover,
+                                            clipBehavior: Clip.hardEdge,
+                                            child: SizedBox.square(
+                                              dimension: 300,
+                                              child: _AttachmentView(
+                                                backend: widget.backend,
+                                                messageId: albumMessage.id,
+                                                attachment:
+                                                    albumMessage.attachment!,
+                                                gallery: widget.mediaMessages,
+                                              ),
+                                            ),
+                                          ),
+                                    ),
+                                  ),
+                                )
+                              else if (message.attachment
+                                  case final attachment?)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
                                   child: _AttachmentView(

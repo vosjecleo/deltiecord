@@ -1,5 +1,37 @@
 # Changelog
 
+## Deltiecord 0.9.28 build 94 — 2026-09-15
+
+- Fixed Android’s five-minute alert cadence so each conversation owns an
+  independent alert identity and atomically committed cooldown timestamp.
+- Recreated mobile video players after Android suspend/resume, discarded stale
+  near-end seek positions, learned natural video dimensions at playback time,
+  and retained a generated poster-frame fallback for link-preview videos.
+- Added bounded native first-frame extraction for Android camera uploads so
+  newly sent videos include accurate rotation-aware dimensions, duration, and
+  thumbnails without routing arbitrary conversion work through a public API.
+- Made failed inline image loads retryable, preferred bounded Matrix thumbnails
+  in the timeline, and retried stale media requests after returning to the app.
+- Folded adjacent captionless image/video-only messages into compact media
+  albums while excluding GIFs, captions, replies, and messages five minutes
+  apart.
+- Added editable trusted link-preview domains, including the ability to disable
+  a bundled provider without weakening exact hostname-boundary checks.
+- Added explicit personal/server destinations for imported sticker and emoji
+  packs. Published server packs can be added account-wide and retain their
+  stable Matrix room/state reference so owner edits propagate to subscribers.
+- Rendered explicitly selected custom emoji in the Android composer, kept
+  duplicate typed aliases literal until a specific result is selected, and
+  added `:name\:` as a plaintext opt-out syntax.
+- Prevented a cancelled room-panel swipe from becoming a message reply swipe,
+  and standardised desktop presence badges at the avatar’s bottom-right.
+- Added password-manager autofill semantics to login and account-password
+  prompts, refreshed the first-login presentation, and documented limitations
+  that custom homeservers may impose on optional Deltiecord services.
+- Reworked the first-run tour’s Android notification guidance with ntfy setup,
+  battery/rate-limit notes, and a dedicated-provider explanation. Desktop no
+  longer sees the Android page and the tour now ends with Close.
+
 ## Deltiecord 0.9.27 build 93 — 2026-09-04
 
 - Made transparent-canvas trimming the default for imported and reprocessed

@@ -257,7 +257,7 @@ class _MemberSidebarTile extends StatelessWidget {
                   : null,
             ),
             Positioned(
-              left: -1,
+              right: -1,
               bottom: -1,
               child: Container(
                 width: 10,

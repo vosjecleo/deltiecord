@@ -45,6 +45,7 @@ import 'space_settings_screen.dart';
 import 'typing_indicator.dart';
 import 'relative_activity_time.dart';
 import 'room_search_panel.dart';
+import 'media_album.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';
@@ -348,7 +349,10 @@ class _ChatShellState extends State<ChatShell> {
   Future<void> _send() async {
     final sendingRoomId = widget.backend.selectedRoom?.id;
     final serialized = serializeRichMessage(_message.document);
-    final text = serialized.plainText.trim();
+    final text = unescapeLiteralEmojiAliases(serialized.plainText).trim();
+    final formatted = serialized.html == null
+        ? null
+        : unescapeLiteralEmojiAliases(serialized.html!);
     if ((text.isEmpty && _pendingAttachments.isEmpty) || _sending) return;
     final submittedDelta = _message.document.toDelta().toJson();
     final attachments = List<AttachmentDraft>.from(_pendingAttachments);
@@ -379,7 +383,7 @@ class _ChatShellState extends State<ChatShell> {
         await widget.backend.sendMessage(
           text,
           roomId: sendingRoomId,
-          formattedBody: serialized.html,
+          formattedBody: formatted,
           replyToMessageId: submittedReply?.id,
           editMessageId: submittedEdit?.id,
         );

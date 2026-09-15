@@ -8,6 +8,7 @@ import '../models/chat_models.dart';
 import '../version.dart';
 import '../services/app_sounds.dart';
 import '../services/microphone_test.dart';
+import '../services/link_preview_policy.dart';
 import '../services/secret_redaction.dart';
 import '../services/unified_push.dart';
 import '../services/update_checker.dart';
@@ -1046,6 +1047,16 @@ class _SettingsScreenState extends State<_SettingsScreen> {
           );
         },
       ),
+      if (preferences.directLinkPreviewMode ==
+          DirectLinkPreviewMode.trustedProviders)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _manageTrustedPreviewDomains,
+            icon: const Icon(Icons.domain_outlined),
+            label: const Text('Manage known preview sites'),
+          ),
+        ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         title: const Text('Send read receipts'),
@@ -1456,6 +1467,124 @@ class _SettingsScreenState extends State<_SettingsScreen> {
       if (mounted) setState(() => _checkingForUpdates = false);
     }
   }
+
+  Future<void> _manageTrustedPreviewDomains() async {
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final preferences = backend.preferences;
+          final defaults =
+              LinkPreviewNetworkPolicy.trustedProviderDomains.toList()..sort();
+          final added = preferences.trustedPreviewDomainsAdded.toList()..sort();
+          Future<void> update({
+            Set<String>? additions,
+            Set<String>? removals,
+          }) async {
+            await backend.updatePreferences(
+              preferences.copyWith(
+                trustedPreviewDomainsAdded:
+                    additions ?? preferences.trustedPreviewDomainsAdded,
+                trustedPreviewDomainsRemoved:
+                    removals ?? preferences.trustedPreviewDomainsRemoved,
+              ),
+            );
+            if (dialogContext.mounted) setDialogState(() {});
+          }
+
+          return AlertDialog(
+            title: const Text('Known preview sites'),
+            content: SizedBox(
+              width: 520,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      labelText: 'Add domain',
+                      hintText: 'media.example.org',
+                    ),
+                    onSubmitted: (_) async {
+                      final domain = _normalPreviewDomain(controller.text);
+                      if (domain == null) return;
+                      controller.clear();
+                      await update(
+                        additions: {
+                          ...preferences.trustedPreviewDomainsAdded,
+                          domain,
+                        },
+                        removals: {...preferences.trustedPreviewDomainsRemoved}
+                          ..remove(domain),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final domain in defaults)
+                          SwitchListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(domain),
+                            value: !preferences.trustedPreviewDomainsRemoved
+                                .contains(domain),
+                            onChanged: (enabled) => update(
+                              removals:
+                                  {
+                                    ...preferences.trustedPreviewDomainsRemoved,
+                                    if (!enabled) domain,
+                                  }..removeWhere(
+                                    (item) => enabled && item == domain,
+                                  ),
+                            ),
+                          ),
+                        for (final domain in added)
+                          ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(domain),
+                            trailing: IconButton(
+                              tooltip: 'Remove',
+                              icon: const Icon(Icons.close),
+                              onPressed: () => update(
+                                additions: {
+                                  ...preferences.trustedPreviewDomainsAdded,
+                                }..remove(domain),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Done'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    controller.dispose();
+  }
+}
+
+String? _normalPreviewDomain(String input) {
+  var value = input.trim().toLowerCase();
+  if (value.isEmpty) return null;
+  final parsed = Uri.tryParse(value.contains('://') ? value : 'https://$value');
+  final host = parsed?.host.toLowerCase();
+  if (host == null || host.isEmpty || host.contains('..')) return null;
+  return host;
 }
 
 class _PasswordPromptDialog extends StatefulWidget {
@@ -1490,6 +1619,8 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
           controller: _controller,
           autofocus: true,
           obscureText: true,
+          autofillHints: const [AutofillHints.password],
+          onSubmitted: (_) => Navigator.of(context).pop(_controller.text),
           decoration: const InputDecoration(
             labelText: 'Matrix account password',
             border: InputBorder.none,

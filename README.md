@@ -1,10 +1,10 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.27 build 93**
+> **Current release candidate: version 0.9.28 build 94**
 >
-> Deltiecord is available for desktop and Android. Build 93 adds editable emoji
-> packs, fixes transparent-canvas sizing, adds emoji-only message sizing, and
-> repairs Android image saving.
+> Deltiecord is available for desktop and Android. Build 94 hardens Android
+> media resume and notification cadence, adds media albums and editable trusted
+> preview sites, and makes Matrix sticker packs explicitly shareable.
 
 Start with the [installation and source-build guide](INSTALL.md). Official
 builds and release notes are available on the
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.27 build 93**
+**Current release candidate: v0.9.28 build 94**

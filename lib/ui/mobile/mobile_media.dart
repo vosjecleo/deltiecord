@@ -269,17 +269,50 @@ class _MobileImage extends StatefulWidget {
   State<_MobileImage> createState() => _MobileImageState();
 }
 
-class _MobileImageState extends State<_MobileImage> {
-  late Future<Uint8List> _bytes = widget.backend.downloadAttachment(
-    widget.message.id,
-  );
+class _MobileImageState extends State<_MobileImage>
+    with WidgetsBindingObserver {
+  late Future<Uint8List> _bytes = _load();
+
+  Future<Uint8List> _load() async {
+    final attachment = widget.message.attachment!;
+    if (attachment.hasThumbnail && !attachment.animated) {
+      try {
+        return await widget.backend.downloadAttachment(
+          widget.message.id,
+          thumbnail: true,
+        );
+      } catch (_) {
+        // Broken/missing remote thumbnails must not hide a valid original.
+      }
+    }
+    return widget.backend.downloadAttachment(widget.message.id);
+  }
+
+  void _retry() => setState(() => _bytes = _load());
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didUpdateWidget(covariant _MobileImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id) {
-      _bytes = widget.backend.downloadAttachment(widget.message.id);
+      _bytes = _load();
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _retry();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   @override
@@ -312,7 +345,13 @@ class _MobileImageState extends State<_MobileImage> {
             future: _bytes,
             builder: (context, snapshot) {
               if (snapshot.hasError) {
-                return const Center(child: Text('Could not load image'));
+                return Center(
+                  child: TextButton.icon(
+                    onPressed: _retry,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry image'),
+                  ),
+                );
               }
               final bytes = snapshot.data;
               if (bytes == null) {
@@ -441,20 +480,30 @@ class _MobilePlayer extends StatefulWidget {
   State<_MobilePlayer> createState() => _MobilePlayerState();
 }
 
-class _MobilePlayerState extends State<_MobilePlayer> {
+class _MobilePlayerState extends State<_MobilePlayer>
+    with WidgetsBindingObserver {
   Player? _player;
   VideoController? _video;
   Object? _error;
   bool _fullscreenOpen = false;
   bool _sourceRetained = false;
+  int _playerGeneration = 0;
+  Duration _resumePosition = Duration.zero;
+  bool _resumePlaying = false;
+  StreamSubscription<int?>? _widthSubscription;
+  StreamSubscription<int?>? _heightSubscription;
+  int? _naturalWidth;
+  int? _naturalHeight;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_initialize());
   }
 
   Future<void> _initialize() async {
+    final generation = ++_playerGeneration;
     try {
       final source = await widget.backend.getMediaPlaybackSource(
         widget.message.id,
@@ -468,20 +517,67 @@ class _MobilePlayerState extends State<_MobilePlayer> {
       }
       final player = Player();
       final video = VideoController(player);
+      _widthSubscription = player.stream.width.listen((value) {
+        if (mounted && value != null && value > 0) {
+          setState(() => _naturalWidth = value);
+        }
+      });
+      _heightSubscription = player.stream.height.listen((value) {
+        if (mounted && value != null && value > 0) {
+          setState(() => _naturalHeight = value);
+        }
+      });
       await player.open(
         Media(source.uri.toString(), httpHeaders: source.headers),
         play: false,
       );
-      if (!mounted) {
+      if (!mounted || generation != _playerGeneration) {
         await player.dispose();
+        await widget.backend.releaseMediaPlaybackSource(widget.message.id);
+        _sourceRetained = false;
         return;
       }
+      final duration = player.state.duration;
+      final maximumResume = duration > const Duration(milliseconds: 750)
+          ? duration - const Duration(milliseconds: 500)
+          : Duration.zero;
+      final resumeAt = _resumePosition < maximumResume
+          ? _resumePosition
+          : Duration.zero;
+      if (resumeAt > Duration.zero) await player.seek(resumeAt);
+      if (_resumePlaying) await player.play();
       setState(() {
         _player = player;
         _video = video;
       });
     } catch (error) {
       if (mounted) setState(() => _error = error);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      final player = _player;
+      if (player == null) return;
+      _resumePosition = player.state.position;
+      _resumePlaying = player.state.playing;
+      _player = null;
+      _video = null;
+      _widthSubscription?.cancel();
+      _heightSubscription?.cancel();
+      _widthSubscription = null;
+      _heightSubscription = null;
+      _playerGeneration++;
+      unawaited(player.pause().whenComplete(player.dispose));
+      if (_sourceRetained) {
+        _sourceRetained = false;
+        unawaited(widget.backend.releaseMediaPlaybackSource(widget.message.id));
+      }
+    } else if (state == AppLifecycleState.resumed && _player == null) {
+      // Android may retain a native decoder whose clock jumps to EOF while the
+      // process is frozen. Always rebuild it from a fresh range source.
+      unawaited(_initialize());
     }
   }
 
@@ -510,6 +606,10 @@ class _MobilePlayerState extends State<_MobilePlayer> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _playerGeneration++;
+    _widthSubscription?.cancel();
+    _heightSubscription?.cancel();
     final player = _player;
     if (player != null) unawaited(player.dispose());
     if (_sourceRetained) {
@@ -547,8 +647,8 @@ class _MobilePlayerState extends State<_MobilePlayer> {
     final frame = mobileMediaFrameSize(
       maxWidth: min(420, max(120, screen.width - 76)),
       maxHeight: min(520, max(180, screen.height * 0.52)),
-      width: attachment?.width,
-      height: attachment?.height,
+      width: _naturalWidth ?? attachment?.width,
+      height: _naturalHeight ?? attachment?.height,
       fallbackAspectRatio: 16 / 9,
     );
     return SizedBox(
@@ -825,7 +925,8 @@ class MobileLinkPreviewVideo extends StatefulWidget {
   State<MobileLinkPreviewVideo> createState() => _MobileLinkPreviewVideoState();
 }
 
-class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
+class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo>
+    with WidgetsBindingObserver {
   Player? _player;
   VideoController? _controller;
   StreamSubscription<int?>? _widthSubscription;
@@ -835,10 +936,15 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
   bool _opening = false;
   String? _error;
   bool _fullscreenOpen = false;
+  Duration _resumePosition = Duration.zero;
+  bool _resumePlaying = false;
+  bool _openedBeforePause = false;
+  Uint8List? _generatedThumbnail;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.autoplay) unawaited(_play());
   }
 
@@ -849,6 +955,9 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
       return;
     }
     if (_opening) return;
+    final restoring = _openedBeforePause;
+    final shouldPlay = restoring ? _resumePlaying : true;
+    _openedBeforePause = false;
     setState(() {
       _opening = true;
       _error = null;
@@ -877,11 +986,58 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
         _player = player;
         _controller = controller;
       });
+      if (widget.thumbnail == null && _generatedThumbnail == null) {
+        unawaited(_captureFallbackFrame(player));
+      }
+      final duration = player.state.duration;
+      if (_resumePosition > Duration.zero &&
+          duration > const Duration(milliseconds: 750) &&
+          _resumePosition < duration - const Duration(milliseconds: 500)) {
+        await player.seek(_resumePosition);
+      }
+      if (!shouldPlay) await player.pause();
     } catch (_) {
       await player.dispose();
       if (mounted) setState(() => _error = 'Could not play embedded video');
     } finally {
       if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Future<void> _captureFallbackFrame(Player player) async {
+    try {
+      await player.stream.width
+          .firstWhere((value) => value != null && value > 0)
+          .timeout(const Duration(seconds: 4));
+      final bytes = await player.screenshot(format: 'image/jpeg');
+      if (mounted && identical(_player, player) && bytes != null) {
+        setState(() => _generatedThumbnail = bytes);
+      }
+    } catch (_) {
+      // A poster frame is a presentation fallback; playback remains usable if
+      // a platform decoder cannot provide screenshots.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      final player = _player;
+      if (player == null) return;
+      _openedBeforePause = true;
+      _resumePosition = player.state.position;
+      _resumePlaying = player.state.playing;
+      _player = null;
+      _controller = null;
+      _widthSubscription?.cancel();
+      _heightSubscription?.cancel();
+      _widthSubscription = null;
+      _heightSubscription = null;
+      unawaited(player.pause().whenComplete(player.dispose));
+    } else if (state == AppLifecycleState.resumed &&
+        _openedBeforePause &&
+        _player == null) {
+      unawaited(_play());
     }
   }
 
@@ -911,6 +1067,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _widthSubscription?.cancel();
     _heightSubscription?.cancel();
     final player = _player;
@@ -942,9 +1099,12 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo> {
               children: [
                 ColoredBox(
                   color: Colors.black,
-                  child: widget.thumbnail == null
+                  child: (widget.thumbnail ?? _generatedThumbnail) == null
                       ? null
-                      : Image.memory(widget.thumbnail!, fit: BoxFit.cover),
+                      : Image.memory(
+                          (widget.thumbnail ?? _generatedThumbnail)!,
+                          fit: BoxFit.cover,
+                        ),
                 ),
                 Center(
                   child: _opening

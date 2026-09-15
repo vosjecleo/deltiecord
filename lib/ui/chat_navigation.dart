@@ -1208,7 +1208,7 @@ class _CurrentUserPanel extends StatelessWidget {
                           ),
                         ),
                         Positioned(
-                          left: -1,
+                          right: -1,
                           bottom: -1,
                           child: Container(
                             key: ValueKey(
@@ -2287,7 +2287,7 @@ class _RoomIcon extends StatelessWidget {
           ),
           if (showPresence)
             Positioned(
-              left: -1,
+              right: -1,
               bottom: -1,
               child: Container(
                 key: ValueKey('presence-${room.id}-${room.presence.name}'),

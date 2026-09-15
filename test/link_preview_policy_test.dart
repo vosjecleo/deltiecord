@@ -81,4 +81,29 @@ void main() {
       isFalse,
     );
   });
+
+  test('trusted provider customisations preserve host boundaries', () {
+    final custom = Uri.parse('https://cdn.example.org/video');
+    expect(
+      LinkPreviewNetworkPolicy.isTrustedProviderUrl(
+        custom,
+        added: const {'example.org'},
+      ),
+      isTrue,
+    );
+    expect(
+      LinkPreviewNetworkPolicy.isTrustedProviderUrl(
+        Uri.parse('https://example.org.attacker.invalid/video'),
+        added: const {'example.org'},
+      ),
+      isFalse,
+    );
+    expect(
+      LinkPreviewNetworkPolicy.isTrustedProviderUrl(
+        Uri.parse('https://youtube.com/watch?v=x'),
+        removed: const {'youtube.com'},
+      ),
+      isFalse,
+    );
+  });
 }

@@ -20,6 +20,11 @@
     <binary>deltiecord</binary>
   </provides>
   <releases>
+    <release version="0.9.28" date="2026-09-15" type="development">
+      <description>
+        <p>Repairs Android media resume and per-conversation notification cadence, adds video poster metadata and media albums, and improves shareable Matrix image packs, trusted previews, login autofill, and onboarding.</p>
+      </description>
+    </release>
     <release version="0.9.27" date="2026-09-04" type="stable">
       <description>
         <p>Adds Matrix image-pack based custom and server emoji, then fixes adaptive sticker management, Telegram rich-text link imports, Android timeline catch-up, and scalable desktop metadata/avatar hydration.</p>

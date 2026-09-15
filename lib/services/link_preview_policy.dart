@@ -35,19 +35,31 @@ abstract final class LinkPreviewNetworkPolicy {
     'fxtwitter.com',
   };
 
-  static bool allowsDirectFallback(DirectLinkPreviewMode mode, Uri uri) =>
-      switch (mode) {
-        DirectLinkPreviewMode.none => false,
-        DirectLinkPreviewMode.trustedProviders => isTrustedProviderUrl(uri),
-        DirectLinkPreviewMode.allPublicSites => true,
-      };
+  static bool allowsDirectFallback(
+    DirectLinkPreviewMode mode,
+    Uri uri, {
+    Set<String> added = const {},
+    Set<String> removed = const {},
+  }) => switch (mode) {
+    DirectLinkPreviewMode.none => false,
+    DirectLinkPreviewMode.trustedProviders => isTrustedProviderUrl(
+      uri,
+      added: added,
+      removed: removed,
+    ),
+    DirectLinkPreviewMode.allPublicSites => true,
+  };
 
-  static bool isTrustedProviderUrl(Uri uri) {
+  static bool isTrustedProviderUrl(
+    Uri uri, {
+    Set<String> added = const {},
+    Set<String> removed = const {},
+  }) {
     if (!uri.isScheme('http') && !uri.isScheme('https')) return false;
     final host = uri.host.toLowerCase();
-    return trustedProviderDomains.any(
-      (domain) => host == domain || host.endsWith('.$domain'),
-    );
+    bool matches(String domain) => host == domain || host.endsWith('.$domain');
+    if (removed.any(matches)) return false;
+    return trustedProviderDomains.any(matches) || added.any(matches);
   }
 
   static bool mayLoadMedia(Uri uri) => uri.isScheme('mxc');

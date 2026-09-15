@@ -11,6 +11,14 @@ class EmojiCompletion {
   final bool closed;
 }
 
+/// Removes the opt-out marker from a completed alias at send time. The
+/// backslash prevents composer replacement while editing `:name\:`; recipients
+/// receive the intended literal `:name:` text rather than the escape syntax.
+String unescapeLiteralEmojiAliases(String text) => text.replaceAllMapped(
+  RegExp(r':([a-zA-Z0-9_+-]{3,32})\\:'),
+  (match) => ':${match.group(1)}:',
+);
+
 /// Finds a `:name` or `:name:` completion without interpreting text in code.
 ///
 /// The conservative whitespace boundary also keeps completion out of URLs,

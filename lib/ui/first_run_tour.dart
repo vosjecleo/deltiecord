@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -5,7 +6,6 @@ import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/first_run_tour_store.dart';
 import 'deltiecord_theme.dart';
-import 'settings_screen.dart';
 
 class FirstRunTourGate extends StatefulWidget {
   const FirstRunTourGate({
@@ -66,15 +66,12 @@ class _FirstRunTourGateState extends State<FirstRunTourGate> {
 
   Future<void> _show(String userId) async {
     if (!mounted) return;
-    final openNotifications = await showDialog<bool>(
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) => _FirstRunTourDialog(backend: widget.backend),
     );
     await _store.markComplete(userId);
-    if (openNotifications == true && mounted) {
-      await showDeltiecordNotificationSettings(context, widget.backend);
-    }
   }
 
   @override
@@ -143,28 +140,34 @@ class _FirstRunTourDialogState extends State<_FirstRunTourDialog> {
           },
         ),
       ),
-      _TourPage(
-        icon: Icons.notifications_active_outlined,
-        title: 'Set up private background notifications',
-        body:
-            'On Android, install the ntfy app and enable its UnifiedPush '
-            'distributor. In ntfy, use https://push.deltie.net as the default '
-            'server. Then open Deltiecord’s Notification settings, choose ntfy, '
-            'and refresh the registration. The public ntfy.sh service can '
-            'occasionally delay or rate-limit delivery; Deltiecord’s provider '
-            'avoids that shared public limit.',
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () => launchUrl(
-              Uri.parse('https://f-droid.org/packages/io.heckel.ntfy/'),
-              mode: LaunchMode.externalApplication,
+      if (defaultTargetPlatform == TargetPlatform.android)
+        _TourPage(
+          icon: Icons.notifications_active_outlined,
+          title: 'Set up reliable background notifications',
+          body:
+              '1. Install ntfy and open it once.\n'
+              '2. In ntfy, add https://push.deltiecord.net as a server and select '
+              'it for UnifiedPush.\n'
+              '3. In Deltiecord, open Settings > Notifications, choose ntfy, '
+              'then refresh registration.\n\n'
+              'Android may stop background network work, so allow ntfy to run '
+              'in the background and exclude it from aggressive battery '
+              'optimisation if delivery is delayed. The shared ntfy.sh service '
+              'can rate-limit bursts or be affected by public traffic; '
+              'push.deltiecord.net is Deltiecord’s dedicated alternative. You can '
+              'also use another compatible ntfy server you trust.',
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://f-droid.org/packages/io.heckel.ntfy/'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Get ntfy from F-Droid'),
             ),
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('Get ntfy from F-Droid'),
           ),
         ),
-      ),
     ];
     return AlertDialog(
       title: Text('Getting started · ${_page + 1}/${pages.length}'),
@@ -190,9 +193,9 @@ class _FirstRunTourDialogState extends State<_FirstRunTourDialog> {
           )
         else
           FilledButton.icon(
-            onPressed: () => Navigator.pop(context, true),
-            icon: const Icon(Icons.notifications_outlined),
-            label: const Text('Open notification settings'),
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.check),
+            label: const Text('Close'),
           ),
       ],
     );

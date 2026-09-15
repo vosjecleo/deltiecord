@@ -852,6 +852,7 @@ class _ConversationState extends State<_Conversation> {
                       ),
                     ],
                   ),
+                EncryptionAttentionBanner(backend: backend, room: room),
                 Expanded(
                   child: Stack(
                     key: const Key('conversation-timeline-area'),
@@ -931,7 +932,9 @@ class _ConversationState extends State<_Conversation> {
                                           : null;
                                       final startsGroup =
                                           older == null ||
-                                          older.sender != message.sender ||
+                                          older.system ||
+                                          message.system ||
+                                          older.senderId != message.senderId ||
                                           message.timestamp.difference(
                                                 older.timestamp,
                                               ) >

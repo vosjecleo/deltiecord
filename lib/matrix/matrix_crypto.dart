@@ -83,7 +83,7 @@ extension _MatrixCrypto on MatrixBackend {
         keyBackupEnabled: _encryptionSetup.keyBackupEnabled,
         crossSigningEnabled: _encryptionSetup.crossSigningEnabled,
         deviceVerified: _encryptionSetup.deviceVerified,
-        message: _friendlyError(exception),
+        message: friendlyRecoveryErrorMessage(exception),
       );
       _notifyBackendListeners();
       rethrow;

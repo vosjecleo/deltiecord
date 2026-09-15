@@ -10,7 +10,7 @@ enum ConnectionStatus { connecting, online, reconnecting, offline }
 
 enum InterfaceDensity { compact, cozy }
 
-enum DeltiecordThemeMode { light, dark, oled }
+enum DeltiecordThemeMode { light, regular, dark, night }
 
 enum NotificationAlertCadence { fiveMinuteCooldown, everyMessage, silent }
 
@@ -52,7 +52,7 @@ class AppPreferences {
   const AppPreferences({
     this.density = InterfaceDensity.compact,
     this.compactness = 0.5,
-    this.themeMode = DeltiecordThemeMode.dark,
+    this.themeMode = DeltiecordThemeMode.regular,
     this.interfaceScale = 1,
     this.fontScale = 1,
     this.use24HourTime = true,
@@ -60,6 +60,7 @@ class AppPreferences {
     this.sidePanelWidth = 310,
     this.reducedMotion = false,
     this.highContrast = false,
+    this.syncAppearance = true,
     this.autoplayGifs = true,
     this.notificationsEnabled = true,
     this.notificationSound = true,
@@ -107,6 +108,7 @@ class AppPreferences {
   final double sidePanelWidth;
   final bool reducedMotion;
   final bool highContrast;
+  final bool syncAppearance;
   final bool autoplayGifs;
   final bool notificationsEnabled;
   final bool notificationSound;
@@ -163,6 +165,7 @@ class AppPreferences {
     double? sidePanelWidth,
     bool? reducedMotion,
     bool? highContrast,
+    bool? syncAppearance,
     bool? autoplayGifs,
     bool? notificationsEnabled,
     bool? notificationSound,
@@ -210,6 +213,7 @@ class AppPreferences {
     sidePanelWidth: sidePanelWidth ?? this.sidePanelWidth,
     reducedMotion: reducedMotion ?? this.reducedMotion,
     highContrast: highContrast ?? this.highContrast,
+    syncAppearance: syncAppearance ?? this.syncAppearance,
     autoplayGifs: autoplayGifs ?? this.autoplayGifs,
     notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
     notificationSound: notificationSound ?? this.notificationSound,
@@ -507,6 +511,7 @@ class RoomSummary {
     this.avatarBytes,
     this.topic = '',
     this.isDirect = false,
+    this.encrypted = false,
     this.presence = UserPresence.offline,
     this.notificationMode = RoomNotificationMode.allMessages,
     this.mutedUntil,
@@ -525,6 +530,7 @@ class RoomSummary {
   final Uint8List? avatarBytes;
   final String topic;
   final bool isDirect;
+  final bool encrypted;
   final UserPresence presence;
   final RoomNotificationMode notificationMode;
   final DateTime? mutedUntil;

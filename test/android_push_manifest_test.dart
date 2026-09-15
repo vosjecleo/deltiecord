@@ -3,6 +3,24 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('Android exposes bounded text and media share targets', () {
+    final manifest = File(
+      'android/app/src/main/AndroidManifest.xml',
+    ).readAsStringSync();
+    final activity = File(
+      'android/app/src/main/kotlin/net/deltie/deltiecord/MainActivity.kt',
+    ).readAsStringSync();
+
+    expect(manifest, contains('android.intent.action.SEND'));
+    expect(manifest, contains('android.intent.action.SEND_MULTIPLE'));
+    expect(manifest, contains('android:mimeType="text/plain"'));
+    expect(manifest, contains('android:mimeType="image/*"'));
+    expect(manifest, contains('android:mimeType="video/*"'));
+    expect(activity, contains('MAX_SHARED_ITEM_BYTES'));
+    expect(activity, contains('MAX_SHARED_TOTAL_BYTES'));
+    expect(activity, contains('.take(10)'));
+  });
+
   test('UnifiedPush receiver can wake Deltiecord while Flutter is stopped', () {
     final manifest = File(
       'android/app/src/main/AndroidManifest.xml',

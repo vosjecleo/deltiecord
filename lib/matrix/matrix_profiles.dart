@@ -198,7 +198,8 @@ extension _MatrixProfiles on MatrixBackend {
               as String? ??
           '',
     );
-    final avatarBytes = refreshMedia || old == null
+    final avatarChanged = previous != null && previous.avatarUri != avatarUri;
+    final avatarBytes = refreshMedia || old == null || avatarChanged
         ? avatarUri == null
               ? null
               : await _avatarMedia(
@@ -434,6 +435,62 @@ extension _MatrixProfiles on MatrixBackend {
     _profileStatusMessage = profile.statusMessage;
     _profileColor = profile.profileColor;
     _ownProfileHydrated = true;
+    final userId = _matrix.userID;
+    final avatarUri = userId == null ? null : _profileCache[userId]?.avatarUri;
+    final avatarBytes = profile.avatarBytes;
+    if (userId != null && avatarUri != null && avatarBytes != null) {
+      // Own messages use the same sender cache as everyone else. Seeding both
+      // dimensions here prevents room opening from waiting on a second copy of
+      // an avatar already visible in the user island/profile.
+      _avatarMediaPool.seed(
+        avatarUri,
+        avatarBytes,
+        AvatarMediaPool.profileDimension,
+      );
+      _avatarMediaPool.seed(
+        avatarUri,
+        avatarBytes,
+        AvatarMediaPool.rowDimension,
+      );
+      _senderAvatarUris[userId] = avatarUri;
+      _senderAvatarBytes[userId] = avatarBytes;
+    }
+  }
+
+  Future<void> _refreshProfileForMessage(Event event, Room room) async {
+    if (!_avatarValidatedEventIds.add(event.eventId)) return;
+    while (_avatarValidatedEventIds.length > 512) {
+      _avatarValidatedEventIds.remove(_avatarValidatedEventIds.first);
+    }
+    if (_connectionStatus != ConnectionStatus.online) return;
+    try {
+      final profile = await _refreshProfileCache(
+        event.senderId,
+        refreshMetadata: true,
+        refreshStatus: true,
+        refreshMedia: false,
+      );
+      final directUser = room.directChatMatrixID;
+      if (event.senderId == _matrix.userID || directUser == event.senderId) {
+        final entry = _profileCache[event.senderId];
+        final uri = entry?.avatarUri;
+        final bytes = profile.avatarBytes;
+        if (uri != null && bytes != null) {
+          _avatarMediaPool.seed(uri, bytes, AvatarMediaPool.rowDimension);
+          _senderAvatarUris[event.senderId] = uri;
+          _senderAvatarBytes[event.senderId] = bytes;
+          if (directUser == event.senderId) {
+            _avatarUris[room.id] = uri;
+            _avatarBytes[room.id] = bytes;
+          }
+        }
+      }
+      if (event.senderId == _matrix.userID) _applyOwnProfileSummary(profile);
+      _notifyBackendListeners();
+    } catch (_) {
+      // A message remains renderable with its membership-state avatar. The
+      // next event from this sender provides another validation opportunity.
+    }
   }
 
   Future<Uint8List?> _profileMedia(Uri? mxc, int width, int height) async {

@@ -1,6 +1,6 @@
 # Deltiecord
 
-> **Current release candidate: version 0.9.28 build 94**
+> **Current release candidate: version 0.9.29 build 95**
 >
 > Deltiecord is available for desktop and Android. Build 94 hardens Android
 > media resume and notification cadence, adds media albums and editable trusted
@@ -260,4 +260,4 @@ See [LICENSE](LICENSE) for Deltiecord's license and
 
 ---
 
-**Current release candidate: v0.9.28 build 94**
+**Current release candidate: v0.9.29 build 95**

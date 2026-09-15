@@ -69,15 +69,21 @@ class MobileAvatar extends StatelessWidget {
                     ? Border.all(color: const Color(0xff23c483), width: 2)
                     : null,
               ),
-              child: ClipPath(
-                clipper: square ? _SquarcleClipper() : const _OvalClipper(),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(square ? 9 : size / 2),
+                clipBehavior: Clip.antiAlias,
                 child: bytes == null
                     ? ColoredBox(
                         color: Theme.of(context).colorScheme.secondaryContainer,
                         child: Center(
                           child: Text(
                             fallback.isEmpty ? '?' : fallback[0].toUpperCase(),
-                            style: TextStyle(fontSize: size * 0.38),
+                            style: TextStyle(
+                              fontSize: size * 0.38,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSecondaryContainer,
+                            ),
                           ),
                         ),
                       )
@@ -115,27 +121,6 @@ class MobileAvatar extends StatelessWidget {
       ],
     ),
   );
-}
-
-class _OvalClipper extends CustomClipper<Path> {
-  const _OvalClipper();
-
-  @override
-  Path getClip(Size size) => Path()..addOval(Offset.zero & size);
-
-  @override
-  bool shouldReclip(_OvalClipper oldClipper) => false;
-}
-
-class _SquarcleClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) => Path()
-    ..addRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(9)),
-    );
-
-  @override
-  bool shouldReclip(_SquarcleClipper oldClipper) => false;
 }
 
 String mobilePresenceLabel(UserPresence presence) => switch (presence) {

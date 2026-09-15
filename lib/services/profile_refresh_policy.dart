@@ -7,7 +7,7 @@
 abstract final class ProfileRefreshPolicy {
   /// Status messages are presence data, but some homeservers do not include
   /// every status change in `/sync`; poll recently viewed profiles as backup.
-  static const statusInterval = Duration(minutes: 1);
+  static const statusInterval = Duration(seconds: 15);
 
   /// Extensible profile text has no standard Matrix push notification.
   static const metadataInterval = Duration(minutes: 5);

@@ -1,6 +1,43 @@
 part of 'matrix_backend.dart';
 
 extension _MatrixLinkPreviews on MatrixBackend {
+  Future<Uri> _resolvePlayableLinkVideo(Uri pageUrl, Uri cachedVideoUrl) async {
+    final host = pageUrl.host.toLowerCase();
+    final youtube =
+        host == 'youtu.be' ||
+        host == 'youtube.com' ||
+        host.endsWith('.youtube.com');
+    if (!youtube ||
+        !LinkPreviewNetworkPolicy.allowsDirectFallback(
+          _preferences.directLinkPreviewMode,
+          pageUrl,
+          added: _preferences.trustedPreviewDomainsAdded,
+          removed: _preferences.trustedPreviewDomainsRemoved,
+        )) {
+      return cachedVideoUrl;
+    }
+    try {
+      // Google video URLs are short-lived. Resolve them at playback time
+      // instead of trusting a six-hour preview-cache entry.
+      final trustedOnly =
+          _preferences.directLinkPreviewMode ==
+          DirectLinkPreviewMode.trustedProviders;
+      final refreshed = await _directPreviewFetcher.fetch(
+        pageUrl,
+        allowUrl: trustedOnly
+            ? (uri) => LinkPreviewNetworkPolicy.isTrustedProviderUrl(
+                uri,
+                added: _preferences.trustedPreviewDomainsAdded,
+                removed: _preferences.trustedPreviewDomainsRemoved,
+              )
+            : null,
+      );
+      return refreshed?.videoUrl ?? cachedVideoUrl;
+    } catch (_) {
+      return cachedVideoUrl;
+    }
+  }
+
   /// Hydrates up to three links per event after timeline text is usable.
   ///
   /// Homeserver previews remain the default. Direct origin requests happen

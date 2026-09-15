@@ -7,10 +7,12 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mime/mime.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/emoji_completion.dart';
+import '../../services/android_shared_content.dart';
 import '../../services/emoji_repository.dart';
 import '../../services/custom_emoji.dart';
 import '../../services/favourite_reactions_store.dart';
@@ -23,9 +25,17 @@ import '../poll_card.dart';
 import '../typing_indicator.dart';
 import '../room_search_panel.dart';
 import '../media_album.dart';
+import '../encryption_attention_banner.dart';
 import 'mobile_media.dart';
 import 'mobile_profile_sheet.dart';
 import 'mobile_widgets.dart';
+
+String _extensionForMime(String mimeType) => switch (mimeType) {
+  'image/jpeg' => 'jpg',
+  'image/webp' => 'webp',
+  'image/gif' => 'gif',
+  _ => 'png',
+};
 
 class MobileTimelineView extends StatefulWidget {
   const MobileTimelineView({
@@ -89,6 +99,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   late String _previousComposerText;
   List<MentionSuggestion> _mentionMatches = const [];
   int? _mentionStart;
+  StreamSubscription<void>? _sharedContentSubscription;
 
   ChatBackend get backend => widget.backend;
 
@@ -103,9 +114,45 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
     )..addListener(_composerChanged);
     _previousComposerText = widget.initialDraft;
     _scroll.addListener(_handleScroll);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _reportTimelineAtPresent(),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _reportTimelineAtPresent();
+      unawaited(_consumeSharedContent());
+    });
+    AndroidSharedContent.instance.initialize();
+    _sharedContentSubscription = AndroidSharedContent.instance.arrivals.listen(
+      (_) => unawaited(_consumeSharedContent()),
     );
+  }
+
+  Future<void> _consumeSharedContent() async {
+    final shared = await AndroidSharedContent.instance.consume();
+    if (!mounted || shared == null) return;
+    final additions = shared.attachments;
+    if (shared.text case final text?) {
+      final current = _composer.text;
+      _composer.text = current.isEmpty ? text : '$current\n$text';
+      _composer.selection = TextSelection.collapsed(
+        offset: _composer.text.length,
+      );
+    }
+    if (additions.isNotEmpty) setState(() => _attachments.addAll(additions));
+    _focus.requestFocus();
+  }
+
+  void _insertKeyboardContent(KeyboardInsertedContent content) {
+    final bytes = content.data;
+    if (bytes == null || bytes.isEmpty) return;
+    setState(() {
+      _attachments.add(
+        AttachmentDraft(
+          bytes: bytes,
+          name:
+              'pasted-${DateTime.now().millisecondsSinceEpoch}.${_extensionForMime(content.mimeType)}',
+          mimeType: content.mimeType,
+          spoiler: false,
+        ),
+      );
+    });
   }
 
   @override
@@ -499,6 +546,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
   @override
   void dispose() {
     _highlightTimer?.cancel();
+    _sharedContentSubscription?.cancel();
     final waiter = _highlightWaiter;
     if (waiter != null && !waiter.isCompleted) waiter.complete();
     backend.setConversationAtPresent(false);
@@ -686,6 +734,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               ),
               actions: const [SizedBox.shrink()],
             ),
+          EncryptionAttentionBanner(backend: backend, room: widget.room),
           Expanded(
             child: backend.timelineLoading && messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
@@ -759,6 +808,8 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
                                   : null;
                               final grouped =
                                   older != null &&
+                                  !older.system &&
+                                  !message.system &&
                                   older.senderId == message.senderId &&
                                   message.timestamp.difference(
                                         older.timestamp,
@@ -916,6 +967,7 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
             onEmoji: _showEmojiPicker,
             onSend: _send,
             onSchedule: _scheduleCurrentMessage,
+            onContentInserted: _insertKeyboardContent,
             emojiMatches: _emojiMatches,
             emojiCompletionActive: _emojiStart != null,
             emojiSelection: _emojiSelection,
@@ -1104,6 +1156,11 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
               onTap: () => Navigator.pop(context, 'media'),
             ),
             ListTile(
+              leading: const Icon(Icons.content_paste_outlined),
+              title: const Text('Paste image'),
+              onTap: () => Navigator.pop(context, 'paste-image'),
+            ),
+            ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Take photo'),
               onTap: () => Navigator.pop(context, 'camera-photo'),
@@ -1146,6 +1203,10 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
       }
       return;
     }
+    if (choice == 'paste-image') {
+      await _pasteClipboardImage();
+      return;
+    }
     if (choice == null) return;
     if (choice == 'camera-photo' || choice == 'camera-video') {
       await _captureMedia(video: choice == 'camera-video');
@@ -1170,6 +1231,28 @@ class _MobileTimelineViewState extends State<MobileTimelineView> {
           ),
         );
     setState(() => _attachments.addAll(drafts));
+  }
+
+  Future<void> _pasteClipboardImage() async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) return;
+    final reader = await clipboard.read();
+    final formats = [Formats.png, Formats.jpeg, Formats.webp, Formats.gif];
+    final format = formats.where(reader.canProvide).firstOrNull;
+    if (format == null) return;
+    final completed = Completer<Uint8List?>();
+    final progress = reader.getFile(
+      format,
+      (file) async => completed.complete(await file.readAll()),
+      onError: (_) => completed.complete(null),
+    );
+    if (progress == null) return;
+    final bytes = await completed.future;
+    if (!mounted || bytes == null || bytes.isEmpty) return;
+    final mimeType = lookupMimeType('', headerBytes: bytes) ?? 'image/png';
+    _insertKeyboardContent(
+      KeyboardInsertedContent(mimeType: mimeType, uri: '', data: bytes),
+    );
   }
 
   Future<void> _captureMedia({required bool video}) async {
@@ -1644,7 +1727,10 @@ class _MobileMessageRow extends StatelessWidget {
                       for (final preview in message.linkPreviews)
                         Padding(
                           padding: const EdgeInsets.only(top: 5),
-                          child: MobileLinkPreviewCard(preview: preview),
+                          child: MobileLinkPreviewCard(
+                            preview: preview,
+                            backend: backend,
+                          ),
                         ),
                       if (message.reactions.isNotEmpty)
                         Wrap(
@@ -1881,6 +1967,7 @@ class _MobileComposer extends StatefulWidget {
     required this.onEmoji,
     required this.onSend,
     required this.onSchedule,
+    required this.onContentInserted,
     required this.emojiMatches,
     required this.emojiCompletionActive,
     required this.emojiSelection,
@@ -1904,6 +1991,7 @@ class _MobileComposer extends StatefulWidget {
   final VoidCallback onEmoji;
   final VoidCallback onSend;
   final VoidCallback onSchedule;
+  final ValueChanged<KeyboardInsertedContent> onContentInserted;
   final List<EmojiEntry> emojiMatches;
   final bool emojiCompletionActive;
   final int emojiSelection;
@@ -2142,6 +2230,18 @@ class _MobileComposerState extends State<_MobileComposer> {
                           maxLines: null,
                           keyboardType: TextInputType.multiline,
                           textCapitalization: TextCapitalization.sentences,
+                          style: TextStyle(color: context.deltiecord.text),
+                          cursorColor: Theme.of(context).colorScheme.primary,
+                          contentInsertionConfiguration:
+                              ContentInsertionConfiguration(
+                                allowedMimeTypes: const [
+                                  'image/png',
+                                  'image/jpeg',
+                                  'image/webp',
+                                  'image/gif',
+                                ],
+                                onContentInserted: widget.onContentInserted,
+                              ),
                           decoration: const InputDecoration(
                             hintText: 'Message',
                             border: InputBorder.none,

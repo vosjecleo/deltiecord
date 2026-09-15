@@ -9,7 +9,6 @@ class DeltiecordProfileCard extends StatelessWidget {
   const DeltiecordProfileCard({
     required this.profile,
     this.onEdit,
-    this.onRefresh,
     this.onClose,
     this.onMessage,
     this.onBlock,
@@ -20,7 +19,6 @@ class DeltiecordProfileCard extends StatelessWidget {
 
   final UserProfileSummary profile;
   final VoidCallback? onEdit;
-  final VoidCallback? onRefresh;
   final VoidCallback? onClose;
   final VoidCallback? onMessage;
   final VoidCallback? onBlock;
@@ -69,7 +67,6 @@ class DeltiecordProfileCard extends StatelessWidget {
             accent: accent,
             secondaryAccent: secondaryAccent,
             onEdit: onEdit,
-            onRefresh: onRefresh,
             onClose: onClose,
           ),
           Padding(
@@ -261,7 +258,6 @@ class _ProfileHeader extends StatelessWidget {
     required this.accent,
     required this.secondaryAccent,
     required this.onEdit,
-    required this.onRefresh,
     required this.onClose,
   });
 
@@ -269,7 +265,6 @@ class _ProfileHeader extends StatelessWidget {
   final Color accent;
   final Color secondaryAccent;
   final VoidCallback? onEdit;
-  final VoidCallback? onRefresh;
   final VoidCallback? onClose;
 
   @override
@@ -390,29 +385,20 @@ class _ProfileHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onEdit != null || onRefresh != null || onClose != null)
+              if (onEdit != null || onClose != null)
                 Positioned(
                   right: 16,
                   top: 14,
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (onRefresh != null)
-                        IconButton.filledTonal(
-                          tooltip: 'Refresh profile',
-                          onPressed: onRefresh,
-                          icon: const Icon(Icons.refresh),
-                        ),
-                      if (onRefresh != null && onEdit != null)
-                        const SizedBox(width: 8),
                       if (onEdit != null)
                         IconButton.filledTonal(
                           tooltip: 'Edit profile',
                           onPressed: onEdit,
                           icon: const Icon(Icons.edit_outlined),
                         ),
-                      if ((onRefresh != null || onEdit != null) &&
-                          onClose != null)
+                      if (onEdit != null && onClose != null)
                         const SizedBox(width: 8),
                       if (onClose != null)
                         IconButton.filledTonal(

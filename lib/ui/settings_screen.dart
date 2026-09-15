@@ -166,43 +166,62 @@ class _SettingsScreenState extends State<_SettingsScreen> {
               ),
               body: mobile
                   ? ClipRect(
-                      child: TweenAnimationBuilder<double>(
-                        key: ValueKey(
-                          'mobile-settings-transition-$_mobilePageOpen-${_page.name}',
-                        ),
-                        tween: Tween(begin: 1, end: 0),
-                        duration: backend.preferences.reducedMotion
-                            ? Duration.zero
-                            : const Duration(milliseconds: 180),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, progress, child) =>
-                            Transform.translate(
-                              offset: Offset(
-                                MediaQuery.sizeOf(context).width *
-                                    0.14 *
-                                    progress *
-                                    (_mobilePageOpen ? 1 : -1),
-                                0,
+                      child: backend.preferences.reducedMotion
+                          ? (_mobilePageOpen
+                                ? _settingsPagePane(
+                                    key: ValueKey(
+                                      'mobile-settings-${_page.name}',
+                                    ),
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      14,
+                                      16,
+                                      20,
+                                    ),
+                                  )
+                                : _settingsNavigation(
+                                    key: const ValueKey(
+                                      'mobile-settings-navigation',
+                                    ),
+                                    mobile: true,
+                                  ))
+                          : TweenAnimationBuilder<double>(
+                              key: ValueKey(
+                                'mobile-settings-transition-$_mobilePageOpen-${_page.name}',
                               ),
-                              child: child,
+                              tween: Tween(begin: 1, end: 0),
+                              duration: const Duration(milliseconds: 180),
+                              curve: Curves.easeOutCubic,
+                              builder: (context, progress, child) =>
+                                  Transform.translate(
+                                    offset: Offset(
+                                      MediaQuery.sizeOf(context).width *
+                                          0.14 *
+                                          progress *
+                                          (_mobilePageOpen ? 1 : -1),
+                                      0,
+                                    ),
+                                    child: child,
+                                  ),
+                              child: _mobilePageOpen
+                                  ? _settingsPagePane(
+                                      key: ValueKey(
+                                        'mobile-settings-${_page.name}',
+                                      ),
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        14,
+                                        16,
+                                        20,
+                                      ),
+                                    )
+                                  : _settingsNavigation(
+                                      key: const ValueKey(
+                                        'mobile-settings-navigation',
+                                      ),
+                                      mobile: true,
+                                    ),
                             ),
-                        child: _mobilePageOpen
-                            ? _settingsPagePane(
-                                key: ValueKey('mobile-settings-${_page.name}'),
-                                padding: const EdgeInsets.fromLTRB(
-                                  16,
-                                  14,
-                                  16,
-                                  20,
-                                ),
-                              )
-                            : _settingsNavigation(
-                                key: const ValueKey(
-                                  'mobile-settings-navigation',
-                                ),
-                                mobile: true,
-                              ),
-                      ),
                     )
                   : Row(
                       children: [
@@ -875,6 +894,18 @@ class _SettingsScreenState extends State<_SettingsScreen> {
   Widget _appearance() {
     final preferences = backend.preferences;
     return _section('Appearance', [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Sync appearance between devices'),
+        subtitle: Text(
+          preferences.syncAppearance
+              ? 'Theme, accent, sizing and accessibility appearance follow your Matrix account.'
+              : 'Appearance is stored only on this device.',
+        ),
+        value: preferences.syncAppearance,
+        onChanged: _changeAppearanceSync,
+      ),
+      const SizedBox(height: 12),
       const Text('Theme'),
       SegmentedButton<DeltiecordThemeMode>(
         segments: const [
@@ -884,14 +915,19 @@ class _SettingsScreenState extends State<_SettingsScreen> {
             label: Text('Light'),
           ),
           ButtonSegment(
-            value: DeltiecordThemeMode.dark,
+            value: DeltiecordThemeMode.regular,
             icon: Icon(Icons.dark_mode_outlined),
+            label: Text('Regular'),
+          ),
+          ButtonSegment(
+            value: DeltiecordThemeMode.dark,
+            icon: Icon(Icons.contrast),
             label: Text('Dark'),
           ),
           ButtonSegment(
-            value: DeltiecordThemeMode.oled,
-            icon: Icon(Icons.contrast),
-            label: Text('OLED'),
+            value: DeltiecordThemeMode.night,
+            icon: Icon(Icons.brightness_2_outlined),
+            label: Text('Night'),
           ),
         ],
         selected: {preferences.themeMode},
@@ -1010,6 +1046,41 @@ class _SettingsScreenState extends State<_SettingsScreen> {
         ),
       ],
     ]);
+  }
+
+  Future<void> _changeAppearanceSync(bool enabled) async {
+    if (!enabled) {
+      await backend.setAppearanceSync(false);
+      return;
+    }
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resume appearance sync?'),
+        content: const Text(
+          'Choose which appearance should become the synced account setting.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'account'),
+            child: const Text('Use account appearance'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'device'),
+            child: const Text('Use this device'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    await backend.setAppearanceSync(
+      true,
+      useDeviceAppearance: choice == 'device',
+    );
   }
 
   Widget _privacy() {
@@ -1615,15 +1686,20 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
       children: [
         Text(widget.warning),
         const SizedBox(height: 12),
-        TextField(
-          controller: _controller,
-          autofocus: true,
-          obscureText: true,
-          autofillHints: const [AutofillHints.password],
-          onSubmitted: (_) => Navigator.of(context).pop(_controller.text),
-          decoration: const InputDecoration(
-            labelText: 'Matrix account password',
-            border: InputBorder.none,
+        AutofillGroup(
+          child: TextField(
+            controller: _controller,
+            autofocus: true,
+            obscureText: true,
+            autofillHints: const [AutofillHints.password],
+            onSubmitted: (_) {
+              TextInput.finishAutofillContext(shouldSave: false);
+              Navigator.of(context).pop(_controller.text);
+            },
+            decoration: const InputDecoration(
+              labelText: 'Matrix account password',
+              border: InputBorder.none,
+            ),
           ),
         ),
       ],
@@ -1634,7 +1710,10 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
         child: const Text('Cancel'),
       ),
       FilledButton(
-        onPressed: () => Navigator.of(context).pop(_controller.text),
+        onPressed: () {
+          TextInput.finishAutofillContext(shouldSave: false);
+          Navigator.of(context).pop(_controller.text);
+        },
         child: const Text('Confirm'),
       ),
     ],

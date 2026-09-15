@@ -58,6 +58,7 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
     _profileRevision = widget.backend.profileRevision;
     _profile = widget.backend.getUserProfile(widget.userId);
     widget.backend.addListener(_backendChanged);
+    unawaited(_refreshInBackground());
   }
 
   void _backendChanged() {
@@ -69,9 +70,17 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
     });
   }
 
-  void _refresh() => setState(() {
-    _profile = widget.backend.getUserProfile(widget.userId, refresh: true);
-  });
+  Future<void> _refreshInBackground() async {
+    try {
+      final profile = await widget.backend.getUserProfile(
+        widget.userId,
+        refresh: true,
+      );
+      if (mounted) setState(() => _profile = Future.value(profile));
+    } catch (_) {
+      // Cached profile data remains useful while an offline refresh fails.
+    }
+  }
 
   @override
   void dispose() {
@@ -111,7 +120,6 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
                 child: DeltiecordProfileCard(
                   profile: profile,
                   onClose: () => Navigator.pop(context),
-                  onRefresh: _refresh,
                   onEdit: own && widget.onEditOwnProfile != null
                       ? () {
                           Navigator.pop(context);
@@ -131,7 +139,7 @@ class _MobileProfileCardState extends State<_MobileProfileCard> {
                             profile.userId,
                             !profile.blocked,
                           );
-                          _refresh();
+                          unawaited(_refreshInBackground());
                         },
                   blocked: profile.blocked,
                 ),

@@ -14,6 +14,7 @@ extension _MatrixRoomMetadata on MatrixBackend {
     avatarBytes: _avatarBytes[room.id],
     topic: room.topic,
     isDirect: room.isDirectChat,
+    encrypted: room.encrypted,
     presence: _roomPresence(room),
     notificationMode: _notificationModeFor(room),
     mutedUntil: _temporaryRoomMutes[room.id],

@@ -833,12 +833,13 @@ class _NavigationCardEdgePainter extends CustomPainter {
     final path = Path()
       ..moveTo(radius, 0)
       ..quadraticBezierTo(0, 0, 0, radius)
-      ..lineTo(0, size.height);
+      ..lineTo(0, size.height + 1);
     canvas.drawPath(
       path,
       Paint()
         ..color = color
         ..style = PaintingStyle.stroke
+        ..strokeCap = StrokeCap.square
         ..strokeWidth = 1,
     );
   }

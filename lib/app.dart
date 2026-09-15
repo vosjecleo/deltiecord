@@ -56,8 +56,24 @@ class DeltiecordApp extends StatelessWidget {
         final accent = Color(preferences.accentColor);
         final palette = contrast
             ? basePalette.copyWith(
-                divider: accent,
-                hover: accent.withValues(alpha: 0.18),
+                // Higher contrast strengthens neutral hierarchy. Accent is
+                // reserved for focus, selection, and message attention; using
+                // it for every separator made clipped edges visually harsh.
+                divider:
+                    ThemeData.estimateBrightnessForColor(
+                          basePalette.background,
+                        ) ==
+                        Brightness.dark
+                    ? const Color(0xff747780)
+                    : const Color(0xff77736c),
+                muted:
+                    ThemeData.estimateBrightnessForColor(
+                          basePalette.background,
+                        ) ==
+                        Brightness.dark
+                    ? const Color(0xffd4d6dc)
+                    : const Color(0xff3f4147),
+                hover: accent.withValues(alpha: 0.16),
               )
             : basePalette;
         final brightness = preferences.themeMode == DeltiecordThemeMode.light

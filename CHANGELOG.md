@@ -1,5 +1,39 @@
 # Changelog
 
+## Deltiecord 0.9.29 build 95 — 2026-09-16
+
+- Unified own-user, room-list, timeline, and profile avatar caching; validate
+  sender avatar metadata on newly sent/received messages and propagate changed
+  avatars throughout the app without re-downloading unchanged media.
+- Made profiles cache-first with automatic background refresh on open, removed
+  the manual refresh control, and increased status refresh frequency.
+- Added an encrypted-room warning when the current device/account encryption
+  setup is unverified or needs attention, and replaced low-level Base58 errors
+  with an actionable invalid-recovery-key message.
+- Repaired missing and incorrect GIF/image geometry from encoded dimensions,
+  added full-image fallback when a Matrix thumbnail is unavailable, and refresh
+  expiring YouTube playback URLs immediately before opening a video.
+- Added Android keyboard image insertion, bounded Android Share-sheet import for
+  text/images/videos, and an explicit mobile Paste image action.
+- Removed clipboard object-replacement markers from attachment captions so
+  Windows multi-image pastes no longer emit visible OBJ message rows.
+- Fixed message grouping across member/system events after a display-name
+  change and made desktop timeline avatars slightly larger and centered.
+- Added a device-local appearance mode, four clearly named themes (Light,
+  Regular, Dark, Night), a new deeper charcoal Dark palette, and a safe legacy
+  theme migration.
+- Fixed light-theme composer foregrounds, improved neutral high-contrast
+  separators and avatar fallbacks, completed the curved mobile panel edge, and
+  made reduced-motion settings navigation snap without constructing a
+  transition.
+- Prevented a cancelled mobile navigation swipe from becoming a message reply
+  gesture.
+- Fixed the Windows installer desktop-shortcut target and added a CI installer
+  smoke test that verifies the shortcut points to the installed executable.
+- Kept the Android first-run tour phone-only, with Close on its final page,
+  Matrix homeserver caveats, password-manager-ready login/password fields, and
+  detailed ntfy/UnifiedPush setup and public-rate-limit guidance.
+
 ## Deltiecord 0.9.28 build 94 — 2026-09-15
 
 - Fixed Android’s five-minute alert cadence so each conversation owns an

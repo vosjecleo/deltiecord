@@ -75,7 +75,7 @@ class DeltiecordPalette extends ThemeExtension<DeltiecordPalette> {
       text: Color(0xff202225),
       muted: Color(0xff5c6068),
     ),
-    DeltiecordThemeMode.dark => const DeltiecordPalette(
+    DeltiecordThemeMode.regular => const DeltiecordPalette(
       background: Color(0xff26272c),
       rail: Color(0xff1e1f22),
       panel: Color(0xff202125),
@@ -88,7 +88,20 @@ class DeltiecordPalette extends ThemeExtension<DeltiecordPalette> {
       text: Color(0xfff2f3f5),
       muted: Color(0xffb5bac1),
     ),
-    DeltiecordThemeMode.oled => const DeltiecordPalette(
+    DeltiecordThemeMode.dark => const DeltiecordPalette(
+      background: Color(0xff18191d),
+      rail: Color(0xff101114),
+      panel: Color(0xff141519),
+      surface: Color(0xff18191d),
+      elevated: Color(0xff222329),
+      input: Color(0xff222329),
+      island: Color(0xff222329),
+      hover: Color(0xff292a30),
+      divider: Color(0xff303137),
+      text: Color(0xfff2f3f5),
+      muted: Color(0xffafb3bb),
+    ),
+    DeltiecordThemeMode.night => const DeltiecordPalette(
       background: Color(0xff000000),
       rail: Color(0xff000000),
       panel: Color(0xff000000),

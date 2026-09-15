@@ -13,6 +13,7 @@ import '../models/chat_models.dart';
 import '../services/chat_notifications.dart';
 import '../services/custom_emoji.dart';
 import '../services/avatar_media_pool.dart';
+import '../services/device_appearance_store.dart';
 import '../services/app_sounds.dart';
 import '../services/android_push_bridge.dart';
 import '../services/font_preferences.dart';
@@ -85,14 +86,18 @@ class MatrixBackend extends ChatBackend {
     ChatNotificationSink? notifications,
     DirectLinkPreviewFetcher? directPreviewFetcher,
     AvatarMediaPool? avatarMediaPool,
+    DeviceAppearanceStore? deviceAppearanceStore,
   }) : _notifications = notifications ?? const SilentChatNotificationSink(),
        _directPreviewFetcher =
            directPreviewFetcher ?? DirectLinkPreviewFetcher(),
-       _avatarMediaPool = avatarMediaPool ?? AvatarMediaPool();
+       _avatarMediaPool = avatarMediaPool ?? AvatarMediaPool(),
+       _deviceAppearanceStore =
+           deviceAppearanceStore ?? DeviceAppearanceStore();
 
   final ChatNotificationSink _notifications;
   final DirectLinkPreviewFetcher _directPreviewFetcher;
   final AvatarMediaPool _avatarMediaPool;
+  final DeviceAppearanceStore _deviceAppearanceStore;
   Client? _client;
   Timeline? _timeline;
   MatrixVoiceController? _voice;
@@ -145,6 +150,7 @@ class MatrixBackend extends ChatBackend {
   final LinkedHashMap<String, _ProfileCacheEntry> _profileCache =
       LinkedHashMap();
   final Map<String, Future<UserProfileSummary>> _profileRequests = {};
+  final LinkedHashSet<String> _avatarValidatedEventIds = LinkedHashSet();
   final Set<String> _outboundSessionsReset = {};
   final Set<String> _roomHeroUsersLoaded = {};
   bool _refreshingRoomMetadata = false;
@@ -184,6 +190,8 @@ class MatrixBackend extends ChatBackend {
   AppPreferences _preferences = AppPreferences(
     fontScale: _platformDefaultFontScale,
   );
+  AppPreferences? _accountPreferences;
+  DeviceAppearanceSnapshot? _deviceAppearance;
   int? _maximumUploadBytes;
   List<DeviceSessionSummary> _deviceSessions = const [];
   bool _devicesLoading = false;
@@ -782,6 +790,16 @@ class MatrixBackend extends ChatBackend {
   @override
   Future<void> updatePreferences(AppPreferences preferences) =>
       _updatePreferences(preferences);
+
+  @override
+  Future<void> setAppearanceSync(
+    bool enabled, {
+    bool useDeviceAppearance = true,
+  }) => _setAppearanceSync(enabled, useDeviceAppearance: useDeviceAppearance);
+
+  @override
+  Future<Uri> resolveLinkPreviewVideo(Uri pageUrl, Uri cachedVideoUrl) =>
+      _resolvePlayableLinkVideo(pageUrl, cachedVideoUrl);
 
   @override
   void clearError() => _clearSessionError();

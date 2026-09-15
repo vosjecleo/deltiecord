@@ -52,7 +52,7 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 
 [Icons]
 Name: "{group}\Deltiecord"; Filename: "{app}\deltiecord.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\Deltiecord"; Filename: "{app}\deltiecord.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{userdesktop}\Deltiecord"; Filename: "{app}\deltiecord.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\deltiecord.exe"; Description: "Launch Deltiecord"; Flags: nowait postinstall skipifsilent

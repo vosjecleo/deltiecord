@@ -61,6 +61,7 @@ extension _MatrixSession on MatrixBackend {
         }
       });
       await _matrix.init();
+      await _loadDeviceAppearance();
       await _initializeScheduledMessages();
       _initializeVoice();
       _loadSettings();
@@ -117,6 +118,8 @@ extension _MatrixSession on MatrixBackend {
             ? 'Deltiecord Android'
             : 'Deltiecord Desktop',
       );
+      await _loadDeviceAppearance();
+      _loadSettings();
       _initializeVoice();
       _status = SessionStatus.signedIn;
       _connectionStatus = ConnectionStatus.online;
@@ -156,6 +159,7 @@ extension _MatrixSession on MatrixBackend {
       _spaceProfileBannerBytes.clear();
       _spaceProfileVoiceBackgroundBytes.clear();
       _senderAvatarUris.clear();
+      _avatarValidatedEventIds.clear();
       await _avatarMediaPool.clear();
       _decryptedPreviews.clear();
       _replyPreviews.clear();
@@ -207,6 +211,8 @@ extension _MatrixSession on MatrixBackend {
       _profileColor = null;
       _profileCache.clear();
       _profileRequests.clear();
+      _accountPreferences = null;
+      _deviceAppearance = null;
       _profileFieldsCapability = null;
       _profileFieldsCapabilityLoaded = false;
       _mediaRangeProxy.clear();
@@ -718,20 +724,14 @@ extension _MatrixSession on MatrixBackend {
             ),
       );
     if (_pendingPreferences != null) return;
-    _preferences = AppPreferences(
+    final accountPreferences = AppPreferences(
       density: content?.tryGet<String>('density') == 'cozy'
           ? InterfaceDensity.cozy
           : InterfaceDensity.compact,
       compactness:
           (content?['compactness'] as num?)?.toDouble().clamp(0, 1) ??
           (content?.tryGet<String>('density') == 'cozy' ? 0.15 : 0.5),
-      themeMode:
-          DeltiecordThemeMode.values
-              .where(
-                (mode) => mode.name == content?.tryGet<String>('theme_mode'),
-              )
-              .firstOrNull ??
-          DeltiecordThemeMode.dark,
+      themeMode: _readThemeMode(content),
       interfaceScale:
           (content?['interface_scale'] as num?)?.toDouble().clamp(0.8, 1.4) ??
           1,
@@ -829,7 +829,17 @@ extension _MatrixSession on MatrixBackend {
               ) ??
           const {},
     );
+    _accountPreferences = accountPreferences;
+    _preferences =
+        _deviceAppearance?.applyTo(accountPreferences) ?? accountPreferences;
     _voice?.applyPreferences(_preferences);
+  }
+
+  Future<void> _loadDeviceAppearance() async {
+    final userId = _matrix.userID;
+    _deviceAppearance = userId == null
+        ? null
+        : await _deviceAppearanceStore.load(userId);
   }
 
   String _supportedInterfaceFont(String? stored) =>
@@ -854,6 +864,7 @@ extension _MatrixSession on MatrixBackend {
 
   Future<void> _updatePreferences(AppPreferences preferences) async {
     if (_matrix.userID == null) return;
+    final userId = _matrix.userID!;
     final previewPolicyChanged =
         preferences.directLinkPreviewMode !=
             _preferences.directLinkPreviewMode ||
@@ -886,6 +897,15 @@ extension _MatrixSession on MatrixBackend {
       );
     }
     _preferences = preferences;
+    if (preferences.syncAppearance) {
+      if (_deviceAppearance != null) {
+        _deviceAppearance = null;
+        unawaited(_deviceAppearanceStore.clear(userId));
+      }
+    } else {
+      _deviceAppearance = DeviceAppearanceSnapshot.capture(preferences);
+      unawaited(_deviceAppearanceStore.save(userId, preferences));
+    }
     _voice?.applyPreferences(preferences);
     _pendingPreferences = preferences;
     _settingsSaveTimer?.cancel();
@@ -903,6 +923,27 @@ extension _MatrixSession on MatrixBackend {
     }
   }
 
+  Future<void> _setAppearanceSync(
+    bool enabled, {
+    required bool useDeviceAppearance,
+  }) async {
+    final userId = _matrix.userID;
+    if (userId == null || enabled == _preferences.syncAppearance) return;
+    if (!enabled) {
+      await _updatePreferences(_preferences.copyWith(syncAppearance: false));
+      return;
+    }
+
+    final next = useDeviceAppearance
+        ? _preferences.copyWith(syncAppearance: true)
+        : DeviceAppearanceSnapshot.capture(
+            _accountPreferences ?? _preferences,
+          ).applyTo(_preferences).copyWith(syncAppearance: true);
+    _deviceAppearance = null;
+    await _deviceAppearanceStore.clear(userId);
+    await _updatePreferences(next);
+  }
+
   Future<void> _persistPreferences(AppPreferences preferences) async {
     if (_matrix.userID == null) return;
     final existing =
@@ -913,17 +954,27 @@ extension _MatrixSession on MatrixBackend {
         MatrixBackend._settingsAccountDataType,
         {
           ...?existing,
-          'density': preferences.density.name,
-          'compactness': preferences.compactness,
-          'theme_mode': preferences.themeMode.name,
-          'interface_scale': preferences.interfaceScale,
-          _platformFontScaleKey: preferences.fontScale,
+          if (preferences.syncAppearance) ...{
+            'density': preferences.density.name,
+            'compactness': preferences.compactness,
+            'theme_mode': preferences.themeMode.name,
+            // Version 1 had only light/dark/oled. Keeping an explicit schema
+            // marker lets legacy `dark` retain its old Regular appearance
+            // while version 2 can use `dark` for the deeper charcoal palette.
+            'theme_schema_version': 2,
+            'interface_scale': preferences.interfaceScale,
+            _platformFontScaleKey: preferences.fontScale,
+            'room_panel_width': preferences.roomPanelWidth,
+            'side_panel_width': preferences.sidePanelWidth,
+            'reduced_motion': preferences.reducedMotion,
+            'high_contrast': preferences.highContrast,
+            'autoplay_gifs': preferences.autoplayGifs,
+            'accent_color': preferences.accentColor,
+            'font_family': preferences.fontFamily,
+            'emoji_font_family': preferences.emojiFontFamily,
+            'show_native_title_bar': preferences.showNativeTitleBar,
+          },
           'use_24_hour_time': preferences.use24HourTime,
-          'room_panel_width': preferences.roomPanelWidth,
-          'side_panel_width': preferences.sidePanelWidth,
-          'reduced_motion': preferences.reducedMotion,
-          'high_contrast': preferences.highContrast,
-          'autoplay_gifs': preferences.autoplayGifs,
           'notifications_enabled': preferences.notificationsEnabled,
           'notification_sound': preferences.notificationSound,
           'notification_vibration': preferences.notificationVibration,
@@ -940,10 +991,6 @@ extension _MatrixSession on MatrixBackend {
           'trusted_preview_domains_removed':
               preferences.trustedPreviewDomainsRemoved.toList()..sort(),
           'improve_twitter_links': preferences.improveTwitterLinks,
-          'accent_color': preferences.accentColor,
-          'font_family': preferences.fontFamily,
-          'emoji_font_family': preferences.emojiFontFamily,
-          'show_native_title_bar': preferences.showNativeTitleBar,
           'remember_window_state': preferences.rememberWindowState,
           'shortcut_bindings': {
             for (final entry in preferences.shortcutBindings.entries)
@@ -967,6 +1014,7 @@ extension _MatrixSession on MatrixBackend {
           'participant_volumes': preferences.participantVolumes,
         },
       );
+      if (preferences.syncAppearance) _accountPreferences = preferences;
       if (identical(_pendingPreferences, preferences)) {
         _pendingPreferences = null;
       }
@@ -1124,6 +1172,22 @@ extension _MatrixSession on MatrixBackend {
     _error = null;
     _notifyBackendListeners();
   }
+}
+
+DeltiecordThemeMode _readThemeMode(Map<String, Object?>? content) {
+  final stored = content?.tryGet<String>('theme_mode');
+  final schema = content?.tryGet<int>('theme_schema_version') ?? 1;
+  if (schema < 2) {
+    return switch (stored) {
+      'light' => DeltiecordThemeMode.light,
+      'oled' => DeltiecordThemeMode.night,
+      _ => DeltiecordThemeMode.regular,
+    };
+  }
+  return DeltiecordThemeMode.values
+          .where((mode) => mode.name == stored)
+          .firstOrNull ??
+      DeltiecordThemeMode.regular;
 }
 
 Set<String> _stringSet(Object? value) {

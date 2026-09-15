@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../backend/chat_backend.dart';
 import '../../models/chat_models.dart';
 import '../../services/android_media_saver.dart';
+import '../../services/encoded_image_dimensions.dart';
 import '../../services/temporary_attachment_store.dart';
 import '../deltiecord_theme.dart';
 import '../advanced_chat_dialogs.dart';
@@ -272,20 +273,32 @@ class _MobileImage extends StatefulWidget {
 class _MobileImageState extends State<_MobileImage>
     with WidgetsBindingObserver {
   late Future<Uint8List> _bytes = _load();
+  ({int width, int height})? _decodedDimensions;
 
   Future<Uint8List> _load() async {
     final attachment = widget.message.attachment!;
     if (attachment.hasThumbnail && !attachment.animated) {
       try {
-        return await widget.backend.downloadAttachment(
+        final bytes = await widget.backend.downloadAttachment(
           widget.message.id,
           thumbnail: true,
         );
+        await _learnDimensions(bytes);
+        return bytes;
       } catch (_) {
         // Broken/missing remote thumbnails must not hide a valid original.
       }
     }
-    return widget.backend.downloadAttachment(widget.message.id);
+    final bytes = await widget.backend.downloadAttachment(widget.message.id);
+    await _learnDimensions(bytes);
+    return bytes;
+  }
+
+  Future<void> _learnDimensions(Uint8List bytes) async {
+    final dimensions = await readEncodedImageDimensions(bytes);
+    if (dimensions != null && mounted && dimensions != _decodedDimensions) {
+      setState(() => _decodedDimensions = dimensions);
+    }
   }
 
   void _retry() => setState(() => _bytes = _load());
@@ -300,6 +313,7 @@ class _MobileImageState extends State<_MobileImage>
   void didUpdateWidget(covariant _MobileImage oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id) {
+      _decodedDimensions = null;
       _bytes = _load();
     }
   }
@@ -326,8 +340,8 @@ class _MobileImageState extends State<_MobileImage>
       maxHeight: attachment.sticker
           ? 128
           : min(520, max(180, screen.height * 0.48)),
-      width: attachment.width,
-      height: attachment.height,
+      width: _decodedDimensions?.width ?? attachment.width,
+      height: _decodedDimensions?.height ?? attachment.height,
     );
     return SizedBox(
       key: ValueKey('mobile-image-frame-${widget.message.id}'),
@@ -827,8 +841,13 @@ class _MobileFile extends StatelessWidget {
 }
 
 class MobileLinkPreviewCard extends StatelessWidget {
-  const MobileLinkPreviewCard({required this.preview, super.key});
+  const MobileLinkPreviewCard({
+    required this.preview,
+    required this.backend,
+    super.key,
+  });
   final LinkPreview preview;
+  final ChatBackend backend;
 
   @override
   Widget build(BuildContext context) {
@@ -853,6 +872,8 @@ class MobileLinkPreviewCard extends StatelessWidget {
                 width: mediaFrame.width,
                 child: MobileLinkPreviewVideo(
                   uri: video,
+                  resolveUri: () =>
+                      backend.resolveLinkPreviewVideo(preview.url, video),
                   thumbnail: preview.imageBytes,
                   width: preview.width,
                   height: preview.height,
@@ -906,6 +927,7 @@ class MobileLinkPreviewCard extends StatelessWidget {
 class MobileLinkPreviewVideo extends StatefulWidget {
   const MobileLinkPreviewVideo({
     required this.uri,
+    this.resolveUri,
     this.thumbnail,
     this.width,
     this.height,
@@ -915,6 +937,7 @@ class MobileLinkPreviewVideo extends StatefulWidget {
   });
 
   final Uri uri;
+  final Future<Uri> Function()? resolveUri;
   final Uint8List? thumbnail;
   final int? width;
   final int? height;
@@ -977,7 +1000,8 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo>
       }
     });
     try {
-      await player.open(Media(widget.uri.toString()), play: true);
+      final uri = await (widget.resolveUri?.call() ?? Future.value(widget.uri));
+      await player.open(Media(uri.toString()), play: true);
       if (!mounted) {
         await player.dispose();
         return;

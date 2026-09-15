@@ -461,7 +461,10 @@ class _MessageRowState extends State<_MessageRow> {
                               for (final preview in message.linkPreviews)
                                 Padding(
                                   padding: const EdgeInsets.only(top: 6),
-                                  child: _LinkPreviewCard(preview: preview),
+                                  child: _LinkPreviewCard(
+                                    preview: preview,
+                                    backend: widget.backend,
+                                  ),
                                 ),
                               if (message.edited)
                                 Text(
@@ -558,15 +561,15 @@ class _MessageRowState extends State<_MessageRow> {
                       // Keep the avatar centred against the sender header and
                       // first content line. The near-equal outer and inner
                       // gutters make the timeline read as one aligned column.
-                      left: 11,
-                      top: groupTop - 2 + (message.reply == null ? 0 : 22),
+                      left: 10,
+                      top: groupTop - 3 + (message.reply == null ? 0 : 22),
                       child: GestureDetector(
                         key: ValueKey('message-avatar-${message.id}'),
                         onTap: _showSenderProfile,
                         onTapDown: (details) =>
                             _profileAnchorPosition = details.globalPosition,
                         child: CircleAvatar(
-                          radius: 18,
+                          radius: 19,
                           backgroundColor: context.deltiecord.elevated,
                           backgroundImage: message.avatarBytes == null
                               ? null

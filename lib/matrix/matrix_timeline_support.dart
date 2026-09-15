@@ -15,6 +15,11 @@ extension _MatrixTimelineSupport on MatrixBackend {
     final missing = <(String, Uri)>[];
     final seen = <String>{};
     for (final event in _timelineWindowEvents(timeline)) {
+      if (event.type == EventTypes.Message ||
+          event.type == EventTypes.Encrypted ||
+          event.type == EventTypes.Sticker) {
+        unawaited(_refreshProfileForMessage(event, timeline.room));
+      }
       if (!seen.add(event.senderId)) continue;
       final sender = event.senderFromMemoryOrFallback;
       final avatar = sender.avatarUrl;

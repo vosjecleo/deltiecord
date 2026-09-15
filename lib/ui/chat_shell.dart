@@ -19,6 +19,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../backend/chat_backend.dart';
 import '../models/chat_models.dart';
 import '../services/giphy_service.dart';
+import '../services/encoded_image_dimensions.dart';
 import '../services/secret_redaction.dart';
 import '../services/temporary_attachment_store.dart';
 import '../services/timezone_catalog.dart';
@@ -46,6 +47,7 @@ import 'typing_indicator.dart';
 import 'relative_activity_time.dart';
 import 'room_search_panel.dart';
 import 'media_album.dart';
+import 'encryption_attention_banner.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';
@@ -62,6 +64,12 @@ const double _composerControlHeight = 38;
 const double _composerEditorHeight = 36;
 const double _bottomPanelVerticalInset = 8;
 const double _composerIslandVerticalInset = 6;
+
+// Flutter Quill represents a clipboard image embed with U+FFFC. Deltiecord
+// sends that image as a Matrix attachment, so the document marker must never
+// leak into the accompanying body as a visible "OBJ" replacement glyph.
+String _withoutAttachmentPlaceholders(String value) =>
+    value.replaceAll('\uFFFC', '');
 
 enum _SidePanelView { profile, members }
 
@@ -349,10 +357,14 @@ class _ChatShellState extends State<ChatShell> {
   Future<void> _send() async {
     final sendingRoomId = widget.backend.selectedRoom?.id;
     final serialized = serializeRichMessage(_message.document);
-    final text = unescapeLiteralEmojiAliases(serialized.plainText).trim();
+    final text = _withoutAttachmentPlaceholders(
+      unescapeLiteralEmojiAliases(serialized.plainText),
+    ).trim();
     final formatted = serialized.html == null
         ? null
-        : unescapeLiteralEmojiAliases(serialized.html!);
+        : _withoutAttachmentPlaceholders(
+            unescapeLiteralEmojiAliases(serialized.html!),
+          );
     if ((text.isEmpty && _pendingAttachments.isEmpty) || _sending) return;
     final submittedDelta = _message.document.toDelta().toJson();
     final attachments = List<AttachmentDraft>.from(_pendingAttachments);

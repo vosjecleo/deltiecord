@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -228,6 +229,19 @@ class _ProfilePopoverState extends State<_ProfilePopover> {
   void initState() {
     super.initState();
     widget.backend.addListener(_backendChanged);
+    unawaited(_refreshInBackground());
+  }
+
+  Future<void> _refreshInBackground() async {
+    try {
+      final profile = await widget.backend.getUserProfile(
+        widget.member.userId,
+        refresh: true,
+      );
+      if (mounted) setState(() => _profile = Future.value(profile));
+    } catch (_) {
+      // Keep showing cached data if the homeserver cannot be reached.
+    }
   }
 
   void _backendChanged() {
@@ -507,7 +521,9 @@ class _ProfileDialog extends StatefulWidget {
 
 class _ProfileDialogState extends State<_ProfileDialog> {
   bool _saving = false;
-  late Future<UserProfileSummary> _profile = _loadProfile();
+  late Future<UserProfileSummary> _profile = widget.backend.getUserProfile(
+    widget.member.userId,
+  );
   late int _profileRevision = widget.backend.profileRevision;
 
   Future<UserProfileSummary> _loadProfile() =>
@@ -517,6 +533,16 @@ class _ProfileDialogState extends State<_ProfileDialog> {
   void initState() {
     super.initState();
     widget.backend.addListener(_backendChanged);
+    unawaited(_refreshInBackground());
+  }
+
+  Future<void> _refreshInBackground() async {
+    try {
+      final profile = await _loadProfile();
+      if (mounted) setState(() => _profile = Future.value(profile));
+    } catch (_) {
+      // Keep showing the cache while an offline refresh fails.
+    }
   }
 
   void _backendChanged() {

@@ -43,9 +43,10 @@ Future<_MediaAction?> _showMediaContextMenu(
 // Inline playback is implemented with media_kit rather than adapted player
 // source. Attribution and upstream license details are in CREDITS.md.
 class _LinkPreviewCard extends StatelessWidget {
-  const _LinkPreviewCard({required this.preview});
+  const _LinkPreviewCard({required this.preview, required this.backend});
 
   final LinkPreview preview;
+  final ChatBackend backend;
 
   Future<void> _showVideoFullscreen(BuildContext context, Uri video) =>
       showDialog<void>(
@@ -63,6 +64,8 @@ class _LinkPreviewCard extends StatelessWidget {
                   ),
                   child: _LinkVideoPlayer(
                     uri: video,
+                    resolveUri: () =>
+                        backend.resolveLinkPreviewVideo(preview.url, video),
                     thumbnail: preview.imageBytes,
                     aspectRatio: (preview.width ?? 16) / (preview.height ?? 9),
                     autoplay: true,
@@ -115,6 +118,8 @@ class _LinkPreviewCard extends StatelessWidget {
                   width: mediaWidth,
                   child: _LinkVideoPlayer(
                     uri: video,
+                    resolveUri: () =>
+                        backend.resolveLinkPreviewVideo(preview.url, video),
                     thumbnail: preview.imageBytes,
                     aspectRatio: aspectRatio,
                     onDoubleTap: () => _showVideoFullscreen(context, video),
@@ -181,6 +186,7 @@ class _LinkPreviewCard extends StatelessWidget {
 class _LinkVideoPlayer extends StatefulWidget {
   const _LinkVideoPlayer({
     required this.uri,
+    this.resolveUri,
     this.thumbnail,
     this.aspectRatio = 16 / 9,
     this.autoplay = false,
@@ -188,6 +194,7 @@ class _LinkVideoPlayer extends StatefulWidget {
   });
 
   final Uri uri;
+  final Future<Uri> Function()? resolveUri;
   final Uint8List? thumbnail;
   final double aspectRatio;
   final bool autoplay;
@@ -245,7 +252,8 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
       _error = null;
     });
     try {
-      await player.open(Media(widget.uri.toString()), play: true);
+      final uri = await (widget.resolveUri?.call() ?? Future.value(widget.uri));
+      await player.open(Media(uri.toString()), play: true);
       _opened = true;
     } catch (exception) {
       _error = safeErrorMessage(exception);
@@ -606,6 +614,7 @@ class _AttachmentView extends StatefulWidget {
 
 class _AttachmentViewState extends State<_AttachmentView> {
   Future<Uint8List>? _imageBytes;
+  ({int width, int height})? _decodedDimensions;
   bool _revealed = false;
   bool _saving = false;
   bool _opening = false;
@@ -770,13 +779,11 @@ class _AttachmentViewState extends State<_AttachmentView> {
   }
 
   Widget _buildImage() {
-    _imageBytes ??= widget.backend.downloadAttachment(
-      widget.messageId,
-      thumbnail: !widget.attachment.animated,
-    );
+    _imageBytes ??= _loadImage();
     final screen = MediaQuery.sizeOf(context);
-    final metadataWidth = widget.attachment.width;
-    final metadataHeight = widget.attachment.height;
+    final metadataWidth = _decodedDimensions?.width ?? widget.attachment.width;
+    final metadataHeight =
+        _decodedDimensions?.height ?? widget.attachment.height;
     final ratio =
         metadataWidth != null &&
             metadataHeight != null &&
@@ -839,6 +846,25 @@ class _AttachmentViewState extends State<_AttachmentView> {
         );
       },
     );
+  }
+
+  Future<Uint8List> _loadImage() async {
+    late Uint8List bytes;
+    try {
+      bytes = await widget.backend.downloadAttachment(
+        widget.messageId,
+        thumbnail: !widget.attachment.animated,
+      );
+    } catch (_) {
+      // Homeservers occasionally advertise a thumbnail that was never
+      // generated. The full attachment is still a valid inline fallback.
+      bytes = await widget.backend.downloadAttachment(widget.messageId);
+    }
+    final dimensions = await readEncodedImageDimensions(bytes);
+    if (dimensions != null && mounted && dimensions != _decodedDimensions) {
+      setState(() => _decodedDimensions = dimensions);
+    }
+    return bytes;
   }
 
   Widget _buildSticker() {

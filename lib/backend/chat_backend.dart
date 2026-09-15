@@ -63,6 +63,8 @@ abstract class ChatBackend extends ChangeNotifier {
       .toList(growable: false);
   Future<Uint8List?> loadStickerPreview(StickerSummary sticker) async =>
       sticker.previewBytes;
+  Future<Uri> resolveLinkPreviewVideo(Uri pageUrl, Uri cachedVideoUrl) async =>
+      cachedVideoUrl;
   PresenceMode get presenceMode => PresenceMode.online;
   bool get timelineLoading;
   bool get historyLoading;
@@ -281,6 +283,10 @@ abstract class ChatBackend extends ChangeNotifier {
 
   Future<void> removeUnifiedPushEndpoint(String endpoint) async {}
   Future<void> updatePreferences(AppPreferences preferences);
+  Future<void> setAppearanceSync(
+    bool enabled, {
+    bool useDeviceAppearance = true,
+  }) => updatePreferences(preferences.copyWith(syncAppearance: enabled));
   Future<void> loadMoreHistory({String? anchorEventId});
   Future<void> loadMoreFuture({String? anchorEventId});
   Future<List<ChatMessage>> loadPinnedMessages();

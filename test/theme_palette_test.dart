@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('OLED uses true black for every background role', () {
-    final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.oled);
+  test('Night uses true black for every background role', () {
+    final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.night);
     expect(
       {
         palette.background,
@@ -43,8 +43,8 @@ void main() {
     expect(DeltiecordTypeScale.small, DeltiecordTypeScale.normal - 2);
   });
 
-  test('dark mode distinguishes floating control islands', () {
-    final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.dark);
+  test('regular mode preserves the familiar charcoal palette', () {
+    final palette = DeltiecordPalette.forMode(DeltiecordThemeMode.regular);
     expect(palette.background, const Color(0xff26272c));
     expect(palette.rail, const Color(0xff1e1f22));
     expect(palette.panel, const Color(0xff202125));
@@ -53,6 +53,20 @@ void main() {
     expect(palette.hover, const Color(0xff34353b));
     expect(palette.divider, const Color(0xff36373d));
     expect(palette.island, isNot(palette.background));
+  });
+
+  test('dark mode sits between regular and true-black night', () {
+    final regular = DeltiecordPalette.forMode(DeltiecordThemeMode.regular);
+    final dark = DeltiecordPalette.forMode(DeltiecordThemeMode.dark);
+    final night = DeltiecordPalette.forMode(DeltiecordThemeMode.night);
+    expect(
+      dark.background.computeLuminance(),
+      lessThan(regular.background.computeLuminance()),
+    );
+    expect(
+      dark.background.computeLuminance(),
+      greaterThan(night.background.computeLuminance()),
+    );
   });
 
   test('profile actions choose a legible foreground for arbitrary colours', () {

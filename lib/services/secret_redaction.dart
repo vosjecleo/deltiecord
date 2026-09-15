@@ -42,3 +42,15 @@ String safeErrorMessage(Object error, {int maximumLength = 240}) {
       ? '${text.substring(0, maximumLength)}…'
       : text;
 }
+
+String friendlyRecoveryErrorMessage(Object error) {
+  final raw = error.toString().toLowerCase();
+  if (raw.contains('base58') ||
+      raw.contains('recovery key') ||
+      raw.contains('invalid character') ||
+      raw.contains('incorrect key') ||
+      raw.contains('bad key')) {
+    return 'That recovery key is invalid or was entered incorrectly.';
+  }
+  return safeErrorMessage(error);
+}

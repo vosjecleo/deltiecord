@@ -4,11 +4,14 @@ import android.os.Handler
 import android.os.Looper
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.OpenableColumns
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import org.unifiedpush.android.connector.UnifiedPush
 import java.util.concurrent.Executors
+import java.io.ByteArrayOutputStream
 
 class MainActivity : FlutterActivity() {
     companion object {
@@ -21,7 +24,11 @@ class MainActivity : FlutterActivity() {
             "net.deltie.deltiecord/media_saver"
         private const val VIDEO_THUMBNAIL_CHANNEL =
             "net.deltie.deltiecord/video_thumbnail"
+        private const val SHARED_CONTENT_CHANNEL =
+            "net.deltie.deltiecord/shared_content"
         private const val REGISTRATION_TIMEOUT_MS = 30_000L
+        private const val MAX_SHARED_ITEM_BYTES = 32 * 1024 * 1024
+        private const val MAX_SHARED_TOTAL_BYTES = 64 * 1024 * 1024
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -30,6 +37,7 @@ class MainActivity : FlutterActivity() {
     private var unifiedPushChannel: MethodChannel? = null
     private var backgroundPushChannel: MethodChannel? = null
     private var configuredEngine: FlutterEngine? = null
+    private var sharedContentChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -151,6 +159,18 @@ class MainActivity : FlutterActivity() {
         DeltiecordPushService.stateChangedListener = { instance ->
             mainHandler.post { completeUnifiedPushRegistration(instance) }
         }
+        sharedContentChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            SHARED_CONTENT_CHANNEL,
+        ).also { channel ->
+            channel.setMethodCallHandler { call, result ->
+                if (call.method == "consume") {
+                    result.success(consumeSharedContent(intent))
+                } else {
+                    result.notImplemented()
+                }
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             NOTIFICATION_ASSETS_CHANNEL,
@@ -269,8 +289,96 @@ class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val target = notificationTarget(intent, clear = true) ?: return
-        backgroundPushChannel?.invokeMethod("onNotificationActivated", target)
+        notificationTarget(intent, clear = true)?.let { target ->
+            backgroundPushChannel?.invokeMethod("onNotificationActivated", target)
+        }
+        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_SEND_MULTIPLE) {
+            sharedContentChannel?.invokeMethod("available", null)
+        }
+    }
+
+    private fun consumeSharedContent(source: Intent?): Map<String, Any?>? {
+        if (source?.action != Intent.ACTION_SEND && source?.action != Intent.ACTION_SEND_MULTIPLE) {
+            return null
+        }
+        val text = source.getStringExtra(Intent.EXTRA_TEXT)?.take(100_000)
+        val uris = sharedUris(source).take(10)
+        var total = 0
+        val items = mutableListOf<Map<String, Any>>()
+        for (uri in uris) {
+            val mimeType = contentResolver.getType(uri) ?: source.type ?: continue
+            if (!mimeType.startsWith("image/") && !mimeType.startsWith("video/")) continue
+            val bytes = readBounded(uri, minOf(MAX_SHARED_ITEM_BYTES, MAX_SHARED_TOTAL_BYTES - total))
+                ?: continue
+            total += bytes.size
+            items += mapOf(
+                "bytes" to bytes,
+                "mimeType" to mimeType,
+                "name" to sharedDisplayName(uri, mimeType),
+            )
+            if (total >= MAX_SHARED_TOTAL_BYTES) break
+        }
+        source.action = null
+        source.removeExtra(Intent.EXTRA_TEXT)
+        source.removeExtra(Intent.EXTRA_STREAM)
+        return mapOf("text" to text, "items" to items)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun sharedUris(source: Intent): List<Uri> =
+        if (source.action == Intent.ACTION_SEND_MULTIPLE) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                source.getParcelableArrayListExtra(Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+            } else {
+                source.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM).orEmpty()
+            }
+        } else {
+            val uri = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                source.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                source.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            }
+            listOfNotNull(uri)
+        }
+
+    private fun readBounded(uri: Uri, limit: Int): ByteArray? {
+        if (limit <= 0) return null
+        return runCatching {
+            contentResolver.openInputStream(uri)?.use { input ->
+                val output = ByteArrayOutputStream(minOf(limit, 256 * 1024))
+                val chunk = ByteArray(16 * 1024)
+                var total = 0
+                while (true) {
+                    val read = input.read(chunk)
+                    if (read < 0) break
+                    total += read
+                    if (total > limit) return null
+                    output.write(chunk, 0, read)
+                }
+                output.toByteArray()
+            }
+        }.getOrNull()
+    }
+
+    private fun sharedDisplayName(uri: Uri, mimeType: String): String {
+        runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (index >= 0) cursor.getString(index)?.takeIf { it.isNotBlank() }?.let { return it }
+                    }
+                }
+        }
+        val extension = when (mimeType) {
+            "image/jpeg" -> "jpg"
+            "image/png" -> "png"
+            "image/webp" -> "webp"
+            "image/gif" -> "gif"
+            "video/webm" -> "webm"
+            else -> if (mimeType.startsWith("video/")) "mp4" else "bin"
+        }
+        return "shared-${System.currentTimeMillis()}.$extension"
     }
 
     override fun onResume() {
@@ -378,6 +486,7 @@ class MainActivity : FlutterActivity() {
         pendingRegistrations.clear()
         unifiedPushChannel = null
         backgroundPushChannel = null
+        sharedContentChannel = null
         if (DeltiecordEngineRegistry.engine === configuredEngine) {
             DeltiecordEngineRegistry.engine = null
             DeltiecordEngineRegistry.pushBridgeReady = false

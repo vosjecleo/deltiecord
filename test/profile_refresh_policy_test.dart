@@ -8,14 +8,14 @@ void main() {
     expect(
       ProfileRefreshPolicy.statusIsStale(
         origin,
-        origin.add(const Duration(seconds: 59)),
+        origin.add(const Duration(seconds: 14)),
       ),
       isFalse,
     );
     expect(
       ProfileRefreshPolicy.statusIsStale(
         origin,
-        origin.add(const Duration(minutes: 1)),
+        origin.add(const Duration(seconds: 15)),
       ),
       isTrue,
     );

@@ -515,12 +515,13 @@ class _RichComposerState extends State<_RichComposer> {
                                       autoFocus: false,
                                       minHeight: editorHeight,
                                       maxHeight: expandedEditorHeight,
-                                      customStyles: const DefaultStyles(
+                                      customStyles: DefaultStyles(
                                         paragraph: DefaultTextBlockStyle(
                                           TextStyle(
                                             fontSize:
                                                 DeltiecordTypeScale.normal,
                                             height: 1.2,
+                                            color: context.deltiecord.text,
                                           ),
                                           HorizontalSpacing.zero,
                                           VerticalSpacing.zero,
@@ -532,7 +533,7 @@ class _RichComposerState extends State<_RichComposer> {
                                             fontSize:
                                                 DeltiecordTypeScale.normal,
                                             height: 1.2,
-                                            color: Color(0x99989aa5),
+                                            color: context.deltiecord.muted,
                                           ),
                                           HorizontalSpacing.zero,
                                           VerticalSpacing.zero,

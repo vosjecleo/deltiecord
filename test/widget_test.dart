@@ -264,7 +264,7 @@ void main() {
 
     expect(find.text('Light'), findsOneWidget);
     expect(find.text('Dark'), findsOneWidget);
-    expect(find.text('OLED'), findsOneWidget);
+    expect(find.text('Night'), findsOneWidget);
     expect(find.byKey(const Key('interface-scale-slider')), findsOneWidget);
     expect(find.byKey(const Key('compactness-slider')), findsNothing);
     final colourWheelButton = find.textContaining('Open colour wheel');
@@ -2406,7 +2406,9 @@ void main() {
     expect(find.byKey(const Key('profile-side-panel')), findsNothing);
     await tester.tap(find.text('View full profile'));
     await tester.pumpAndSettle();
-    expect(backend.profileRefreshRequests, 1);
+    // Both the compact and full profile surfaces show cache-first, then
+    // independently validate their data in the background.
+    expect(backend.profileRefreshRequests, 2);
     expect(find.text('Online'), findsOneWidget);
     expect(find.byIcon(Icons.schedule), findsOneWidget);
     expect(
@@ -2878,7 +2880,7 @@ void main() {
     );
     expect(
       background.color,
-      DeltiecordPalette.forMode(DeltiecordThemeMode.dark).rail,
+      DeltiecordPalette.forMode(DeltiecordThemeMode.regular).rail,
     );
     expect(
       tester.getSize(find.byKey(const ValueKey('mobile-rail-badge-Home'))),
@@ -3490,7 +3492,10 @@ void main() {
   testWidgets('Android timeline groups messages and labels calendar days', (
     tester,
   ) async {
-    final now = DateTime.now();
+    // Keep both Alice messages on the same calendar day even when the suite
+    // happens to cross midnight. The day-boundary behavior is covered by Bob.
+    final current = DateTime.now();
+    final now = DateTime(current.year, current.month, current.day, 12);
     final backend = FakeBackend()
       ..currentStatus = SessionStatus.signedIn
       ..roomList = const [

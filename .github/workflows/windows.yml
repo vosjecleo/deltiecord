@@ -147,6 +147,23 @@ jobs:
           }
           & $iscc "/DMyAppVersion=$env:DELTIECORD_VERSION" "/DOutputBaseName=deltiecord-$env:DELTIECORD_RELEASE_ID-windows-x64-setup" "/DSourceDir=$env:DELTIECORD_RELEASE" "/DOutputDir=$pwd\dist" packaging/windows/deltiecord.iss
 
+      - name: Smoke-test installer desktop shortcut
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem dist -Filter '*-setup.exe' -File).FullName
+          if (-not $installer) { throw 'Windows installer was not produced.' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'deltiecord-installer-smoke'
+          & $installer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon "/DIR=$installDir"
+          if ($LASTEXITCODE -ne 0) { throw "Installer exited with $LASTEXITCODE" }
+          $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Deltiecord.lnk'
+          if (-not (Test-Path $shortcut)) { throw 'Desktop shortcut was not created.' }
+          $target = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut).TargetPath
+          if ($target -ne (Join-Path $installDir 'deltiecord.exe')) {
+            throw "Desktop shortcut points to the wrong executable: $target"
+          }
+          & (Join-Path $installDir 'unins000.exe') /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with $LASTEXITCODE" }
+
       - name: Write checksums
         shell: pwsh
         run: |

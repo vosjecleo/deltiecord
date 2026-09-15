@@ -41,6 +41,8 @@ class _MobileChatShellState extends State<MobileChatShell>
   bool? _dragStartedWithNavigation;
   bool? _reportedConversationVisible;
   int _resumeGeneration = 0;
+  Timer? _timelineGestureReset;
+  bool _suppressTimelineGestures = false;
 
   ChatBackend get backend => widget.backend;
 
@@ -88,6 +90,7 @@ class _MobileChatShellState extends State<MobileChatShell>
     backend.setConversationVisible(false);
     backend.removeListener(_backendChanged);
     unawaited(_draftStore.dispose());
+    _timelineGestureReset?.cancel();
     super.dispose();
   }
 
@@ -171,6 +174,8 @@ class _MobileChatShellState extends State<MobileChatShell>
             }
             if (_navigationDragProgress == null) {
               FocusManager.instance.primaryFocus?.unfocus();
+              _timelineGestureReset?.cancel();
+              _suppressTimelineGestures = true;
             }
             final width = MediaQuery.sizeOf(context).width;
             final progress = startedVisible
@@ -188,6 +193,7 @@ class _MobileChatShellState extends State<MobileChatShell>
                 _navigationDragProgress = null;
                 _dragStartedWithNavigation = null;
               });
+              _releaseTimelineGesturesLater();
             }
           },
           onPointerUp: (event) {
@@ -203,6 +209,7 @@ class _MobileChatShellState extends State<MobileChatShell>
                 _navigationDragProgress = null;
                 _dragStartedWithNavigation = null;
               });
+              _releaseTimelineGesturesLater();
               return;
             }
             final delta = event.position - start;
@@ -245,7 +252,8 @@ class _MobileChatShellState extends State<MobileChatShell>
                               setState(() => _detailsVisible = true),
                           onOpenSettings: _showSettings,
                           navigationGestureActive:
-                              _navigationDragProgress != null,
+                              _navigationDragProgress != null ||
+                              _suppressTimelineGestures,
                           initialDraft: _drafts[room.id]?.text ?? '',
                           initialCustomEmojis:
                               _drafts[room.id]?.emojis ?? const [],
@@ -338,6 +346,13 @@ class _MobileChatShellState extends State<MobileChatShell>
         ),
       ),
     );
+  }
+
+  void _releaseTimelineGesturesLater() {
+    _timelineGestureReset?.cancel();
+    _timelineGestureReset = Timer(const Duration(milliseconds: 320), () {
+      if (mounted) setState(() => _suppressTimelineGestures = false);
+    });
   }
 
   Duration get _duration => backend.preferences.reducedMotion

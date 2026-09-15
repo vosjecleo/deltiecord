@@ -19,4 +19,13 @@ void main() {
   test('safe errors are bounded', () {
     expect(safeErrorMessage(Exception('x' * 500)).length, 241);
   });
+
+  test('low-level recovery-key decoder failures become actionable', () {
+    expect(
+      friendlyRecoveryErrorMessage(
+        const FormatException('Base58 decode failed: invalid character'),
+      ),
+      'That recovery key is invalid or was entered incorrectly.',
+    );
+  });
 }

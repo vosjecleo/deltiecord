@@ -153,16 +153,24 @@ jobs:
           $installer = (Get-ChildItem dist -Filter '*-setup.exe' -File).FullName
           if (-not $installer) { throw 'Windows installer was not produced.' }
           $installDir = Join-Path $env:RUNNER_TEMP 'deltiecord-installer-smoke'
-          & $installer /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /TASKS=desktopicon "/DIR=$installDir"
-          if ($LASTEXITCODE -ne 0) { throw "Installer exited with $LASTEXITCODE" }
+          # Inno Setup is a GUI-subsystem executable, so direct PowerShell
+          # invocation can return before installation has finished. Explicitly
+          # wait before inspecting the shortcut or launching the uninstaller.
+          $install = Start-Process -FilePath $installer -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
+            '/TASKS=desktopicon', "/DIR=$installDir"
+          ) -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)" }
           $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Deltiecord.lnk'
           if (-not (Test-Path $shortcut)) { throw 'Desktop shortcut was not created.' }
           $target = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut).TargetPath
           if ($target -ne (Join-Path $installDir 'deltiecord.exe')) {
             throw "Desktop shortcut points to the wrong executable: $target"
           }
-          & (Join-Path $installDir 'unins000.exe') /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-          if ($LASTEXITCODE -ne 0) { throw "Uninstaller exited with $LASTEXITCODE" }
+          $uninstall = Start-Process -FilePath (Join-Path $installDir 'unins000.exe') -ArgumentList @(
+            '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+          ) -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)" }
 
       - name: Write checksums
         shell: pwsh

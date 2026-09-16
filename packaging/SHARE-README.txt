@@ -1,12 +1,12 @@
-Deltiecord v0.9.29 build 96 release-candidate bundle
+Deltiecord v0.9.29 build 97 release-candidate bundle
 ====================================================
 
 Linux AppImage:
-  chmod +x deltiecord-0.9.29+96-linux-appimage-x86_64.AppImage
-  ./deltiecord-0.9.29+96-linux-appimage-x86_64.AppImage
+  chmod +x deltiecord-0.9.29+97-linux-appimage-x86_64.AppImage
+  ./deltiecord-0.9.29+97-linux-appimage-x86_64.AppImage
 
 Debian/Ubuntu package:
-  sudo apt install ./deltiecord-0.9.29+96-linux-debian-amd64.deb
+  sudo apt install ./deltiecord-0.9.29+97-linux-debian-amd64.deb
 
 Verify files:
   sha256sum -c SHA256SUMS

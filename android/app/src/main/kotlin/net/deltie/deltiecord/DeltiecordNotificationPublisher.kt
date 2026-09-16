@@ -45,6 +45,9 @@ object DeltiecordNotificationPublisher {
     private const val MAX_MEDIA_BYTES = 3 * 1024 * 1024
     private const val MAX_AVATAR_BYTES = 1024 * 1024
     private const val ALERT_COOLDOWN_MS = 5L * 60 * 1000
+    private const val ALERT_PREFIX = "alert:"
+    private const val ROOM_GENERATION_PREFIX = "room-generation:"
+    private const val APP_GENERATION_KEY = "app-generation"
 
     data class MessageData(
         val roomId: String,
@@ -110,7 +113,24 @@ object DeltiecordNotificationPublisher {
         manager(context).cancel(9002)
     }
 
-    fun publish(context: Context, data: MessageData) {
+    /**
+     * Publishes only when the notification lifecycle has not changed since the
+     * worker started. Opening Deltiecord or dismissing this room invalidates
+     * older workers so they cannot resurrect a cleared alert or its cooldown.
+     */
+    @Synchronized
+    fun publish(
+        context: Context,
+        data: MessageData,
+        expectedAppGeneration: Long? = null,
+        expectedRoomGeneration: Long? = null,
+    ): Boolean {
+        if (expectedAppGeneration != null &&
+            expectedAppGeneration != appGeneration(context)
+        ) return false
+        if (expectedRoomGeneration != null &&
+            expectedRoomGeneration != roomGeneration(context, data.roomId)
+        ) return false
         val shouldAlert = shouldAlert(context, data)
         val channelId = channelId(data, shouldAlert)
         ensureChannel(context, channelId, data.sound && shouldAlert, data.vibrate && shouldAlert)
@@ -189,6 +209,7 @@ object DeltiecordNotificationPublisher {
             .putLong("last_notification_posted_ms", System.currentTimeMillis())
             .apply()
         cleanupFiles(context, history)
+        return true
     }
 
     private fun replyAction(
@@ -271,7 +292,7 @@ object DeltiecordNotificationPublisher {
         if ((!data.sound && !data.vibrate) || data.alertCadence == "silent") return false
         if (data.alertCadence == "everyMessage") return true
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val key = "alert:${digest(data.roomId)}"
+        val key = alertKey(data.roomId)
         val now = System.currentTimeMillis()
         val previous = preferences.getLong(key, 0)
         if (now - previous < ALERT_COOLDOWN_MS) return false
@@ -588,19 +609,46 @@ object DeltiecordNotificationPublisher {
             entry.optString("imagePath").takeIf(String::isNotBlank)?.let(::File)?.delete()
         }
         historyFile(context, roomId).delete()
-        resetAlertCooldown(context, roomId)
+        invalidateRoomAlertState(context, roomId)
         manager(context).cancel(notificationId(roomId))
     }
 
+    /** Ends every active notification burst when the application is opened. */
     @Synchronized
-    fun resetAlertCooldown(context: Context, roomId: String) {
-        // commit is intentional for the same reason as shouldAlert(): a push
-        // worker can race with a foreground-open or dismissal broadcast.
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .remove("alert:${digest(roomId)}")
+    fun resetAlertCadenceOnAppOpen(context: Context) {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val nextGeneration = preferences.getLong(APP_GENERATION_KEY, 0) + 1
+        val editor = preferences.edit().putLong(APP_GENERATION_KEY, nextGeneration)
+        preferences.all.keys
+            .filter { it.startsWith(ALERT_PREFIX) }
+            .forEach(editor::remove)
+        // Workers may be completing on another thread, so the generation and
+        // cleared cooldowns must become visible before onResume returns.
+        editor.commit()
+    }
+
+    @Synchronized
+    fun invalidateRoomAlertState(context: Context, roomId: String) {
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val generationKey = roomGenerationKey(roomId)
+        preferences.edit()
+            .putLong(generationKey, preferences.getLong(generationKey, 0) + 1)
+            .remove(alertKey(roomId))
             .commit()
     }
+
+    fun appGeneration(context: Context): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(APP_GENERATION_KEY, 0)
+
+    fun roomGeneration(context: Context, roomId: String): Long =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getLong(roomGenerationKey(roomId), 0)
+
+    private fun alertKey(roomId: String) = "$ALERT_PREFIX${digest(roomId)}"
+
+    private fun roomGenerationKey(roomId: String) =
+        "$ROOM_GENERATION_PREFIX${digest(roomId)}"
 
     private fun notificationId(roomId: String): Int =
         StableIdentifier.requestCode("notification:$roomId")

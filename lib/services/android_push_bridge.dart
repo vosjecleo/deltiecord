@@ -164,6 +164,15 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
   )) {
     return const {'resolutionStatus': 'suppressed_active_desktop'};
   }
+  // A notification can be opened or read while this background resolver is
+  // still syncing/decrypting. Matrix remains the source of truth: do not let
+  // late work resurrect an alert for activity which is no longer unread.
+  final relevantUnreadCount = room.isDirectChat
+      ? room.notificationCount
+      : room.highlightCount;
+  if (relevantUnreadCount <= 0) {
+    return const {'resolutionStatus': 'suppressed_already_read'};
+  }
   final previewsEnabled =
       settings?.tryGet<bool>('notification_previews') ?? true;
   final sender = displayEvent.senderFromMemoryOrFallback;
@@ -248,9 +257,7 @@ Future<Map<String, Object?>?> resolveAndroidPushNotification(
     'alertCadence':
         settings?.tryGet<String>('notification_alert_cadence') ??
         'fiveMinuteCooldown',
-    'unreadCount': room.isDirectChat
-        ? room.notificationCount
-        : room.highlightCount,
+    'unreadCount': relevantUnreadCount,
   };
 }
 

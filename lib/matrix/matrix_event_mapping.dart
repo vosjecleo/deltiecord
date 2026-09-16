@@ -243,9 +243,7 @@ extension _MatrixEventMapping on MatrixBackend {
         width: info?.tryGet<int>('w'),
         height: info?.tryGet<int>('h'),
         sticker: true,
-        animated:
-            info?.tryGet<String>('mimetype') == 'image/gif' ||
-            info?.tryGet<String>('mimetype') == 'image/webp',
+        animated: _isAnimatedImageMime(info?.tryGet<String>('mimetype')),
         stickerPackId: pack?.tryGet<String>('id'),
         stickerPackName: pack?.tryGet<String>('display_name'),
       );
@@ -276,13 +274,18 @@ extension _MatrixEventMapping on MatrixBackend {
           event.content.tryGet<bool>('m.spoiler') == true,
       caption: caption,
       hasThumbnail: event.hasThumbnail,
-      animated: event.attachmentMimetype == 'image/gif',
+      animated: _isAnimatedImageMime(event.attachmentMimetype),
       width: event.infoMap.tryGet<int>('w'),
       height: event.infoMap.tryGet<int>('h'),
       thumbnailSize: event.thumbnailInfoMap.tryGet<int>('size'),
       thumbnailWidth: event.thumbnailInfoMap.tryGet<int>('w'),
       thumbnailHeight: event.thumbnailInfoMap.tryGet<int>('h'),
     );
+  }
+
+  bool _isAnimatedImageMime(String? value) {
+    final mime = value?.toLowerCase().split(';').first.trim();
+    return mime == 'image/gif' || mime == 'image/apng' || mime == 'image/webp';
   }
 
   PollSummary? _pollFor(Event event, Timeline timeline) {

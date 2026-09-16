@@ -15,7 +15,7 @@ class DeltiecordNotificationActionReceiver : BroadcastReceiver() {
             // Dismissing an alert ends the current notification burst. The
             // next message should alert even when the five-minute cadence has
             // not elapsed, while retained unread history stays available.
-            DeltiecordNotificationPublisher.resetAlertCooldown(context, roomId)
+            DeltiecordNotificationPublisher.invalidateRoomAlertState(context, roomId)
             return
         }
         val eventId = intent.getStringExtra(EXTRA_EVENT_ID) ?: return

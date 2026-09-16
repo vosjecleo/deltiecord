@@ -48,6 +48,7 @@ import 'relative_activity_time.dart';
 import 'room_search_panel.dart';
 import 'media_album.dart';
 import 'encryption_attention_banner.dart';
+import 'lifecycle_memory_image.dart';
 
 part 'chat_navigation.dart';
 part 'conversation_view.dart';

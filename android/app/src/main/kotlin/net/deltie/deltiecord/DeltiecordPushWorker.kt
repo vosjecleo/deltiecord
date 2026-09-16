@@ -65,17 +65,13 @@ class DeltiecordPushWorker(
         val eventId = inputData.getString(KEY_EVENT_ID)?.takeIf { it.isNotBlank() }
             ?: return Result.failure()
         val notificationAction = inputData.getString(KEY_ACTION)
-        // The live Dart session emits its own in-app banner. Posting an Android
-        // notification as well duplicates the alert and can mark a visible
-        // conversation as externally notified.
-        if (notificationAction == null && DeltiecordEngineRegistry.appInForeground) {
-            DeltiecordPushService.recordWorkerResult(
-                applicationContext,
-                "suppressed_phone_foreground",
-            )
-            DeltiecordPushWakeService.stop(applicationContext)
-            return Result.success()
-        }
+        // Capture lifecycle epochs before sync/decryption. Opening the app or
+        // clearing this room invalidates work that was already in flight.
+        val appGeneration = DeltiecordNotificationPublisher.appGeneration(applicationContext)
+        val roomGeneration = DeltiecordNotificationPublisher.roomGeneration(
+            applicationContext,
+            roomId,
+        )
         var ownsEngine = false
         var engine = DeltiecordEngineRegistry.engine
         try {
@@ -114,7 +110,9 @@ class DeltiecordPushWorker(
             } else {
                 val resolution = invokeResolver(engine, roomId, eventId)
                 val resolutionStatus = resolution?.get("resolutionStatus") as? String
-                if (resolutionStatus == "suppressed_active_desktop") {
+                if (resolutionStatus == "suppressed_active_desktop" ||
+                    resolutionStatus == "suppressed_already_read"
+                ) {
                     DeltiecordPushService.recordWorkerResult(
                         applicationContext,
                         resolutionStatus,
@@ -134,10 +132,25 @@ class DeltiecordPushWorker(
                 }
                 val message = resolution?.let(DeltiecordNotificationPublisher::fromMap)
                 if (message != null) {
-                    DeltiecordNotificationPublisher.publish(applicationContext, message)
+                    // Foreground state can change while Matrix sync and E2EE
+                    // resolution are running, so it must be checked at the
+                    // publication boundary rather than only at worker start.
+                    if (DeltiecordEngineRegistry.appInForeground) {
+                        DeltiecordPushService.recordWorkerResult(
+                            applicationContext,
+                            "suppressed_phone_foreground",
+                        )
+                        return Result.success()
+                    }
+                    val published = DeltiecordNotificationPublisher.publish(
+                        applicationContext,
+                        message,
+                        expectedAppGeneration = appGeneration,
+                        expectedRoomGeneration = roomGeneration,
+                    )
                     DeltiecordPushService.recordWorkerResult(
                         applicationContext,
-                        "notification_posted",
+                        if (published) "notification_posted" else "suppressed_stale_worker",
                     )
                 } else {
                     DeltiecordPushService.recordWorkerResult(

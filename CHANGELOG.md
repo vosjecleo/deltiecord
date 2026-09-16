@@ -1,5 +1,15 @@
 # Changelog
 
+## Deltiecord 0.9.29 build 97 — 2026-09-16
+
+- Reset every Android per-conversation alert cadence when Deltiecord opens, so
+  the next message can vibrate immediately after the app is backgrounded.
+- Prevented in-flight UnifiedPush workers from restoring a cleared cooldown or
+  posting after the app/room was opened, and suppressed already-read events.
+- Recreated animated image codecs after Android resume, recognized normalized
+  GIF/APNG/WebP MIME metadata and GIF signatures, and made GIF-provider video
+  renditions loop continuously while preserving Reduce Motion behavior.
+
 ## Deltiecord 0.9.29 build 96 — 2026-09-16
 
 - Added first-party account registration for `matrix.deltie.net`, including

@@ -384,6 +384,10 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         DeltiecordEngineRegistry.appInForeground = true
+        // Opening the app ends every prior notification burst. A later push
+        // must be allowed to alert immediately after the app is backgrounded,
+        // even when the previous alert was less than five minutes ago.
+        DeltiecordNotificationPublisher.resetAlertCadenceOnAppOpen(this)
         DeltiecordPushService.knownInstance(this)?.let { instance ->
             DeltiecordPushWorker.enqueuePusherReconciliation(this, instance)
             DeltiecordPushWorker.schedulePusherVerification(this, instance)

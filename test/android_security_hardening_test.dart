@@ -54,6 +54,12 @@ void main() {
       final dartResolver = File(
         'lib/matrix/matrix_session.dart',
       ).readAsStringSync();
+      final pushBridge = File(
+        'lib/services/android_push_bridge.dart',
+      ).readAsStringSync();
+      final activity = File(
+        'android/app/src/main/kotlin/net/deltie/deltiecord/MainActivity.kt',
+      ).readAsStringSync();
 
       expect(decoder, contains('inJustDecodeBounds = true'));
       expect(decoder, contains('MAX_PIXELS'));
@@ -73,13 +79,17 @@ void main() {
         publisher,
         contains(r'StableIdentifier.requestCode("notification:$roomId")'),
       );
-      expect(publisher, contains(r'"alert:${digest(data.roomId)}"'));
+      expect(publisher, contains('private const val ALERT_PREFIX = "alert:"'));
       expect(publisher, contains('.setDeleteIntent(dismissIntent('));
-      expect(publisher, contains('fun resetAlertCooldown'));
-      expect(publisher, contains(r'.remove("alert:${digest(roomId)}")'));
+      expect(publisher, contains('.remove(alertKey(roomId))'));
+      expect(publisher, contains('expectedAppGeneration'));
+      expect(publisher, contains('expectedRoomGeneration'));
+      expect(publisher, contains('fun resetAlertCadenceOnAppOpen'));
+      expect(activity, contains('resetAlertCadenceOnAppOpen(this)'));
       expect(publisher, isNot(contains('deltiecord_notification_history')));
       expect(dartResolver, contains('declaredSize == null'));
       expect(dartResolver, contains('width * height > 8000000'));
+      expect(pushBridge, contains('suppressed_already_read'));
     },
   );
 

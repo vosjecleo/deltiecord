@@ -69,6 +69,7 @@ class _LinkPreviewCard extends StatelessWidget {
                     thumbnail: preview.imageBytes,
                     aspectRatio: (preview.width ?? 16) / (preview.height ?? 9),
                     autoplay: true,
+                    loop: shouldLoopLinkPreview(preview.url),
                   ),
                 ),
               ),
@@ -122,6 +123,7 @@ class _LinkPreviewCard extends StatelessWidget {
                         backend.resolveLinkPreviewVideo(preview.url, video),
                     thumbnail: preview.imageBytes,
                     aspectRatio: aspectRatio,
+                    loop: shouldLoopLinkPreview(preview.url),
                     onDoubleTap: () => _showVideoFullscreen(context, video),
                   ),
                 )
@@ -190,6 +192,7 @@ class _LinkVideoPlayer extends StatefulWidget {
     this.thumbnail,
     this.aspectRatio = 16 / 9,
     this.autoplay = false,
+    this.loop = false,
     this.onDoubleTap,
   });
 
@@ -198,6 +201,7 @@ class _LinkVideoPlayer extends StatefulWidget {
   final Uint8List? thumbnail;
   final double aspectRatio;
   final bool autoplay;
+  final bool loop;
   final VoidCallback? onDoubleTap;
 
   @override
@@ -254,6 +258,7 @@ class _LinkVideoPlayerState extends State<_LinkVideoPlayer> {
     try {
       final uri = await (widget.resolveUri?.call() ?? Future.value(widget.uri));
       await player.open(Media(uri.toString()), play: true);
+      if (widget.loop) await player.setPlaylistMode(PlaylistMode.single);
       _opened = true;
     } catch (exception) {
       _error = safeErrorMessage(exception);
@@ -933,63 +938,11 @@ class _PreferenceAwareImage extends StatelessWidget {
   final bool autoplay;
 
   @override
-  Widget build(BuildContext context) {
-    if (!animated || autoplay) {
-      return Image.memory(bytes, fit: BoxFit.contain, gaplessPlayback: true);
-    }
-    return _FirstFrameImage(bytes: bytes);
-  }
-}
-
-class _FirstFrameImage extends StatefulWidget {
-  const _FirstFrameImage({required this.bytes});
-
-  final Uint8List bytes;
-
-  @override
-  State<_FirstFrameImage> createState() => _FirstFrameImageState();
-}
-
-class _FirstFrameImageState extends State<_FirstFrameImage> {
-  late Future<ui.Image> _frame = _decode();
-  ui.Image? _decoded;
-
-  Future<ui.Image> _decode() async {
-    final codec = await ui.instantiateImageCodec(widget.bytes);
-    try {
-      final frame = await codec.getNextFrame();
-      _decoded = frame.image;
-      return frame.image;
-    } finally {
-      codec.dispose();
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _FirstFrameImage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.bytes, widget.bytes)) {
-      _decoded?.dispose();
-      _decoded = null;
-      _frame = _decode();
-    }
-  }
-
-  @override
-  void dispose() {
-    _decoded?.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => FutureBuilder<ui.Image>(
-    future: _frame,
-    builder: (context, snapshot) {
-      final image = snapshot.data;
-      return image == null
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : RawImage(image: image, fit: BoxFit.contain);
-    },
+  Widget build(BuildContext context) => LifecycleMemoryImage(
+    bytes: bytes,
+    animated: animated,
+    autoplay: autoplay,
+    fit: BoxFit.contain,
   );
 }
 

@@ -17,6 +17,7 @@ import '../../services/encoded_image_dimensions.dart';
 import '../../services/temporary_attachment_store.dart';
 import '../deltiecord_theme.dart';
 import '../advanced_chat_dialogs.dart';
+import '../lifecycle_memory_image.dart';
 
 /// Fits media inside a bounded frame without changing its aspect ratio.
 ///
@@ -376,12 +377,15 @@ class _MobileImageState extends State<_MobileImage>
                   ),
                 );
               }
-              return Image.memory(
-                bytes,
+              return LifecycleMemoryImage(
+                bytes: bytes,
+                animated: attachment.animated,
+                autoplay:
+                    widget.backend.preferences.autoplayGifs &&
+                    !widget.backend.preferences.reducedMotion,
                 width: frame.width,
                 height: frame.height,
                 fit: BoxFit.contain,
-                gaplessPlayback: true,
               );
             },
           ),
@@ -877,6 +881,7 @@ class MobileLinkPreviewCard extends StatelessWidget {
                   thumbnail: preview.imageBytes,
                   width: preview.width,
                   height: preview.height,
+                  loop: shouldLoopLinkPreview(preview.url),
                 ),
               )
             else if (preview.imageBytes case final image?)
@@ -932,6 +937,7 @@ class MobileLinkPreviewVideo extends StatefulWidget {
     this.width,
     this.height,
     this.autoplay = false,
+    this.loop = false,
     this.onDoubleTap,
     super.key,
   });
@@ -942,6 +948,7 @@ class MobileLinkPreviewVideo extends StatefulWidget {
   final int? width;
   final int? height;
   final bool autoplay;
+  final bool loop;
   final VoidCallback? onDoubleTap;
 
   @override
@@ -1002,6 +1009,7 @@ class _MobileLinkPreviewVideoState extends State<MobileLinkPreviewVideo>
     try {
       final uri = await (widget.resolveUri?.call() ?? Future.value(widget.uri));
       await player.open(Media(uri.toString()), play: true);
+      if (widget.loop) await player.setPlaylistMode(PlaylistMode.single);
       if (!mounted) {
         await player.dispose();
         return;
